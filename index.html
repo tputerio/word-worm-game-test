@@ -72,24 +72,6 @@
             0% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
             100% { transform: translate(-50%, -200%) scale(0.5); opacity: 0; }
         }
-
-        /* Tutorial Slider Styles */
-        #tutorial-slider {
-            display: flex;
-            flex-direction: row;
-            width: 100%;
-            overflow: hidden;
-            touch-action: pan-x;
-            position: relative;
-        }
-        #tutorial-slider > div {
-            flex: 0 0 100%;
-            width: 100%;
-            visibility: visible;
-            opacity: 1;
-            position: static;
-            transition: transform 0.3s ease-out;
-        }
     </style>
 </head>
 <body class="bg-slate-100 flex justify-center items-start md:items-center min-h-screen">
@@ -1073,309 +1055,225 @@
         }
     }
     
- function setupTutorial() {
-    const container = document.getElementById('how-to-play-container');
-    if (!container) return;
+    function setupTutorial() {
+        const container = document.getElementById('how-to-play-container');
+        if (!container) return;
 
-    container.innerHTML = `
-        <div class="relative w-full h-full flex flex-col">
-            <h3 class="text-md font-bold text-slate-700 text-center mb-1">How to Play</h3>
-            <div class="relative flex-grow flex overflow-hidden" id="tutorial-slider" style="touch-action: pan-x;">
-                <!-- Page 1: Animation -->
-                <div class="w-full flex-shrink-0 p-2 flex flex-col justify-center items-center" data-page="1">
-                    <div id="tutorial-word-builder" class="h-6 w-28 bg-white rounded-md flex items-center justify-center space-x-0.5 shadow-inner">
-                        <span class="opacity-0 text-sm">W</span> <!-- Smaller placeholder -->
+        container.innerHTML = `
+            <div class="relative w-full h-full flex flex-col">
+                <h3 class="text-md font-bold text-slate-700 text-center mb-2">How to Play</h3>
+                <div class="relative flex-grow flex overflow-hidden" id="tutorial-slider" style="touch-action: pan-y;">
+                    <!-- Page 1: Animation -->
+                    <div class="w-full flex-shrink-0 transition-transform duration-300 p-2 flex flex-col justify-center items-center">
+                        <div id="tutorial-word-builder" class="h-8 mb-2 w-32 bg-white rounded-md flex items-center justify-center space-x-0.5 shadow-inner">
+                            <span class="opacity-0">W</span> <!-- Placeholder for height -->
+                        </div>
+                        <div id="tutorial-grid-container" class="relative w-32 h-32">
+                             <canvas id="tutorial-line-canvas" class="absolute top-0 left-0 w-full h-full pointer-events-none" style="z-index: 5;"></canvas>
+                            <div class="grid grid-cols-4 gap-1">
+                                ${['W','A','R','D','O','R','D','E','B','N','M','I','S','L','P','T'].map(l => `<div class="tutorial-tile w-8 h-8 flex items-center justify-center font-bold text-base bg-white rounded-md border-2 border-slate-300">${l}<sub class="text-[0.55rem] font-semibold ml-0.5">${letterConfig[l] ? letterConfig[l].p : 1}</sub></div>`).join('')}
+                            </div>
+                        </div>
+                        <p class="text-center text-xs font-semibold text-slate-700 mt-4">Drag to form words (3+ letters)!</p>
                     </div>
-                    <div id="tutorial-grid-container" class="relative w-32 h-32 mt-1">
-                         <canvas id="tutorial-line-canvas" class="absolute top-0 left-0 w-full h-full pointer-events-none" style="z-index: 5;"></canvas>
-                        <div class="grid grid-cols-4 gap-1">
-                            ${['W','A','R','D','O','R','D','E','B','N','M','I','S','L','P','T'].map(l => `<div class="tutorial-tile w-8 h-8 flex items-center justify-center font-bold text-base bg-white rounded-md border-2 border-slate-300">${l}<sub class="text-[0.55rem] font-semibold ml-0.5">${letterConfig[l] ? letterConfig[l].p : 1}</sub></div>`).join('')}
+                    <!-- Page 2: Rules -->
+                    <div class="w-full flex-shrink-0 transition-transform duration-300 p-4 flex flex-col justify-center text-left">
+                         <ul class="text-xs space-y-2 mb-4">
+                            <li class="flex items-start"><span class="mr-2 text-lg">🏆</span><span><strong>Your Goal:</strong> Score as many points as you can in 60 seconds!</span></li>
+                            <li class="flex items-start"><span class="mr-2 text-lg">👉</span><span><strong>How to Score:</strong> Your score is the sum of letter points and any bonuses.</span></li>
+                             <li class="flex items-start"><span class="mr-2 text-lg">⭐</span><span><strong>Pro-Tip:</strong> Use bonuses and long words to maximize your score!</span></li>
+                        </ul>
+                        <div class="text-xs space-y-2">
+                             <div>
+                                <strong class="font-semibold text-slate-700">Bonus Tiles:</strong>
+                                <div class="grid grid-cols-2 gap-x-4 mt-1">
+                                    <ul class="list-none space-y-1">
+                                        <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #3b82f6;">DL</span> Double Letter</span></li>
+                                        <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #ef4444;">TL</span> Triple Letter</span></li>
+                                    </ul>
+                                    <ul class="list-none space-y-1">
+                                        <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #f59e0b;">DW</span> Double Word</span></li>
+                                        <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #22c55e;">+5s</span> Extra Time</span></li>
+                                    </ul>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <p class="text-center text-xs font-semibold text-slate-700 mt-2">Swipe to form words (3+ letters)!</p>
-                </div>
-                <!-- Page 2: Rules -->
-                <div class="w-full flex-shrink-0 p-3 flex flex-col justify-center text-left" data-page="2">
-                     <ul class="text-xs space-y-1.5 mb-3">
-                        <li class="flex items-start"><span class="mr-2 text-lg">🏆</span><span><strong>Your Goal:</strong> Score as many points as you can in 60 seconds!</span></li>
-                        <li class="flex items-start"><span class="mr-2 text-lg">👉</span><span><strong>How to Score:</strong> Your score is the sum of letter points and any bonuses.</span></li>
-                         <li class="flex items-start"><span class="mr-2 text-lg">⭐</span><span><strong>Pro-Tip:</strong> Use bonuses and long words to maximize your score!</span></li>
-                    </ul>
-                    <div class="text-xs space-y-1.5">
-                         <div>
-                            <strong class="font-semibold text-slate-700">Bonus Tiles:</strong>
-                            <div class="grid grid-cols-2 gap-x-3 mt-1">
-                                <ul class="list-none space-y-1">
-                                    <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #3b82f6;">DL</span> Double Letter</span></li>
-                                    <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #ef4444;">TL</span> Triple Letter</span></li>
-                                </ul>
-                                <ul class="list-none space-y-1">
-                                    <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #f59e0b;">DW</span> Double Word</span></li>
-                                    <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #22c55e;">+5s</span> Extra Time</span></li>
-                                </ul>
+                     <!-- Page 3: More Rules -->
+                    <div class="w-full flex-shrink-0 transition-transform duration-300 p-4 flex flex-col justify-start text-left">
+                        <div class="text-xs space-y-3">
+                            <div>
+                                <strong class="font-semibold text-slate-700">Long Word Bonus:</strong>
+                                <table class="w-full mt-1 text-left text-xs">
+                                     <tbody>
+                                        <tr>
+                                            <td class="py-0.5 pr-2">4 Letters: <span class="font-medium">+2 pts</span></td>
+                                            <td class="py-0.5">6 Letters: <span class="font-medium">+10 pts</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td class="py-0.5 pr-2">5 Letters: <span class="font-medium">+5 pts</span></td>
+                                            <td class="py-0.5">7+ Letters: <span class="font-medium">+20 pts</span></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                             <div class="pt-2">
+                                <strong class="font-semibold text-slate-700">Letter Point Values:</strong>
+                                <div id="letter-values-container" class="flex flex-wrap gap-1 mt-1">
+                                    <!-- Letter value tiles are injected here by JS -->
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-                 <!-- Page 3: More Rules -->
-                <div class="w-full flex-shrink-0 p-3 flex flex-col justify-start text-left" data-page="3">
-                    <div class="text-xs space-y-2">
-                        <div>
-                            <strong class="font-semibold text-slate-700">Long Word Bonus:</strong>
-                            <table class="w-full mt-1 text-left text-xs">
-                                 <tbody>
-                                    <tr>
-                                        <td class="py-0.5 pr-2">4 Letters: <span class="font-medium">+2 pts</span></td>
-                                        <td class="py-0.5">6 Letters: <span class="font-medium">+10 pts</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td class="py-0.5 pr-2">5 Letters: <span class="font-medium">+5 pts</span></td>
-                                        <td class="py-0.5">7+ Letters: <span class="font-medium">+20 pts</span></td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                         <div class="pt-1">
-                            <strong class="font-semibold text-slate-700">Letter Point Values:</strong>
-                            <div id="letter-values-container" class="flex flex-wrap gap-1 mt-1">
-                                <!-- Letter value tiles are injected here by JS -->
-                            </div>
-                        </div>
-                    </div>
+                <div class="flex justify-center items-center space-x-2 mt-2">
+                    <div id="tutorial-dots" class="flex space-x-1.5"></div>
                 </div>
             </div>
-            <div class="flex justify-center items-center space-x-2 mt-1">
-                <div id="tutorial-dots" class="flex space-x-1.5"></div>
-            </div>
-        </div>
-    `;
-    
-    const letterValuesContainer = container.querySelector('#letter-values-container');
-    if (letterValuesContainer) {
-        const sortedLetters = Object.keys(letterConfig).sort();
-        const letterTilesHtml = sortedLetters.map(letter => {
-           const config = letterConfig[letter];
-           return `<span class="bg-slate-200 text-slate-700 font-bold rounded-sm px-1.5 py-0.5 text-[10px] leading-none">${letter}-${config.p}</span>`;
-        }).join('');
-        letterValuesContainer.innerHTML = letterTilesHtml;
-    }
-
-    let currentPage = 0;
-    const slider = container.querySelector('#tutorial-slider');
-    const pages = container.querySelectorAll('#tutorial-slider > div');
-    const dotsContainer = container.querySelector('#tutorial-dots');
-    let touchStartX = 0;
-    let isDragging = false;
-    let animationFrame;
-    let velocity = 0;
-    let lastTouchX = 0;
-    let lastTime = 0;
-    let animationInterval;
-
-    // Initialize pages
-    pages.forEach(page => {
-        page.style.visibility = 'visible';
-        page.style.opacity = '1';
-        page.style.position = 'absolute';
-        page.style.left = '0';
-        page.style.width = '100%';
-    });
-
-    // Create pagination dots
-    for (let i = 0; i < pages.length; i++) {
-        const dot = document.createElement('div');
-        dot.className = 'w-2 h-2 rounded-full bg-slate-400 transition-colors cursor-pointer';
-        dot.onclick = () => {
-            currentPage = i;
-            console.log(`Dot clicked: page ${currentPage}`);
-            updateTutorialView();
-        };
-        dotsContainer.appendChild(dot);
-    }
-    const dots = dotsContainer.children;
-
-    const updateTutorialView = () => {
-        console.log(`Updating view: currentPage=${currentPage}`);
-        pages.forEach((page, index) => {
-            const translateX = (index - currentPage) * 100;
-            page.style.transform = `translateX(${translateX}%)`;
-            page.style.transition = isDragging ? 'none' : 'transform 0.3s ease-out';
-            console.log(`Page ${index} (data-page=${page.dataset.page}): translateX(${translateX}%)`);
-        });
-        Array.from(dots).forEach((dot, i) => {
-            dot.classList.toggle('bg-blue-500', i === currentPage);
-            dot.classList.toggle('bg-slate-400', i !== currentPage);
-        });
-    };
-
-    const handleDrag = (clientX, time) => {
-        if (!isDragging) return;
-        const deltaX = (clientX - touchStartX) / slider.offsetWidth * 100;
-        const tempTranslate = -currentPage * 100 + deltaX;
-
-        pages.forEach((page, index) => {
-            page.style.transform = `translateX(${tempTranslate + index * 100}%)`;
-        });
-
-        if (lastTime) {
-            const deltaTime = time - lastTime;
-            velocity = (clientX - lastTouchX) / deltaTime * 16;
+        `;
+        
+        const letterValuesContainer = container.querySelector('#letter-values-container');
+        if (letterValuesContainer) {
+            const sortedLetters = Object.keys(letterConfig).sort();
+            const letterTilesHtml = sortedLetters.map(letter => {
+               const config = letterConfig[letter];
+               return `<span class="bg-slate-200 text-slate-700 font-bold rounded-sm px-1.5 py-0.5 text-[10px] leading-none">${letter}-${config.p}</span>`;
+            }).join('');
+            letterValuesContainer.innerHTML = letterTilesHtml;
         }
-        lastTouchX = clientX;
-        lastTime = time;
-    };
 
-    const handleEnd = () => {
-        if (!isDragging) return;
-        isDragging = false;
-        slider.style.cursor = 'grab';
+        let currentPage = 0;
+        const slider = container.querySelector('#tutorial-slider');
+        const pages = container.querySelectorAll('#tutorial-slider > div');
+        const dotsContainer = container.querySelector('#tutorial-dots');
+        let touchStartX = 0;
+        let touchEndX = 0;
+        let isDragging = false;
+        let animationInterval;
 
-        let targetPage = currentPage;
-        const threshold = 50;
-        const deltaX = (lastTouchX - touchStartX) / slider.offsetWidth * 100;
-        if (Math.abs(deltaX) > 30 || Math.abs(velocity) > 20) {
-            targetPage = deltaX < 0 ? currentPage + 1 : currentPage - 1;
+        for (let i = 0; i < pages.length; i++) {
+            const dot = document.createElement('div');
+            dot.className = 'w-2 h-2 rounded-full bg-slate-400 transition-colors cursor-pointer';
+            dot.onclick = () => { currentPage = i; updateTutorialView(); };
+            dotsContainer.appendChild(dot);
         }
-        targetPage = Math.max(0, Math.min(pages.length - 1, targetPage));
+        const dots = dotsContainer.children;
 
-        if (targetPage !== currentPage) {
-            currentPage = targetPage;
-            console.log(`Snapping to page ${currentPage}`);
-            updateTutorialView();
-        } else {
+        const updateTutorialView = () => {
+            pages.forEach((page, i) => {
+                page.style.transform = `translateX(${-100 * currentPage}%)`;
+            });
+            Array.from(dots).forEach((dot, i) => {
+                dot.classList.toggle('bg-blue-500', i === currentPage);
+                dot.classList.toggle('bg-slate-400', i !== currentPage);
+            });
+        }
+        
+        const handleSwipe = () => {
+            const swipeDiff = touchStartX - touchEndX;
+            if (swipeDiff > 50) { // Swiped left
+                if (currentPage < pages.length - 1) currentPage++;
+            } else if (swipeDiff < -50) { // Swiped right
+                if (currentPage > 0) currentPage--;
+            }
             updateTutorialView();
         }
-
-        velocity = 0;
-        cancelAnimationFrame(animationFrame);
-    };
-
-    slider.addEventListener('touchstart', e => {
-        e.preventDefault();
-        touchStartX = e.changedTouches[0].clientX;
-        lastTouchX = touchStartX;
-        lastTime = performance.now();
-        isDragging = true;
-        cancelAnimationFrame(animationFrame);
-        console.log(`Touch start: x=${touchStartX}, page=${currentPage}`);
-    }, { passive: false });
-
-    slider.addEventListener('touchmove', e => {
-        e.preventDefault();
-        handleDrag(e.changedTouches[0].clientX, performance.now());
-    }, { passive: false });
-
-    slider.addEventListener('touchend', handleEnd);
-
-    slider.addEventListener('mousedown', e => {
-        e.preventDefault();
-        touchStartX = e.clientX;
-        lastTouchX = touchStartX;
-        lastTime = performance.now();
-        isDragging = true;
-        slider.style.cursor = 'grabbing';
-        cancelAnimationFrame(animationFrame);
-        console.log(`Mouse down: x=${touchStartX}, page=${currentPage}`);
-    });
-
-    slider.addEventListener('mousemove', e => {
-        if (isDragging) {
-            e.preventDefault();
-            handleDrag(e.clientX, performance.now());
-        }
-    });
-
-    slider.addEventListener('mouseup', handleEnd);
-    slider.addEventListener('mouseleave', handleEnd);
-
-    setTimeout(() => {
+        
+        slider.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].screenX; }, { passive: true });
+        slider.addEventListener('touchend', e => { touchEndX = e.changedTouches[0].screenX; handleSwipe(); });
+        slider.addEventListener('mousedown', e => { isDragging = true; touchStartX = e.clientX; slider.style.cursor = 'grabbing'; });
+        slider.addEventListener('mouseup', e => { if(isDragging) { isDragging = false; touchEndX = e.clientX; handleSwipe(); slider.style.cursor = 'grab'; } });
+        slider.addEventListener('mouseleave', e => { if(isDragging) { isDragging = false; slider.style.cursor = 'grab'; } });
+        
         updateTutorialView();
-        console.log('Initial render complete');
-    }, 0);
 
-    // Animation Logic
-    const tutorialGridContainer = container.querySelector('#tutorial-grid-container');
-    const tutorialCanvas = container.querySelector('#tutorial-line-canvas');
-    const tutorialCtx = tutorialCanvas.getContext('2d');
-    const tutorialTiles = Array.from(tutorialGridContainer.querySelectorAll('.tutorial-tile'));
-    const wordBuilder = container.querySelector('#tutorial-word-builder');
-    const animationSequence = [0, 4, 5, 10]; // W, O, R, M
-    const word = 'WORM';
-    
-    const runAnimation = () => {
-        const gridRect = tutorialGridContainer.getBoundingClientRect();
-        tutorialCanvas.width = gridRect.width;
-        tutorialCanvas.height = gridRect.height;
+        // Animation Logic
+        const tutorialGridContainer = container.querySelector('#tutorial-grid-container');
+        const tutorialCanvas = container.querySelector('#tutorial-line-canvas');
+        const tutorialCtx = tutorialCanvas.getContext('2d');
+        const tutorialTiles = Array.from(tutorialGridContainer.querySelectorAll('.tutorial-tile'));
+        const wordBuilder = container.querySelector('#tutorial-word-builder');
+        const animationSequence = [0, 4, 5, 10]; // W, O, R, M
+        const word = 'WORM';
         
-        const tileCenters = tutorialTiles.map(tile => {
-            const tileRect = tile.getBoundingClientRect();
-            return {
-                x: tileRect.left + tileRect.width / 2 - gridRect.left,
-                y: tileRect.top + tileRect.height / 2 - gridRect.top
-            };
-        });
+        const runAnimation = () => {
+            const gridRect = tutorialGridContainer.getBoundingClientRect();
+            tutorialCanvas.width = gridRect.width;
+            tutorialCanvas.height = gridRect.height;
+            
+            const tileCenters = tutorialTiles.map(tile => {
+                const tileRect = tile.getBoundingClientRect();
+                return {
+                    x: tileRect.left + tileRect.width / 2 - gridRect.left,
+                    y: tileRect.top + tileRect.height / 2 - gridRect.top
+                };
+            });
 
-        wordBuilder.innerHTML = '<span class="opacity-0 text-sm">W</span>';
-        tutorialTiles.forEach(t => t.classList.remove('highlight'));
-        tutorialCtx.clearRect(0, 0, tutorialCanvas.width, tutorialCanvas.height);
-        let scoreEl = tutorialGridContainer.querySelector('.flying-score-tutorial');
-        if(scoreEl) scoreEl.remove();
+            // Reset state for this animation run
+            wordBuilder.innerHTML = '<span class="opacity-0">W</span>';
+            tutorialTiles.forEach(t => t.classList.remove('highlight'));
+            tutorialCtx.clearRect(0, 0, tutorialCanvas.width, tutorialCanvas.height);
+            let scoreEl = tutorialGridContainer.querySelector('.flying-score-tutorial');
+            if(scoreEl) scoreEl.remove();
 
-        const pathPoints = [];
+            const pathPoints = [];
 
-        animationSequence.forEach((tileIndex, step) => {
-            setTimeout(() => {
-                tutorialTiles[tileIndex].classList.add('highlight');
-                const newLetterHTML = `<span class="current-letter bg-white text-blue-500 font-bold text-xs px-0.5 py-0.25 rounded-sm shadow-sm">${word[step]}</span>`;
-                
-                if (step === 0) {
-                    wordBuilder.innerHTML = newLetterHTML;
-                } else {
-                    wordBuilder.innerHTML += newLetterHTML;
-                }
-                
-                pathPoints.push(tileCenters[tileIndex]);
-                
-                tutorialCtx.clearRect(0, 0, tutorialCanvas.width, tutorialCanvas.height);
-                if(pathPoints.length > 1) {
-                    tutorialCtx.beginPath();
-                    tutorialCtx.strokeStyle = 'rgba(59, 130, 246, 0.8)';
-                    tutorialCtx.lineWidth = 8;
-                    tutorialCtx.lineCap = 'round';
-                    tutorialCtx.lineJoin = 'round';
-                    tutorialCtx.moveTo(pathPoints[0].x, pathPoints[0].y);
-                    for(let i = 1; i < pathPoints.length; i++) {
-                        tutorialCtx.lineTo(pathPoints[i].x, pathPoints[i].y);
+            // Animate
+            animationSequence.forEach((tileIndex, step) => {
+                setTimeout(() => {
+                    tutorialTiles[tileIndex].classList.add('highlight');
+                    const newLetterHTML = `<span class="current-letter bg-white text-blue-500 font-bold text-sm px-1 py-0.5 rounded-md shadow-sm">${word[step]}</span>`;
+                    
+                    if (step === 0) {
+                        wordBuilder.innerHTML = newLetterHTML;
+                    } else {
+                        wordBuilder.innerHTML += newLetterHTML;
                     }
-                    tutorialCtx.stroke();
-                }
-            }, 1000 + (step + 1) * 750);
-        });
+                    
+                    pathPoints.push(tileCenters[tileIndex]);
+                    
+                    tutorialCtx.clearRect(0, 0, tutorialCanvas.width, tutorialCanvas.height);
+                    if(pathPoints.length > 1) {
+                        tutorialCtx.beginPath();
+                        tutorialCtx.strokeStyle = 'rgba(59, 130, 246, 0.8)';
+                        tutorialCtx.lineWidth = 8;
+                        tutorialCtx.lineCap = 'round';
+                        tutorialCtx.lineJoin = 'round';
+                        tutorialCtx.moveTo(pathPoints[0].x, pathPoints[0].y);
+                        for(let i = 1; i < pathPoints.length; i++) {
+                            tutorialCtx.lineTo(pathPoints[i].x, pathPoints[i].y);
+                        }
+                        tutorialCtx.stroke();
+                    }
+                }, 1000 + (step + 1) * 750);
+            });
+            
+            setTimeout(() => {
+                const el = document.createElement('div');
+                el.className = 'flying-score';
+                el.style.fontSize = '1rem';
+                el.style.padding = '4px 8px';
+                el.style.animation = 'fly-up-tutorial 1.5s ease-in-out forwards';
+                el.style.position = 'absolute';
+                el.style.top = '50%';
+                el.style.left = '50%';
+                el.textContent = `+9`;
+                el.classList.add('flying-score-tutorial');
+                tutorialGridContainer.appendChild(el);
+            }, 1000 + (animationSequence.length + 1) * 750);
+        };
         
+        if(animationInterval) clearInterval(animationInterval);
+        
+        // Delay the first animation run to ensure the modal's entry animation is complete
+        // and all elements have their final positions calculated.
         setTimeout(() => {
-            const el = document.createElement('div');
-            el.className = 'flying-score';
-            el.style.fontSize = '0.875rem';
-            el.style.padding = '3px 6px';
-            el.style.animation = 'fly-up-tutorial 1.5s ease-in-out forwards';
-            el.style.position = 'absolute';
-            el.style.top = '50%';
-            el.style.left = '50%';
-            el.textContent = `+9`;
-            el.classList.add('flying-score-tutorial');
-            tutorialGridContainer.appendChild(el);
-        }, 1000 + (animationSequence.length + 1) * 750);
-    };
-    
-    if(animationInterval) clearInterval(animationInterval);
-    
-    setTimeout(() => {
-        runAnimation();
-        animationInterval = setInterval(runAnimation, 6000);
-    }, 350);
-}
-   
-          
+            runAnimation(); // Run the animation for the first time
+            // Then set it on an interval to repeat
+            animationInterval = setInterval(runAnimation, 6000);
+        }, 350);
+    }
+
 
     document.addEventListener('DOMContentLoaded', main);
 </script>
