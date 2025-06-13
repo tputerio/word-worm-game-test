@@ -1,0 +1,1383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Word Worm</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; overflow: hidden; touch-action: none; }
+        .tile {
+            position: relative;
+            transition: all 0.2s ease-in-out; -webkit-user-select: none; user-select: none;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+        .tile.selected {
+            background: linear-gradient(45deg, #60a5fa, #3b82f6);
+            color: white; transform: scale(1.08); border-color: #2563eb;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.2), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+        #game-content.blurred, #modal-content.blurred { filter: blur(8px); transform: scale(0.95); transition: all 0.3s ease-in-out; }
+        #game-content, #modal-content { transition: all 0.3s ease-in-out; }
+        #line-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        
+        /* Bonus Tile Styles */
+        .bonus-label {
+            position: absolute;
+            top: 2px;
+            right: 4px;
+            font-size: 0.65rem;
+            font-weight: 900;
+            color: white;
+            padding: 0px 4px;
+            border-radius: 4px;
+        }
+        .bonus-DL { background-color: #3b82f6 !important; } /* Blue */
+        .bonus-TL { background-color: #ef4444 !important; } /* Red */
+        .bonus-DW { background-color: #f59e0b !important; } /* Amber */
+        .bonus-Time { background-color: #22c55e !important; } /* Green */
+        
+        /* Animations */
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+        .animate-pulse { animation: pulse 1s infinite; }
+        @keyframes fly-to-score {
+            0% { transform: translate(0, 0) scale(1.2); opacity: 1; }
+            100% { transform: translate(0, -180px) scale(0.5); opacity: 0; }
+        }
+        .flying-score {
+            position: absolute; background: linear-gradient(45deg, #facc15, #f59e0b); color: white;
+            padding: 8px 16px; border-radius: 9999px; font-weight: bold; font-size: 1.25rem;
+            z-index: 100; animation: fly-to-score 1.5s ease-in-out forwards; pointer-events: none;
+        }
+        @keyframes pop-in {
+            0% { transform: scale(0.8); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .current-letter { animation: pop-in 0.2s ease-out; }
+        .modal-enter { animation: pop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        .tab-button.active {
+            background-color: #3b82f6;
+            color: white;
+        }
+        
+        /* Tutorial Animation */
+        .tutorial-tile.highlight {
+             background: linear-gradient(45deg, #60a5fa, #3b82f6);
+             color: white;
+             transform: scale(1.08);
+             border-color: #2563eb;
+        }
+        @keyframes fly-up-tutorial {
+            0% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+            100% { transform: translate(-50%, -200%) scale(0.5); opacity: 0; }
+        }
+
+        /* Tutorial Slider Styles */
+        #tutorial-slider {
+            display: flex;
+            flex-direction: row;
+            width: 100%;
+            overflow: hidden;
+            touch-action: pan-x;
+            position: relative;
+        }
+        #tutorial-slider > div {
+            flex: 0 0 100%;
+            width: 100%;
+            visibility: visible;
+            opacity: 1;
+            position: static;
+            transition: transform 0.3s ease-out;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 flex justify-center items-start md:items-center min-h-screen">
+
+<div id="game-container" class="w-full max-w-sm mx-auto p-4">
+    <div id="game-content">
+        <div class="text-center mb-3">
+            <h1 class="text-3xl font-black text-slate-800 tracking-tighter flex items-center justify-center">
+                 <img src="https://raw.githubusercontent.com/tputerio/word-rush-game/main/word-worm-logo.png" alt="Word Worm Logo" class="w-9 h-9 mr-2">
+                <span>Word Worm</span>
+            </h1>
+        </div>
+        <div class="grid grid-cols-3 items-center text-center bg-white rounded-xl shadow-lg p-2 mb-3">
+            <div>
+                <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div>
+                <div id="high-score" class="text-3xl font-black text-slate-400">0</div>
+            </div>
+            <div>
+                <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Score</div>
+                <div id="score" class="text-3xl font-black text-slate-800">0</div>
+            </div>
+            <div>
+                <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Time</div>
+                <div id="timer" class="text-3xl font-bold text-green-500 transition-all duration-300">60</div>
+            </div>
+        </div>
+        <div id="current-word-container" class="mb-3 p-2 bg-slate-200 rounded-lg shadow-inner h-[52px] flex items-center justify-center">
+            <div id="current-word-letters" class="flex-grow flex items-center justify-center space-x-1"></div>
+        </div>
+        <div id="grid-container" class="relative">
+            <canvas id="line-canvas"></canvas>
+            <div id="grid" class="grid grid-cols-4 gap-2 select-none"></div>
+        </div>
+    </div>
+    
+    <!-- Modals -->
+    <div id="message-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div id="modal-content" class="w-full max-w-sm mx-auto"></div>
+    </div>
+    <div id="end-game-modal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+        <div id="end-game-modal-content" class="w-full max-w-sm mx-auto"></div>
+    </div>
+     <div id="leaderboard-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+        <div id="leaderboard-modal-content" class="w-full max-w-xs mx-auto"></div>
+    </div>
+</div>
+
+<script type="module">
+    // --- Firebase SDKs ---
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
+    import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, doc, getDoc, setDoc, updateDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
+
+    // --- Config ---
+    const [GRID_SIZE, GRID_COLS, GAME_TIME] = [16, 4, 60];
+    const letterConfig={'A':{p:1},'B':{p:3},'C':{p:3},'D':{p:2},'E':{p:1},'F':{p:4},'G':{p:2},'H':{p:4},'I':{p:1},'J':{p:8},'K':{p:5},'L':{p:1},'M':{p:3},'N':{p:1},'O':{p:1},'P':{p:3},'Q':{p:10},'R':{p:1},'S':{p:1},'T':{p:1},'U':{p:1},'V':{p:4},'W':{p:4},'X':{p:8},'Y':{p:4},'Z':{p:10}};
+    const VOWELS = ['A', 'E', 'I', 'O', 'U'];
+    const HARD_CONSONANTS = ['J', 'K', 'Q', 'X', 'Z'];
+    const LETTER_BAG_STRING = "EEEEEEEEEEEEAAAAAAAAAARRRRRRRRRRIIIIIIIIIOOOOOOOOTTTTTTTTNNNNNNNNSSSSSSSLLLLLLUUUUDDDDGGGBBCCMMPPFFHHVVWWYYKJXQZ";
+
+    // --- DOM Elements ---
+    const gameContentEl = document.getElementById('game-content');
+    const grid = document.getElementById('grid'), lineCanvas = document.getElementById('line-canvas'), ctx = lineCanvas.getContext('2d');
+    const scoreEl = document.getElementById('score'), timerEl = document.getElementById('timer'), highScoreEl = document.getElementById('high-score');
+    const currentWordLettersEl = document.getElementById('current-word-letters');
+    const messageModal = document.getElementById('message-modal'), modalContent = document.getElementById('modal-content');
+    const endGameModal = document.getElementById('end-game-modal'), endGameModalContent = document.getElementById('end-game-modal-content');
+    const leaderboardModal = document.getElementById('leaderboard-modal'), leaderboardModalContent = document.getElementById('leaderboard-modal-content');
+
+    // --- Firebase State ---
+    let auth, db;
+
+    // --- State ---
+    let score = 0, timer = GAME_TIME, timerInterval, wordSet = new Set(), foundWords = [], selectedTiles = [], isMouseDown = false;
+    let tilePositions = [], dictionaryTrie;
+
+    // --- Trie Data Structure for Fast Lookups ---
+    class TrieNode {
+        constructor() { this.children = {}; this.isEndOfWord = false; }
+    }
+    class Trie {
+        constructor() { this.root = new TrieNode(); }
+        insert(word) {
+            let node = this.root;
+            for(const char of word) {
+                if(!node.children[char]) node.children[char] = new TrieNode();
+                node = node.children[char];
+            }
+            node.isEndOfWord = true;
+        }
+        search(word, isPrefix = false) {
+            let node = this.root;
+            for(const char of word) {
+                if(!node.children[char]) return false;
+                node = node.children[char];
+            }
+            return isPrefix ? true : node.isEndOfWord;
+        }
+    }
+
+    // --- Init ---
+    function main() {
+        // Setup UI elements that don't depend on data
+        setupEventListeners();
+        displayHighScore();
+        
+        // Show the welcome screen immediately in a loading state
+        showWelcomeScreen();
+        
+        // Load all necessary assets in the background
+        loadAssets();
+    }
+    
+    async function loadAssets() {
+        const modalButton = document.getElementById('modal-button');
+        const loadingErrorEl = document.getElementById('loading-error');
+        const globalPlayCountSpan = document.getElementById('global-play-count');
+        const showLeaderboardButton = document.getElementById('show-leaderboard-button');
+
+        // Load Dictionary (Critical Path)
+        try {
+            const res = await fetch('https://raw.githubusercontent.com/redbo/scrabble/master/dictionary.txt');
+            if (!res.ok) throw new Error(`Dictionary download failed: ${res.statusText}`);
+            const words = (await res.text()).split('\n').map(w => w.trim().toUpperCase()).filter(w => w.length >= 3);
+            wordSet = new Set(words);
+            wordSet.add("ZEN");
+            wordSet.add("KIN");
+            dictionaryTrie = new Trie();
+            for (const word of wordSet) dictionaryTrie.insert(word);
+            console.log("Dictionary loaded. Game is playable.");
+            
+            createGrid();
+            if (modalButton) {
+                modalButton.disabled = false;
+                modalButton.innerHTML = `<span>Let's Go!</span>`;
+                modalButton.onclick = () => {
+                    gameContentEl.classList.remove('blurred');
+                    messageModal.classList.add('hidden');
+                    startGame();
+                };
+            }
+        } catch (e) {
+            console.error("Critical Asset loading failed (Dictionary):", e);
+            if (loadingErrorEl) loadingErrorEl.textContent = "Error: Could not load game dictionary.";
+            if (modalButton) {
+                modalButton.innerHTML = `<span>Error Loading</span>`;
+                modalButton.classList.add('bg-red-500', 'cursor-not-allowed');
+                modalButton.classList.remove('bg-green-500');
+            }
+            return; // Stop if dictionary fails
+        }
+
+        // Load Firebase Features (Non-Critical Path)
+        try {
+            const firebaseConfig = {
+                apiKey: "AIzaSyBa2DPRjwaI-G5mz-OmHVXEDJ4_MzBAZgA",
+                authDomain: "word-rush-game-9010a.firebaseapp.com",
+                projectId: "word-rush-game-9010a",
+                storageBucket: "word-rush-game-9010a.firebasestorage.app",
+                messagingSenderId: "551838491871",
+                appId: "1:551838491871:web:757325be04daab9289b56a",
+                measurementId: "G-D0TSQFY1XS"
+            };
+            const app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+            await signInAnonymously(auth);
+            console.log("Firebase connected.");
+
+            // Fetch Play Count
+            const statsRef = doc(db, "gameStats", "stats");
+            const docSnap = await getDoc(statsRef);
+            if (docSnap.exists()) {
+                if (globalPlayCountSpan) globalPlayCountSpan.textContent = docSnap.data().playCount.toLocaleString();
+            }
+            
+            // Enable Leaderboard button
+            if(showLeaderboardButton) showLeaderboardButton.disabled = false;
+
+        } catch (firebaseError) {
+            console.warn("Firebase features failed to load, continuing in offline mode:", firebaseError);
+            if (globalPlayCountSpan) globalPlayCountSpan.textContent = "N/A";
+            if (showLeaderboardButton) {
+                showLeaderboardButton.disabled = true;
+                showLeaderboardButton.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+        }
+    }
+    
+    function createGrid() {
+        // This function now safely assumes dictionaryTrie is available if called from loadAssets
+        const board = generateAndValidateBoard();
+        grid.innerHTML = '';
+        for (let i = 0; i < GRID_SIZE; i++) {
+            const letter = board[i];
+            const points = letterConfig[letter].p;
+            const tile = document.createElement('div');
+            tile.className = 'tile w-full aspect-square border-2 border-slate-300 bg-white rounded-lg flex items-center justify-center text-3xl font-bold text-slate-800 cursor-pointer';
+            tile.dataset.letter = letter; tile.dataset.points = points; tile.dataset.id = i;
+            tile.innerHTML = `<span>${letter}<sub class="text-xs font-semibold ml-1">${points}</sub></span>`;
+            
+            const bonusType = getBonusType();
+            if (bonusType) {
+                tile.dataset.bonus = bonusType.type;
+                tile.classList.add(bonusType.class);
+                tile.innerHTML += `<div class="bonus-label">${bonusType.label}</div>`;
+            }
+            grid.appendChild(tile);
+        }
+        setTimeout(resizeCanvas, 0);
+    }
+    
+    function getRandomLetter() {
+        return LETTER_BAG_STRING[Math.floor(Math.random() * LETTER_BAG_STRING.length)];
+    }
+
+    function getBonusType() {
+        const rand = Math.random();
+        if (rand < 0.08) return { type: 'Time', label: '+5s', class: 'bonus-Time' };
+        if (rand < 0.18) return { type: 'DW', label: 'DW', class: 'bonus-DW' };
+        if (rand < 0.28) return { type: 'TL', label: 'TL', class: 'bonus-TL' };
+        if (rand < 0.40) return { type: 'DL', label: 'DL', class: 'bonus-DL' };
+        return null;
+    }
+
+    // --- Gameplay ---
+    function startGame() {
+        clearInterval(timerInterval); // Safety clear to prevent multiple timers
+        let personalPlayCount = parseInt(localStorage.getItem('wordRushPersonalPlayCount')) || 0;
+        localStorage.setItem('wordRushPersonalPlayCount', personalPlayCount + 1);
+        displayHighScore();
+        timer = GAME_TIME; updateTimerUI();
+        grid.style.pointerEvents = 'auto';
+        if (db) {
+            const statsRef = doc(db, "gameStats", "stats");
+            updateDoc(statsRef, { playCount: increment(1) }).catch(console.warn);
+        }
+        timerInterval = setInterval(() => {
+            timer--; updateTimerUI();
+            if (timer <= 0) endGame();
+        }, 1000);
+    }
+    
+    function endGame() {
+        clearInterval(timerInterval);
+        grid.style.pointerEvents = 'none';
+        saveLocalHighScore(score);
+        saveGameHistoryAndStats(score, foundWords);
+        showEndGameScreen();
+    }
+
+    function resetGame() {
+        endGameModal.classList.add('hidden');
+        score = 0; foundWords = [];
+        updateScoreDisplay(); 
+        showWelcomeScreen();
+        loadAssets();
+    }
+    
+    // --- Input & Word Logic ---
+    function handleInteraction(tile) {
+        if (!tile || !isMouseDown) return;
+        const lastSelected = selectedTiles[selectedTiles.length - 1];
+        if (selectedTiles.length > 1 && tile === selectedTiles[selectedTiles.length - 2]) {
+            const lastTile = selectedTiles.pop();
+            lastTile.classList.remove('selected');
+        } else if (!selectedTiles.includes(tile) && (!lastSelected || isAdjacent(tile, lastSelected))) {
+            selectedTiles.push(tile);
+            tile.classList.add('selected');
+        }
+        updateCurrentWord();
+        drawLines();
+    }
+    
+    function isAdjacent(t1, t2) {
+        if (!t1 || !t2) return false;
+        const id1 = parseInt(t1.dataset.id), id2 = parseInt(t2.dataset.id);
+        const [c1, r1] = [id1 % GRID_COLS, Math.floor(id1 / GRID_COLS)];
+        const [c2, r2] = [id2 % GRID_COLS, Math.floor(id2 / GRID_COLS)];
+        return Math.abs(c1 - c2) <= 1 && Math.abs(r1 - r2) <= 1;
+    }
+
+    function submitWord() {
+        const word = selectedTiles.map(t => t.dataset.letter).join('');
+        if (word.length >= 3 && wordSet.has(word)) {
+            let baseScore = 0;
+            let wordMultiplier = 1;
+            let timeBonus = 0;
+
+            selectedTiles.forEach(tile => {
+                let letterScore = parseInt(tile.dataset.points);
+                switch(tile.dataset.bonus) {
+                    case 'DL': letterScore *= 2; break;
+                    case 'TL': letterScore *= 3; break;
+                    case 'DW': wordMultiplier *= 2; break;
+                    case 'Time': timeBonus += 5; break;
+                }
+                baseScore += letterScore;
+            });
+            
+            let finalScore = baseScore * wordMultiplier;
+
+            if (word.length >= 7) finalScore += 20;
+            else if (word.length === 6) finalScore += 10;
+            else if (word.length === 5) finalScore += 5;
+            else if (word.length === 4) finalScore += 2;
+
+            if (timeBonus > 0) {
+                timer += timeBonus;
+                updateTimerUI();
+            }
+
+            foundWords.push({ word, score: finalScore, length: word.length });
+            createFlyingScore(finalScore, selectedTiles[0]);
+            triggerConfetti(selectedTiles);
+            setTimeout(() => { score += finalScore; updateScoreDisplay(); }, 500);
+            replaceSelectedTiles();
+        }
+        clearSelection();
+    }
+
+    function replaceSelectedTiles() {
+        let currentBoardLetters = Array.from(grid.children).map(t => t.dataset.letter);
+        selectedTiles.forEach(tile => {
+            const index = parseInt(tile.dataset.id);
+            currentBoardLetters[index] = null;
+        });
+
+        const newBoard = generateAndValidateBoard(currentBoardLetters);
+        
+        selectedTiles.forEach((tile) => {
+            const index = parseInt(tile.dataset.id);
+            const letter = newBoard[index];
+            const points = letterConfig[letter].p;
+            tile.dataset.letter = letter; 
+            tile.dataset.points = points;
+            tile.style.transform = 'scale(0)';
+            tile.dataset.bonus = '';
+            tile.classList.remove('bonus-DL', 'bonus-TL', 'bonus-DW', 'bonus-Time');
+
+            setTimeout(() => {
+                tile.innerHTML = `<span>${letter}<sub class="text-xs font-semibold ml-1">${points}</sub></span>`;
+                const bonusType = getBonusType();
+                if (bonusType) {
+                    tile.dataset.bonus = bonusType.type;
+                    tile.classList.add(bonusType.class);
+                    tile.innerHTML += `<div class="bonus-label">${bonusType.label}</div>`;
+                }
+                tile.style.transform = 'scale(1)';
+            }, 200);
+        });
+    }
+    
+    function clearSelection() {
+        selectedTiles.forEach(t => t.classList.remove('selected'));
+        selectedTiles = [];
+        updateCurrentWord(); 
+        drawLines();
+    }
+
+    // --- Leaderboard & Stats---
+    function saveLocalHighScore(s) {
+        const currentHighScore = getLocalHighScore();
+        if (s > currentHighScore) {
+            localStorage.setItem('wordRushHighScore', s);
+        }
+    }
+    function getLocalHighScore() { return parseInt(localStorage.getItem('wordRushHighScore')) || 0; }
+    
+    async function saveGameHistoryAndStats(finalScore, wordsFound) {
+        if (!db || !auth.currentUser) return; // Cant save if firebase is offline
+        const userId = auth.currentUser.uid;
+        
+        // 1. Save the detailed game session to the player's subcollection
+        const gameData = {
+            score: finalScore,
+            timestamp: serverTimestamp(),
+            words: wordsFound.map(w => ({ word: w.word, score: w.score, length: w.length }))
+        };
+        const playerDocRef = doc(db, "players", userId);
+        
+        try {
+            await addDoc(collection(db, `players/${userId}/games`), gameData);
+            
+            // 2. Update the player's aggregate stats using a transaction for safety
+            await runTransaction(db, async (transaction) => {
+                const currentPlayerDoc = await transaction.get(playerDocRef);
+                
+                let totalGames = 1;
+                let totalWordLength = wordsFound.reduce((sum, word) => sum + word.length, 0);
+                let totalWords = wordsFound.length;
+
+                if (currentPlayerDoc.exists()) {
+                    const oldData = currentPlayerDoc.data();
+                    totalGames = (oldData.totalGamesPlayed || 0) + 1;
+                    const oldTotalWordLength = (oldData.avgWordLength || 0) * (oldData.totalGamesPlayed ? (await getDocs(collection(db, `players/${userId}/games`))).size -1 : 0);
+                    const oldTotalWords = (await getDocs(collection(db, `players/${userId}/games`))).docs.flatMap(d => d.data().words).length - totalWords;
+                    totalWordLength += oldTotalWordLength;
+                    totalWords += oldTotalWords;
+                }
+                
+                const avgWordLength = totalWords > 0 ? (totalWordLength / totalWords) : 0;
+
+                transaction.set(playerDocRef, {
+                    totalGamesPlayed: totalGames,
+                    avgWordLength: parseFloat(avgWordLength.toFixed(2)),
+                    lastPlayed: serverTimestamp()
+                }, { merge: true });
+            });
+        } catch (e) {
+            console.error("Error saving game history:", e);
+        }
+    }
+
+    async function submitLeaderboardScore(name, scoreToSave) {
+        if(!name || scoreToSave === 0 || !db || !auth.currentUser) return;
+        const userId = auth.currentUser.uid;
+        localStorage.setItem('wordRushPlayerName', name);
+
+        // Update player's name
+        await setDoc(doc(db, "players", userId), { name: name }, { merge: true });
+
+        // Submit to all-time leaderboard
+        await addDoc(collection(db, "scores"), {
+            name: name,
+            score: scoreToSave,
+            timestamp: serverTimestamp()
+        });
+
+        // Submit to daily leaderboard
+        const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+        const dailyDocRef = doc(db, "dailyScores", today);
+        
+        let newLeaderboard = [];
+        await runTransaction(db, async (transaction) => {
+            const dailyDoc = await transaction.get(dailyDocRef);
+            let leaderboard = [];
+            if(dailyDoc.exists()) {
+                leaderboard = dailyDoc.data().leaderboard || [];
+            }
+            
+            const existingEntryIndex = leaderboard.findIndex(entry => entry.userId === userId);
+            if (existingEntryIndex !== -1) {
+                if (leaderboard[existingEntryIndex].score < scoreToSave) {
+                    leaderboard[existingEntryIndex].score = scoreToSave;
+                }
+            } else {
+                leaderboard.push({ name, score: scoreToSave, userId });
+            }
+
+            leaderboard.sort((a, b) => b.score - a.score);
+            if (leaderboard.length > 20) {
+                leaderboard = leaderboard.slice(0, 20);
+            }
+            transaction.set(dailyDocRef, { leaderboard }, { merge: true });
+            newLeaderboard = leaderboard;
+        });
+        return newLeaderboard;
+    }
+    
+    // --- UI & Animations ---
+    function updateScoreDisplay() {
+        scoreEl.textContent = score;
+        scoreEl.classList.add('animate-pulse');
+        scoreEl.addEventListener('animationend', () => scoreEl.classList.remove('animate-pulse'), { once: true });
+        
+        const currentHighScore = getLocalHighScore();
+        if (score > currentHighScore) {
+            highScoreEl.textContent = score;
+            highScoreEl.classList.add('text-yellow-500', 'animate-pulse');
+        }
+    }
+    
+    function displayHighScore() {
+        highScoreEl.textContent = getLocalHighScore();
+        highScoreEl.classList.remove('text-yellow-500', 'animate-pulse');
+    }
+
+    function updateTimerUI() {
+        timerEl.textContent = timer;
+        timerEl.classList.remove('text-green-500', 'text-yellow-500', 'text-red-500', 'animate-pulse');
+        if (timer <= 10) {
+            timerEl.classList.add('text-red-500', 'animate-pulse');
+        } else if (timer <= 30) {
+            timerEl.classList.add('text-yellow-500');
+        } else {
+            timerEl.classList.add('text-green-500');
+        }
+    }
+
+    function triggerConfetti(tiles) {
+        tiles.forEach(tile => {
+            const rect = tile.getBoundingClientRect();
+            for (let i = 0; i < 10; i++) {
+                const p = document.createElement('div'); p.className = 'particle';
+                const angle = Math.random() * Math.PI * 2, dist = Math.random() * 40 + 20;
+                p.style.setProperty('--transform-end',`translate(${Math.cos(angle)*dist}px,${Math.sin(angle)*dist}px)`);
+                p.style.left = `${rect.left+rect.width/2-4}px`; p.style.top = `${rect.top+rect.height/2-4}px`;
+                document.body.appendChild(p); setTimeout(() => p.remove(), 800);
+            }
+        });
+    }
+    
+    function createFlyingScore(points, startTile) {
+        const el = document.createElement('div'); el.className = 'flying-score';
+        el.style.animation = 'none'; // Use custom animation
+        el.style.position = 'absolute';
+        el.textContent = `+${points}`;
+        const rect = startTile.getBoundingClientRect();
+        el.style.left = `${rect.left}px`; el.style.top = `${rect.top}px`;
+        document.body.appendChild(el);
+        setTimeout(() => {
+            el.style.animation = 'fly-to-score 1.5s ease-in-out forwards';
+        }, 10);
+        setTimeout(() => el.remove(), 1500);
+    }
+
+    function updateCurrentWord() {
+        currentWordLettersEl.innerHTML = selectedTiles.map(t => `<span class="current-letter bg-white text-blue-500 font-bold text-xl p-1 rounded-md shadow-sm">${t.dataset.letter}</span>`).join('');
+    }
+
+    function showWelcomeScreen() {
+        modalContent.innerHTML = `
+            <div class="bg-white rounded-2xl shadow-2xl p-6 text-center modal-enter">
+                <h1 class="text-4xl font-black text-slate-800 tracking-tighter mb-1 flex items-center justify-center">
+                    <img src="https://raw.githubusercontent.com/tputerio/word-rush-game/main/word-worm-logo.png" alt="Word Worm Logo" class="w-12 h-12 mr-2">
+                    <span>Word Worm</span>
+                </h1>
+                <p class="text-slate-500 text-sm mb-4">The fast-paced word finding game!</p>
+                <div id="how-to-play-container" class="relative bg-slate-100 p-3 rounded-lg mb-4 h-[17rem] overflow-hidden">
+                    <!-- Tutorial content will be injected here -->
+                </div>
+                <button id="modal-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-6 rounded-lg text-lg shadow-lg transition-transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-wait" disabled>
+                    <div class="flex items-center justify-center">
+                        <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Loading Game...</span>
+                    </div>
+                </button>
+                <div class="flex justify-between items-center border-t border-slate-200 pt-3">
+                    <div class="font-bold text-slate-600 text-base flex items-center">
+                        <span class="text-xl mr-1">🏆</span>Your High: <span id="welcome-high-score" class="ml-1">0</span>
+                    </div>
+                    <button id="show-leaderboard-button" class="font-bold text-green-500 hover:text-green-600 text-base flex items-center" disabled>
+                        Leaderboard <span class="text-xl ml-1">🌍</span>
+                    </button>
+                </div>
+                <p class="text-xs text-slate-400 mt-2">You've played <span id="personal-play-count">0</span> games!</p>
+                <p class="text-xs text-slate-400"><span id="global-play-count">...</span> games played globally</p>
+                <p id="loading-error" class="text-red-500 mt-2 font-semibold"></p>
+            </div>
+        `;
+        gameContentEl.classList.add('blurred');
+        messageModal.classList.remove('hidden');
+        
+        setupTutorial();
+
+        document.getElementById('welcome-high-score').textContent = getLocalHighScore();
+        document.getElementById('personal-play-count').textContent = localStorage.getItem('wordRushPersonalPlayCount') || 0;
+        
+        document.getElementById('show-leaderboard-button').onclick = showLeaderboardModal;
+    }
+
+    async function showLeaderboardModal() {
+        leaderboardModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-xs mx-auto modal-enter">
+            <h2 class="text-2xl font-bold text-slate-800 mb-4 flex items-center justify-center">Leaderboard <span class="text-2xl ml-2">🌍</span></h2>
+            
+            <div class="flex p-1 bg-slate-200 rounded-lg mb-4">
+                <button id="daily-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">Daily</button>
+                <button id="all-time-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">All-Time</button>
+            </div>
+
+            <div id="leaderboard-loading-secondary" class="text-slate-500 p-2">Fetching Scores...</div>
+            <div id="leaderboard-scroll-container" class="relative max-h-64 overflow-y-auto">
+                <ol id="leaderboard-list-simple" class="space-y-1 text-left"></ol>
+                <div id="leaderboard-scroll-indicator" class="scroll-indicator sticky bottom-0 left-0 right-0 h-8 flex justify-center items-end pointer-events-none bg-gradient-to-t from-white to-transparent pt-4">
+                    <svg class="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
+            </div>
+            <button id="close-leaderboard-button" class="mt-4 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 px-4 rounded-lg">Close</button>
+        </div>`;
+        modalContent.classList.add('blurred');
+        leaderboardModal.classList.remove('hidden');
+
+        const dailyTab = document.getElementById('daily-tab');
+        const allTimeTab = document.getElementById('all-time-tab');
+        const listEl = document.getElementById('leaderboard-list-simple');
+        const loadingEl = document.getElementById('leaderboard-loading-secondary');
+        
+        const displayTab = (type) => {
+            if(type === 'daily') {
+                dailyTab.classList.add('active');
+                allTimeTab.classList.remove('active');
+                fetchAndDisplayLeaderboard('daily', listEl, loadingEl);
+            } else {
+                allTimeTab.classList.add('active');
+                dailyTab.classList.remove('active');
+                fetchAndDisplayLeaderboard('all-time', listEl, loadingEl);
+            }
+        };
+
+        dailyTab.onclick = () => displayTab('daily');
+        allTimeTab.onclick = () => displayTab('all-time');
+        
+        displayTab('daily'); // Default to daily
+
+        document.getElementById('close-leaderboard-button').onclick = () => {
+            leaderboardModal.classList.add('hidden');
+            modalContent.classList.remove('blurred');
+        };
+    }
+
+    async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
+        if (!listElement) return;
+        if(loadingElement) loadingElement.style.display = 'block';
+        listElement.innerHTML = '';
+        
+        if (!db) {
+            listElement.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard offline.</p>`;
+            if(loadingElement) loadingElement.style.display = 'none';
+            return;
+        }
+
+        let leaderboardHTML = `<p class="text-slate-500 text-center p-4">No scores yet.</p>`;
+        
+        try {
+            let highScores = [];
+            if(type === 'daily') {
+                const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+                const dailyDoc = await getDoc(doc(db, 'dailyScores', today));
+                if (dailyDoc.exists()) {
+                    highScores = dailyDoc.data().leaderboard || [];
+                }
+            } else { // all-time
+                const q = query(collection(db, "scores"), orderBy("score", "desc"), limit(10));
+                const querySnapshot = await getDocs(q);
+                querySnapshot.forEach((doc) => highScores.push(doc.data()));
+            }
+
+            if (highScores.length > 0) {
+                leaderboardHTML = highScores.map((s, i) => `
+                    <li class="flex items-center p-2 rounded-lg ${i % 2 === 0 ? 'bg-slate-50' : ''}">
+                        <span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span>
+                        <span class="font-semibold text-slate-800 flex-grow truncate mr-4">${s.name}</span>
+                        <span class="font-bold text-green-500">${s.score}</span>
+                    </li>
+                `).join('');
+            }
+        } catch (e) {
+            console.error(`Could not fetch ${type} leaderboard`, e);
+            leaderboardHTML = `<p class="text-red-500 text-center p-4">Could not load leaderboard.</p>`;
+        }
+
+        if(loadingElement) loadingElement.style.display = 'none';
+        listElement.innerHTML = leaderboardHTML;
+    }
+
+    function showEndGameScreen() {
+        gameContentEl.classList.add('blurred');
+        endGameModal.classList.remove('hidden');
+        
+        const sortedWords = [...foundWords].sort((a, b) => b.score - a.score);
+        const foundWordsHTML = sortedWords.length ? sortedWords.map(fw => `
+            <div class="flex justify-between text-sm"><span class="font-semibold">${fw.word.toUpperCase()}</span><span>+${fw.score}</span></div>
+        `).join('') : '<p class="text-sm text-slate-500 text-center">No words found.</p>';
+
+        const initialModalHTML = `
+            <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
+                <h2 class="text-3xl font-black text-green-500">Great Game!</h2>
+                <p class="text-slate-600 mb-2">Your final score is:</p>
+                <p class="text-6xl font-black text-slate-800 mb-2">${score}</p>
+                
+                <div id="submit-score-form">
+                    <div class="flex space-x-2 mb-4">
+                        <input type="text" id="player-name" placeholder="Enter your name" class="w-full px-3 py-2 border border-slate-300 rounded-lg" maxlength="10">
+                        <button id="submit-global-score" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Submit</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 mb-2 text-left">
+                    <div>
+                        <h3 class="text-xl font-bold text-slate-700 mb-2 border-b pb-2">Leaderboard</h3>
+                        <div class="flex p-1 bg-slate-100 rounded-lg mb-2">
+                            <button id="endgame-daily-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-xs transition-colors duration-200">Daily</button>
+                            <button id="endgame-all-time-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-xs transition-colors duration-200">All-Time</button>
+                        </div>
+                        <div id="leaderboard-list-endgame-container" class="space-y-0.5 max-h-40 overflow-y-auto pr-2">
+                             <div id="endgame-leaderboard-loading" class="text-slate-500 p-2 text-center text-sm">Fetching...</div>
+                             <ol id="leaderboard-list-endgame" class="space-y-1"></ol>
+                        </div>
+                    </div>
+                    <div>
+                         <h3 class="text-xl font-bold text-slate-700 mb-2 border-b pb-2">Your Words</h3>
+                         <div class="space-y-1 max-h-44 overflow-y-auto pr-2">${foundWordsHTML}</div>
+                    </div>
+                </div>
+                <button id="play-again-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-8 rounded-lg text-lg shadow-lg transition-transform hover:scale-105 mt-4">Play Again</button>
+            </div>`;
+        
+        endGameModalContent.innerHTML = initialModalHTML;
+
+        const dailyTab = document.getElementById('endgame-daily-tab');
+        const allTimeTab = document.getElementById('endgame-all-time-tab');
+        
+        const displayTab = (type) => {
+            const listEl = document.getElementById('leaderboard-list-endgame');
+            const loadingEl = document.getElementById('endgame-leaderboard-loading');
+            if(type === 'daily') {
+                dailyTab.classList.add('active');
+                allTimeTab.classList.remove('active');
+            } else {
+                allTimeTab.classList.add('active');
+                dailyTab.classList.remove('active');
+            }
+            fetchAndDisplayLeaderboard(type, listEl, loadingEl);
+        };
+
+        dailyTab.onclick = () => displayTab('daily');
+        allTimeTab.onclick = () => displayTab('all-time');
+        
+        displayTab('daily'); // Default to daily
+            
+        document.getElementById('play-again-button').onclick = resetGame;
+        const nameInput = document.getElementById('player-name');
+        nameInput.value = localStorage.getItem('wordRushPlayerName') || '';
+        document.getElementById('submit-global-score').onclick = async (e) => {
+            const button = e.target;
+            button.disabled = true;
+            button.textContent = 'Submitting...';
+            const playerName = nameInput.value.trim();
+            if (playerName) {
+                await submitLeaderboardScore(playerName, score);
+                const form = document.getElementById('submit-score-form');
+                if (form) {
+                    form.innerHTML = `<div class="flex items-center justify-center text-green-600 font-bold mb-4 pop-in"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span>Score Submitted!</span></div>`;
+                }
+                const currentActiveTab = dailyTab.classList.contains('active') ? 'daily' : 'all-time';
+                displayTab(currentActiveTab);
+            } else {
+                button.disabled = false;
+                button.textContent = 'Submit';
+            }
+        };
+    }
+
+    // --- Canvas & Listeners ---
+    function cacheTilePositions() {
+        tilePositions = [];
+        for(const tile of grid.children) {
+            const rect = tile.getBoundingClientRect();
+            tilePositions.push({
+                el: tile,
+                center: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+                hitRadius: tile.offsetWidth * 0.4 
+            });
+        }
+    }
+
+    function resizeCanvas() { 
+        const r = grid.getBoundingClientRect();
+        lineCanvas.width = r.width; lineCanvas.height = r.height;
+        cacheTilePositions();
+        drawLines(); 
+    }
+    
+    function drawLines() {
+        clearLines();
+        if (selectedTiles.length < 2) return;
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(59, 130, 246, 0.8)';
+        ctx.lineWidth = 12;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        
+        selectedTiles.forEach((tile, i) => {
+            const center = getTileCenter(tile);
+            if (i === 0) {
+                ctx.moveTo(center.x, center.y);
+            } else {
+                ctx.lineTo(center.x, center.y);
+            }
+        });
+        
+        ctx.stroke();
+    }
+    
+    function clearLines() { ctx.clearRect(0, 0, lineCanvas.width, lineCanvas.height); }
+    
+    function getTileCenter(tile) {
+        const gRect = grid.getBoundingClientRect();
+        const tRect = tile.getBoundingClientRect();
+        return { x: tRect.left + tRect.width / 2 - gRect.left, y: tRect.top + tRect.height / 2 - gRect.top };
+    }
+    
+    function setupEventListeners() {
+        const getTileFromEvent = (e) => {
+            const touch = e.touches ? e.touches[0] : e;
+            const point = { x: touch.clientX, y: touch.clientY };
+            
+            let closestTile = null;
+            let minDistance = Infinity;
+
+            tilePositions.forEach(tilePos => {
+                const distance = Math.sqrt((point.x - tilePos.center.x)**2 + (point.y - tilePos.center.y)**2);
+                if (distance < minDistance && distance < tilePos.hitRadius) {
+                    minDistance = distance;
+                    closestTile = tilePos.el;
+                }
+            });
+            return closestTile;
+        };
+
+        const startInteraction = e => {
+            e.preventDefault();
+            isMouseDown = true;
+            clearSelection();
+            const tile = getTileFromEvent(e);
+            handleInteraction(tile);
+        };
+
+        const moveInteraction = e => {
+            if (!isMouseDown) return;
+            e.preventDefault();
+            const tile = getTileFromEvent(e);
+            handleInteraction(tile);
+        };
+
+        const endInteraction = () => {
+            if (!isMouseDown) return;
+            submitWord();
+            isMouseDown = false;
+        };
+        
+        grid.addEventListener('pointerdown', startInteraction);
+        grid.addEventListener('pointermove', moveInteraction);
+        grid.addEventListener('pointerup', endInteraction);
+        grid.addEventListener('pointerleave', endInteraction); 
+
+        window.addEventListener('resize', resizeCanvas);
+    }
+
+    // --- Smart Board Generation ---
+    function checkNoClumps(board) {
+        for (let row = 0; row <= 2; row++) {
+            for (let col = 0; col <= 2; col++) {
+                const topLeft = row * GRID_COLS + col;
+                const topRight = topLeft + 1;
+                const bottomLeft = topLeft + GRID_COLS;
+                const bottomRight = bottomLeft + 1;
+                const square = [
+                    board[topLeft],
+                    board[topRight],
+                    board[bottomLeft],
+                    board[bottomRight]
+                ];
+                const allVowels = square.every(letter => VOWELS.includes(letter));
+                const allConsonants = square.every(letter => !VOWELS.includes(letter));
+                if (allVowels || allConsonants) {
+                    console.log(`Clump detected at row ${row}, col ${col}: ${square.join(',')}`);
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    function generateAndValidateBoard(currentBoard = null) {
+        let board;
+        let attemptCount = 0;
+        for (let attempts = 0; attempts < 200; attempts++) {
+            attemptCount++;
+            board = currentBoard ? [...currentBoard] : new Array(GRID_SIZE).fill(null);
+
+            for (let i = 0; i < GRID_SIZE; i++) {
+                if (board[i] === null) {
+                    board[i] = getRandomLetter();
+                }
+            }
+            
+            if (dictionaryTrie && isBoardPlayable(board)) {
+                console.log(`Board generated successfully after ${attemptCount} attempts`);
+                return board;
+            }
+            
+            if(!dictionaryTrie && attempts > 0) {
+                 // If dictionary isn't ready, just create a random board and don't validate.
+                return board;
+            }
+
+            board = null; 
+        }
+        
+        console.warn(`Failed to generate a high-quality board after 200 attempts, using last random attempt.`);
+        return board || Array.from({ length: GRID_SIZE }, () => getRandomLetter());
+    }
+
+    function isBoardPlayable(board) {
+        const vowelCount = board.filter(l => VOWELS.includes(l)).length;
+        if (vowelCount < 3 || vowelCount > 7) {
+            console.log(`Board rejected: Invalid vowel count (${vowelCount})`);
+            return false;
+        }
+
+        const hardCount = board.filter(l => HARD_CONSONANTS.includes(l)).length;
+        if (hardCount > 1) {
+            console.log(`Board rejected: Too many hard consonants (${hardCount})`);
+            return false;
+        }
+        
+        const qIndex = board.indexOf('Q');
+        if (qIndex !== -1) {
+            const neighbors = getNeighbors(qIndex, board);
+            if (!neighbors.some(l => l === 'U')) {
+                console.log(`Board rejected: 'Q' without 'U' neighbor`);
+                return false;
+            }
+        }
+
+        const foundWords = solveBoard(board);
+        const fourLetterWords = Array.from(foundWords).filter(w => w.length >= 4);
+        const threeLetterWords = Array.from(foundWords).filter(w => w.length === 3);
+        if (fourLetterWords.length < 2 || threeLetterWords.length < 2) {
+            console.log(`Board rejected: Insufficient words (3-letter: ${threeLetterWords.length}, 4+-letter: ${fourLetterWords.length})`);
+            return false;
+        }
+
+        if (!checkNoClumps(board)) {
+            return false;
+        }
+        
+        return true;
+    }
+
+    function getNeighbors(index, board) {
+        const neighbors = [];
+        const [x, y] = [index % GRID_COLS, Math.floor(index / GRID_COLS)];
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                if (dx === 0 && dy === 0) continue;
+                const [nx, ny] = [x + dx, y + dy];
+                if (nx >= 0 && nx < GRID_COLS && ny >= 0 && ny < GRID_COLS) {
+                    neighbors.push(board[ny * GRID_COLS + nx]);
+                }
+            }
+        }
+        return neighbors;
+    }
+
+    function solveBoard(board) {
+        const found = new Set();
+        for (let i = 0; i < GRID_SIZE; i++) {
+            findWordsRecursive(i, '', [i], found, board);
+        }
+        return found;
+    }
+
+    function findWordsRecursive(currentIndex, currentWord, path, found, boardLetters) {
+        currentWord += boardLetters[currentIndex];
+
+        if (!dictionaryTrie || !dictionaryTrie.search(currentWord, true)) {
+            return;
+        }
+
+        if (currentWord.length >= 3 && dictionaryTrie.search(currentWord)) {
+            found.add(currentWord);
+        }
+
+        const [x, y] = [currentIndex % GRID_COLS, Math.floor(currentIndex / GRID_COLS)];
+
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                if (dx === 0 && dy === 0) continue;
+                const [nx, ny] = [x + dx, y + dy];
+                const newIndex = ny * GRID_COLS + nx;
+                if (nx >= 0 && nx < GRID_COLS && ny >= 0 && ny < GRID_COLS && !path.includes(newIndex)) {
+                    findWordsRecursive(newIndex, currentWord, [...path, newIndex], found, boardLetters);
+                }
+            }
+        }
+    }
+    
+ function setupTutorial() {
+    const container = document.getElementById('how-to-play-container');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div class="relative w-full h-full flex flex-col">
+            <h3 class="text-md font-bold text-slate-700 text-center mb-1">How to Play</h3>
+            <div class="relative flex-grow flex overflow-hidden" id="tutorial-slider" style="touch-action: pan-x;">
+                <!-- Page 1: Animation -->
+                <div class="w-full flex-shrink-0 p-2 flex flex-col justify-center items-center" data-page="1">
+                    <div id="tutorial-word-builder" class="h-6 w-28 bg-white rounded-md flex items-center justify-center space-x-0.5 shadow-inner">
+                        <span class="opacity-0 text-sm">W</span> <!-- Smaller placeholder -->
+                    </div>
+                    <div id="tutorial-grid-container" class="relative w-32 h-32 mt-1">
+                         <canvas id="tutorial-line-canvas" class="absolute top-0 left-0 w-full h-full pointer-events-none" style="z-index: 5;"></canvas>
+                        <div class="grid grid-cols-4 gap-1">
+                            ${['W','A','R','D','O','R','D','E','B','N','M','I','S','L','P','T'].map(l => `<div class="tutorial-tile w-8 h-8 flex items-center justify-center font-bold text-base bg-white rounded-md border-2 border-slate-300">${l}<sub class="text-[0.55rem] font-semibold ml-0.5">${letterConfig[l] ? letterConfig[l].p : 1}</sub></div>`).join('')}
+                        </div>
+                    </div>
+                    <p class="text-center text-xs font-semibold text-slate-700 mt-2">Swipe to form words (3+ letters)!</p>
+                </div>
+                <!-- Page 2: Rules -->
+                <div class="w-full flex-shrink-0 p-3 flex flex-col justify-center text-left" data-page="2">
+                     <ul class="text-xs space-y-1.5 mb-3">
+                        <li class="flex items-start"><span class="mr-2 text-lg">🏆</span><span><strong>Your Goal:</strong> Score as many points as you can in 60 seconds!</span></li>
+                        <li class="flex items-start"><span class="mr-2 text-lg">👉</span><span><strong>How to Score:</strong> Your score is the sum of letter points and any bonuses.</span></li>
+                         <li class="flex items-start"><span class="mr-2 text-lg">⭐</span><span><strong>Pro-Tip:</strong> Use bonuses and long words to maximize your score!</span></li>
+                    </ul>
+                    <div class="text-xs space-y-1.5">
+                         <div>
+                            <strong class="font-semibold text-slate-700">Bonus Tiles:</strong>
+                            <div class="grid grid-cols-2 gap-x-3 mt-1">
+                                <ul class="list-none space-y-1">
+                                    <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #3b82f6;">DL</span> Double Letter</span></li>
+                                    <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #ef4444;">TL</span> Triple Letter</span></li>
+                                </ul>
+                                <ul class="list-none space-y-1">
+                                    <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #f59e0b;">DW</span> Double Word</span></li>
+                                    <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #22c55e;">+5s</span> Extra Time</span></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                 <!-- Page 3: More Rules -->
+                <div class="w-full flex-shrink-0 p-3 flex flex-col justify-start text-left" data-page="3">
+                    <div class="text-xs space-y-2">
+                        <div>
+                            <strong class="font-semibold text-slate-700">Long Word Bonus:</strong>
+                            <table class="w-full mt-1 text-left text-xs">
+                                 <tbody>
+                                    <tr>
+                                        <td class="py-0.5 pr-2">4 Letters: <span class="font-medium">+2 pts</span></td>
+                                        <td class="py-0.5">6 Letters: <span class="font-medium">+10 pts</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="py-0.5 pr-2">5 Letters: <span class="font-medium">+5 pts</span></td>
+                                        <td class="py-0.5">7+ Letters: <span class="font-medium">+20 pts</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                         <div class="pt-1">
+                            <strong class="font-semibold text-slate-700">Letter Point Values:</strong>
+                            <div id="letter-values-container" class="flex flex-wrap gap-1 mt-1">
+                                <!-- Letter value tiles are injected here by JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-center items-center space-x-2 mt-1">
+                <div id="tutorial-dots" class="flex space-x-1.5"></div>
+            </div>
+        </div>
+    `;
+    
+    const letterValuesContainer = container.querySelector('#letter-values-container');
+    if (letterValuesContainer) {
+        const sortedLetters = Object.keys(letterConfig).sort();
+        const letterTilesHtml = sortedLetters.map(letter => {
+           const config = letterConfig[letter];
+           return `<span class="bg-slate-200 text-slate-700 font-bold rounded-sm px-1.5 py-0.5 text-[10px] leading-none">${letter}-${config.p}</span>`;
+        }).join('');
+        letterValuesContainer.innerHTML = letterTilesHtml;
+    }
+
+    let currentPage = 0;
+    const slider = container.querySelector('#tutorial-slider');
+    const pages = container.querySelectorAll('#tutorial-slider > div');
+    const dotsContainer = container.querySelector('#tutorial-dots');
+    let touchStartX = 0;
+    let isDragging = false;
+    let animationFrame;
+    let velocity = 0;
+    let lastTouchX = 0;
+    let lastTime = 0;
+    let animationInterval;
+
+    // Initialize pages
+    pages.forEach(page => {
+        page.style.visibility = 'visible';
+        page.style.opacity = '1';
+        page.style.position = 'absolute';
+        page.style.left = '0';
+        page.style.width = '100%';
+    });
+
+    // Create pagination dots
+    for (let i = 0; i < pages.length; i++) {
+        const dot = document.createElement('div');
+        dot.className = 'w-2 h-2 rounded-full bg-slate-400 transition-colors cursor-pointer';
+        dot.onclick = () => {
+            currentPage = i;
+            console.log(`Dot clicked: page ${currentPage}`);
+            updateTutorialView();
+        };
+        dotsContainer.appendChild(dot);
+    }
+    const dots = dotsContainer.children;
+
+    const updateTutorialView = () => {
+        console.log(`Updating view: currentPage=${currentPage}`);
+        pages.forEach((page, index) => {
+            const translateX = (index - currentPage) * 100;
+            page.style.transform = `translateX(${translateX}%)`;
+            page.style.transition = isDragging ? 'none' : 'transform 0.3s ease-out';
+            console.log(`Page ${index} (data-page=${page.dataset.page}): translateX(${translateX}%)`);
+        });
+        Array.from(dots).forEach((dot, i) => {
+            dot.classList.toggle('bg-blue-500', i === currentPage);
+            dot.classList.toggle('bg-slate-400', i !== currentPage);
+        });
+    };
+
+    const handleDrag = (clientX, time) => {
+        if (!isDragging) return;
+        const deltaX = (clientX - touchStartX) / slider.offsetWidth * 100;
+        const tempTranslate = -currentPage * 100 + deltaX;
+
+        pages.forEach((page, index) => {
+            page.style.transform = `translateX(${tempTranslate + index * 100}%)`;
+        });
+
+        if (lastTime) {
+            const deltaTime = time - lastTime;
+            velocity = (clientX - lastTouchX) / deltaTime * 16;
+        }
+        lastTouchX = clientX;
+        lastTime = time;
+    };
+
+    const handleEnd = () => {
+        if (!isDragging) return;
+        isDragging = false;
+        slider.style.cursor = 'grab';
+
+        let targetPage = currentPage;
+        const threshold = 50;
+        const deltaX = (lastTouchX - touchStartX) / slider.offsetWidth * 100;
+        if (Math.abs(deltaX) > 30 || Math.abs(velocity) > 20) {
+            targetPage = deltaX < 0 ? currentPage + 1 : currentPage - 1;
+        }
+        targetPage = Math.max(0, Math.min(pages.length - 1, targetPage));
+
+        if (targetPage !== currentPage) {
+            currentPage = targetPage;
+            console.log(`Snapping to page ${currentPage}`);
+            updateTutorialView();
+        } else {
+            updateTutorialView();
+        }
+
+        velocity = 0;
+        cancelAnimationFrame(animationFrame);
+    };
+
+    slider.addEventListener('touchstart', e => {
+        e.preventDefault();
+        touchStartX = e.changedTouches[0].clientX;
+        lastTouchX = touchStartX;
+        lastTime = performance.now();
+        isDragging = true;
+        cancelAnimationFrame(animationFrame);
+        console.log(`Touch start: x=${touchStartX}, page=${currentPage}`);
+    }, { passive: false });
+
+    slider.addEventListener('touchmove', e => {
+        e.preventDefault();
+        handleDrag(e.changedTouches[0].clientX, performance.now());
+    }, { passive: false });
+
+    slider.addEventListener('touchend', handleEnd);
+
+    slider.addEventListener('mousedown', e => {
+        e.preventDefault();
+        touchStartX = e.clientX;
+        lastTouchX = touchStartX;
+        lastTime = performance.now();
+        isDragging = true;
+        slider.style.cursor = 'grabbing';
+        cancelAnimationFrame(animationFrame);
+        console.log(`Mouse down: x=${touchStartX}, page=${currentPage}`);
+    });
+
+    slider.addEventListener('mousemove', e => {
+        if (isDragging) {
+            e.preventDefault();
+            handleDrag(e.clientX, performance.now());
+        }
+    });
+
+    slider.addEventListener('mouseup', handleEnd);
+    slider.addEventListener('mouseleave', handleEnd);
+
+    setTimeout(() => {
+        updateTutorialView();
+        console.log('Initial render complete');
+    }, 0);
+
+    // Animation Logic
+    const tutorialGridContainer = container.querySelector('#tutorial-grid-container');
+    const tutorialCanvas = container.querySelector('#tutorial-line-canvas');
+    const tutorialCtx = tutorialCanvas.getContext('2d');
+    const tutorialTiles = Array.from(tutorialGridContainer.querySelectorAll('.tutorial-tile'));
+    const wordBuilder = container.querySelector('#tutorial-word-builder');
+    const animationSequence = [0, 4, 5, 10]; // W, O, R, M
+    const word = 'WORM';
+    
+    const runAnimation = () => {
+        const gridRect = tutorialGridContainer.getBoundingClientRect();
+        tutorialCanvas.width = gridRect.width;
+        tutorialCanvas.height = gridRect.height;
+        
+        const tileCenters = tutorialTiles.map(tile => {
+            const tileRect = tile.getBoundingClientRect();
+            return {
+                x: tileRect.left + tileRect.width / 2 - gridRect.left,
+                y: tileRect.top + tileRect.height / 2 - gridRect.top
+            };
+        });
+
+        wordBuilder.innerHTML = '<span class="opacity-0 text-sm">W</span>';
+        tutorialTiles.forEach(t => t.classList.remove('highlight'));
+        tutorialCtx.clearRect(0, 0, tutorialCanvas.width, tutorialCanvas.height);
+        let scoreEl = tutorialGridContainer.querySelector('.flying-score-tutorial');
+        if(scoreEl) scoreEl.remove();
+
+        const pathPoints = [];
+
+        animationSequence.forEach((tileIndex, step) => {
+            setTimeout(() => {
+                tutorialTiles[tileIndex].classList.add('highlight');
+                const newLetterHTML = `<span class="current-letter bg-white text-blue-500 font-bold text-xs px-0.5 py-0.25 rounded-sm shadow-sm">${word[step]}</span>`;
+                
+                if (step === 0) {
+                    wordBuilder.innerHTML = newLetterHTML;
+                } else {
+                    wordBuilder.innerHTML += newLetterHTML;
+                }
+                
+                pathPoints.push(tileCenters[tileIndex]);
+                
+                tutorialCtx.clearRect(0, 0, tutorialCanvas.width, tutorialCanvas.height);
+                if(pathPoints.length > 1) {
+                    tutorialCtx.beginPath();
+                    tutorialCtx.strokeStyle = 'rgba(59, 130, 246, 0.8)';
+                    tutorialCtx.lineWidth = 8;
+                    tutorialCtx.lineCap = 'round';
+                    tutorialCtx.lineJoin = 'round';
+                    tutorialCtx.moveTo(pathPoints[0].x, pathPoints[0].y);
+                    for(let i = 1; i < pathPoints.length; i++) {
+                        tutorialCtx.lineTo(pathPoints[i].x, pathPoints[i].y);
+                    }
+                    tutorialCtx.stroke();
+                }
+            }, 1000 + (step + 1) * 750);
+        });
+        
+        setTimeout(() => {
+            const el = document.createElement('div');
+            el.className = 'flying-score';
+            el.style.fontSize = '0.875rem';
+            el.style.padding = '3px 6px';
+            el.style.animation = 'fly-up-tutorial 1.5s ease-in-out forwards';
+            el.style.position = 'absolute';
+            el.style.top = '50%';
+            el.style.left = '50%';
+            el.textContent = `+9`;
+            el.classList.add('flying-score-tutorial');
+            tutorialGridContainer.appendChild(el);
+        }, 1000 + (animationSequence.length + 1) * 750);
+    };
+    
+    if(animationInterval) clearInterval(animationInterval);
+    
+    setTimeout(() => {
+        runAnimation();
+        animationInterval = setInterval(runAnimation, 6000);
+    }, 350);
+}
+   
+          
+
+    document.addEventListener('DOMContentLoaded', main);
+</script>
+</body>
+</html>
