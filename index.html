@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Word Worm</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/lucide.min.js"></script> <!-- Moved Lucide script here for guaranteed loading -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; overflow: hidden; touch-action: none; }
@@ -72,17 +73,27 @@
             0% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
             100% { transform: translate(-50%, -200%) scale(0.5); opacity: 0; }
         }
+        #tutorial-slider.is-snapping {
+            transition: transform 0.3s ease-out;
+        }
     </style>
 </head>
 <body class="bg-slate-100 flex justify-center items-start md:items-center min-h-screen">
 
 <div id="game-container" class="w-full max-w-sm mx-auto p-4">
     <div id="game-content">
-        <div class="text-center mb-3">
-            <h1 class="text-3xl font-black text-slate-800 tracking-tighter flex items-center justify-center">
-                 <img src="https://raw.githubusercontent.com/tputerio/word-rush-game/main/word-worm-logo.png" alt="Word Worm Logo" class="w-9 h-9 mr-2">
-                <span>Word Worm</span>
-            </h1>
+        <div class="flex items-center mb-3">
+            <!-- Game Title centered, Home Button to the right -->
+            <div class="flex-grow flex items-center justify-center">
+                <h1 class="text-3xl font-black text-slate-800 tracking-tighter flex items-center justify-center">
+                     <img src="https://raw.githubusercontent.com/tputerio/word-rush-game/main/word-worm-logo.png" alt="Word Worm Logo" class="w-9 h-9 mr-2">
+                    <span>Word Worm</span>
+                </h1>
+            </div>
+            <!-- Home Button for Practice Mode - always present but hidden/shown by JS -->
+            <button id="home-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 p-2 rounded-full shadow-md transition-transform hover:scale-105 hidden z-20 flex-shrink-0 ml-4" title="Return Home">
+                <svg data-lucide="home" class="h-6 w-6"></svg>
+            </button>
         </div>
         <div class="grid grid-cols-3 items-center text-center bg-white rounded-xl shadow-lg p-2 mb-3">
             <div>
@@ -93,9 +104,13 @@
                 <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Score</div>
                 <div id="score" class="text-3xl font-black text-slate-800">0</div>
             </div>
-            <div>
+            <div id="timer-display"> <!-- Added id for toggling visibility -->
                 <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Time</div>
                 <div id="timer" class="text-3xl font-bold text-green-500 transition-all duration-300">60</div>
+            </div>
+             <div id="practice-mode-label" class="hidden"> <!-- New element for practice mode -->
+                <div class="text-xs font-bold text-blue-500 uppercase tracking-wider">Mode</div>
+                <div class="text-xl font-black text-blue-400">PRACTICE</div> <!-- Font size reduced here -->
             </div>
         </div>
         <div id="current-word-container" class="mb-3 p-2 bg-slate-200 rounded-lg shadow-inner h-[52px] flex items-center justify-center">
@@ -122,7 +137,7 @@
 <script type="module">
     // --- Firebase SDKs ---
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
-    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
     import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, doc, getDoc, setDoc, updateDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
     // --- Config ---
@@ -136,6 +151,9 @@
     const gameContentEl = document.getElementById('game-content');
     const grid = document.getElementById('grid'), lineCanvas = document.getElementById('line-canvas'), ctx = lineCanvas.getContext('2d');
     const scoreEl = document.getElementById('score'), timerEl = document.getElementById('timer'), highScoreEl = document.getElementById('high-score');
+    const timerDisplayEl = document.getElementById('timer-display'); 
+    const practiceModeLabelEl = document.getElementById('practice-mode-label'); 
+    const homeButton = document.getElementById('home-button'); 
     const currentWordLettersEl = document.getElementById('current-word-letters');
     const messageModal = document.getElementById('message-modal'), modalContent = document.getElementById('modal-content');
     const endGameModal = document.getElementById('end-game-modal'), endGameModalContent = document.getElementById('end-game-modal-content');
@@ -144,9 +162,10 @@
     // --- Firebase State ---
     let auth, db;
 
-    // --- State ---
+    // --- Game State ---
     let score = 0, timer = GAME_TIME, timerInterval, wordSet = new Set(), foundWords = [], selectedTiles = [], isMouseDown = false;
     let tilePositions = [], dictionaryTrie;
+    let isPracticeMode = false; 
 
     // --- Trie Data Structure for Fast Lookups ---
     class TrieNode {
@@ -174,22 +193,37 @@
 
     // --- Init ---
     function main() {
-        // Setup UI elements that don't depend on data
         setupEventListeners();
         displayHighScore();
-        
-        // Show the welcome screen immediately in a loading state
         showWelcomeScreen();
-        
-        // Load all necessary assets in the background
-        loadAssets();
+        // Lucide.createIcons() will be called after content is loaded.
+        loadAssets(); // This loads the dictionary and Firebase, then enables buttons
     }
     
     async function loadAssets() {
-        const modalButton = document.getElementById('modal-button');
+        const playGameModeButton = document.getElementById('play-game-mode-button'); // Renamed ID
+        const playPracticeButton = document.getElementById('play-practice-button');
         const loadingErrorEl = document.getElementById('loading-error');
         const globalPlayCountSpan = document.getElementById('global-play-count');
         const showLeaderboardButton = document.getElementById('show-leaderboard-button');
+
+        // Initial state for buttons (disabled during loading)
+        if (playGameModeButton) {
+            playGameModeButton.disabled = true;
+            playGameModeButton.innerHTML = `<div class="flex items-center justify-center">
+                <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg><span>Loading Game...</span></div>`;
+        }
+        if (playPracticeButton) {
+            playPracticeButton.disabled = true;
+            playPracticeButton.innerHTML = `<div class="flex items-center justify-center">
+                <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg><span>Loading Game...</span></div>`;
+        }
 
         // Load Dictionary (Critical Path)
         try {
@@ -197,29 +231,44 @@
             if (!res.ok) throw new Error(`Dictionary download failed: ${res.statusText}`);
             const words = (await res.text()).split('\n').map(w => w.trim().toUpperCase()).filter(w => w.length >= 3);
             wordSet = new Set(words);
-            wordSet.add("ZEN");
-            wordSet.add("KIN");
+            wordSet.add("ZEN"); // Adding specific words to dictionary
+            wordSet.add("KIN"); // Adding specific words to dictionary
             dictionaryTrie = new Trie();
             for (const word of wordSet) dictionaryTrie.insert(word);
             console.log("Dictionary loaded. Game is playable.");
             
-            createGrid();
-            if (modalButton) {
-                modalButton.disabled = false;
-                modalButton.innerHTML = `<span>Let's Go!</span>`;
-                modalButton.onclick = () => {
-                    gameContentEl.classList.remove('blurred');
-                    messageModal.classList.add('hidden');
-                    startGame();
-                };
+            createGrid(); // Create initial grid once dictionary is loaded
+            
+            // Enable buttons after dictionary is loaded
+            if (playGameModeButton) {
+                playGameModeButton.disabled = false;
+                // Update text and add icon for "Game Mode"
+                playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg data-lucide="zap" class="h-5 w-5 mr-2"></svg><span>Game Mode</span></div>`;
             }
+            if (playPracticeButton) {
+                playPracticeButton.disabled = false;
+                // Update text and add icon for "Practice Mode"
+                playPracticeButton.innerHTML = `<div class="flex items-center justify-center"><svg data-lucide="book-open" class="h-5 w-5 mr-2"></svg><span>Practice Mode</span></div>`;
+            }
+
+            // Create Lucide icons for the updated buttons on the welcome screen
+            // This is crucial here after setting innerHTML.
+            if (typeof lucide !== 'undefined' && lucide.createIcons) {
+                lucide.createIcons();
+            }
+
         } catch (e) {
             console.error("Critical Asset loading failed (Dictionary):", e);
             if (loadingErrorEl) loadingErrorEl.textContent = "Error: Could not load game dictionary.";
-            if (modalButton) {
-                modalButton.innerHTML = `<span>Error Loading</span>`;
-                modalButton.classList.add('bg-red-500', 'cursor-not-allowed');
-                modalButton.classList.remove('bg-green-500');
+            if (playGameModeButton) {
+                playGameModeButton.innerHTML = `<span>Error Loading</span>`;
+                playGameModeButton.classList.add('bg-red-500', 'cursor-not-allowed');
+                playGameModeButton.classList.remove('bg-green-500');
+            }
+            if (playPracticeButton) {
+                playPracticeButton.innerHTML = `<span>Error Loading</span>`;
+                playPracticeButton.classList.add('bg-red-500', 'cursor-not-allowed');
+                playPracticeButton.classList.remove('bg-green-500');
             }
             return; // Stop if dictionary fails
         }
@@ -262,7 +311,6 @@
     }
     
     function createGrid() {
-        // This function now safely assumes dictionaryTrie is available if called from loadAssets
         const board = generateAndValidateBoard();
         grid.innerHTML = '';
         for (let i = 0; i < GRID_SIZE; i++) {
@@ -298,37 +346,75 @@
     }
 
     // --- Gameplay ---
-    function startGame() {
-        clearInterval(timerInterval); // Safety clear to prevent multiple timers
-        let personalPlayCount = parseInt(localStorage.getItem('wordRushPersonalPlayCount')) || 0;
-        localStorage.setItem('wordRushPersonalPlayCount', personalPlayCount + 1);
-        displayHighScore();
-        timer = GAME_TIME; updateTimerUI();
-        grid.style.pointerEvents = 'auto';
-        if (db) {
-            const statsRef = doc(db, "gameStats", "stats");
-            updateDoc(statsRef, { playCount: increment(1) }).catch(console.warn);
+    function startGame(practiceMode = false) {
+        isPracticeMode = practiceMode; 
+        
+        clearInterval(timerInterval); 
+        score = 0; 
+        foundWords = []; 
+
+        updateScoreDisplay(); 
+        displayHighScore(); 
+        
+        // Toggle timer display and practice mode label
+        if (isPracticeMode) {
+            timerDisplayEl.classList.add('hidden');
+            practiceModeLabelEl.classList.remove('hidden');
+        } else {
+            timer = GAME_TIME; 
+            updateTimerUI(); 
+            timerDisplayEl.classList.remove('hidden');
+            practiceModeLabelEl.classList.add('hidden');
         }
-        timerInterval = setInterval(() => {
-            timer--; updateTimerUI();
-            if (timer <= 0) endGame();
-        }, 1000);
+
+        grid.style.pointerEvents = 'auto'; 
+        homeButton.classList.remove('hidden'); // Show home button in both modes
+        
+        // Create Lucide icon for the home button after it's made visible.
+        if (typeof lucide !== 'undefined' && lucide.createIcons) {
+            lucide.createIcons();
+        }
+
+        if (!isPracticeMode) { 
+            let personalPlayCount = parseInt(localStorage.getItem('wordRushPersonalPlayCount')) || 0;
+            localStorage.setItem('wordRushPersonalPlayCount', personalPlayCount + 1);
+
+            if (db) {
+                const statsRef = doc(db, "gameStats", "stats");
+                updateDoc(statsRef, { playCount: increment(1) }).catch(console.warn);
+            }
+            timerInterval = setInterval(() => {
+                timer--; updateTimerUI();
+                if (timer <= 0) endGame();
+            }, 1000);
+        }
+        
+        createGrid(); 
+        gameContentEl.classList.remove('blurred');
+        messageModal.classList.add('hidden');
     }
     
     function endGame() {
         clearInterval(timerInterval);
         grid.style.pointerEvents = 'none';
-        saveLocalHighScore(score);
-        saveGameHistoryAndStats(score, foundWords);
-        showEndGameScreen();
+        homeButton.classList.add('hidden'); // Hide home button when game ends and modal shows
+
+        if (!isPracticeMode) { 
+            saveLocalHighScore(score);
+            saveGameHistoryAndStats(score, foundWords);
+            showEndGameScreen();
+        } else {
+            resetGame(); // In practice mode, just reset and go to welcome screen
+        }
     }
 
     function resetGame() {
         endGameModal.classList.add('hidden');
-        score = 0; foundWords = [];
+        score = 0; 
+        foundWords = [];
         updateScoreDisplay(); 
         showWelcomeScreen();
-        loadAssets();
+        loadAssets(); // Crucial: Re-run loadAssets to re-enable buttons after re-showing welcome screen
     }
     
     // --- Input & Word Logic ---
@@ -379,7 +465,7 @@
             else if (word.length === 5) finalScore += 5;
             else if (word.length === 4) finalScore += 2;
 
-            if (timeBonus > 0) {
+            if (timeBonus > 0 && !isPracticeMode) { 
                 timer += timeBonus;
                 updateTimerUI();
             }
@@ -387,7 +473,12 @@
             foundWords.push({ word, score: finalScore, length: word.length });
             createFlyingScore(finalScore, selectedTiles[0]);
             triggerConfetti(selectedTiles);
-            setTimeout(() => { score += finalScore; updateScoreDisplay(); }, 500);
+            
+            // Always update score in both modes now
+            setTimeout(() => { 
+                score += finalScore; 
+                updateScoreDisplay(); 
+            }, 500);
             replaceSelectedTiles();
         }
         clearSelection();
@@ -442,35 +533,41 @@
     function getLocalHighScore() { return parseInt(localStorage.getItem('wordRushHighScore')) || 0; }
     
     async function saveGameHistoryAndStats(finalScore, wordsFound) {
-        if (!db || !auth.currentUser) return; // Cant save if firebase is offline
+        // Only save in normal mode
+        if (!db || !auth.currentUser || isPracticeMode) return; 
         const userId = auth.currentUser.uid;
         
-        // 1. Save the detailed game session to the player's subcollection
         const gameData = {
             score: finalScore,
             timestamp: serverTimestamp(),
-            words: wordsFound.map(w => ({ word: w.word, score: w.score, length: w.length }))
+            words: foundWords.map(w => ({ word: w.word, score: w.score, length: w.length }))
         };
         const playerDocRef = doc(db, "players", userId);
         
         try {
             await addDoc(collection(db, `players/${userId}/games`), gameData);
             
-            // 2. Update the player's aggregate stats using a transaction for safety
             await runTransaction(db, async (transaction) => {
                 const currentPlayerDoc = await transaction.get(playerDocRef);
                 
                 let totalGames = 1;
-                let totalWordLength = wordsFound.reduce((sum, word) => sum + word.length, 0);
-                let totalWords = wordsFound.length;
+                let totalWordLength = foundWords.reduce((sum, word) => sum + word.length, 0); // Correctly calculate for current game
+                let totalWords = foundWords.length; // Correctly calculate for current game
 
                 if (currentPlayerDoc.exists()) {
                     const oldData = currentPlayerDoc.data();
                     totalGames = (oldData.totalGamesPlayed || 0) + 1;
-                    const oldTotalWordLength = (oldData.avgWordLength || 0) * (oldData.totalGamesPlayed ? (await getDocs(collection(db, `players/${userId}/games`))).size -1 : 0);
-                    const oldTotalWords = (await getDocs(collection(db, `players/${userId}/games`))).docs.flatMap(d => d.data().words).length - totalWords;
-                    totalWordLength += oldTotalWordLength;
-                    totalWords += oldTotalWords;
+                    // Recalculate cumulative stats from all games to ensure accuracy
+                    const allGamesSnapshot = await getDocs(collection(db, `players/${userId}/games`));
+                    let cumulativeWordLength = 0;
+                    let cumulativeWordsCount = 0;
+                    allGamesSnapshot.forEach(gameDoc => {
+                        const gameWords = gameDoc.data().words || [];
+                        cumulativeWordLength += gameWords.reduce((sum, word) => sum + word.length, 0);
+                        cumulativeWordsCount += gameWords.length;
+                    });
+                    totalWordLength = cumulativeWordLength;
+                    totalWords = cumulativeWordsCount;
                 }
                 
                 const avgWordLength = totalWords > 0 ? (totalWordLength / totalWords) : 0;
@@ -487,49 +584,37 @@
     }
 
     async function submitLeaderboardScore(name, scoreToSave) {
-        if(!name || scoreToSave === 0 || !db || !auth.currentUser) return;
+        // Don't save practice scores
+        if (!name || scoreToSave === 0 || !db || !auth.currentUser || isPracticeMode) return; 
         const userId = auth.currentUser.uid;
         localStorage.setItem('wordRushPlayerName', name);
-
-        // Update player's name
+    
         await setDoc(doc(db, "players", userId), { name: name }, { merge: true });
-
-        // Submit to all-time leaderboard
+    
         await addDoc(collection(db, "scores"), {
             name: name,
             score: scoreToSave,
             timestamp: serverTimestamp()
         });
-
-        // Submit to daily leaderboard
+    
         const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-        const dailyDocRef = doc(db, "dailyScores", today);
-        
-        let newLeaderboard = [];
-        await runTransaction(db, async (transaction) => {
-            const dailyDoc = await transaction.get(dailyDocRef);
-            let leaderboard = [];
-            if(dailyDoc.exists()) {
-                leaderboard = dailyDoc.data().leaderboard || [];
-            }
-            
-            const existingEntryIndex = leaderboard.findIndex(entry => entry.userId === userId);
-            if (existingEntryIndex !== -1) {
-                if (leaderboard[existingEntryIndex].score < scoreToSave) {
-                    leaderboard[existingEntryIndex].score = scoreToSave;
+        const dailyScoreDocRef = doc(db, `dailyScores/${today}/entries`, userId);
+    
+        try {
+            await runTransaction(db, async (transaction) => {
+                const currentScoreDoc = await transaction.get(dailyScoreDocRef);
+                if (!currentScoreDoc.exists() || currentScoreDoc.data().score < scoreToSave) {
+                    transaction.set(dailyScoreDocRef, {
+                        name: name,
+                        score: scoreToSave,
+                        userId: userId,
+                        timestamp: serverTimestamp()
+                    });
                 }
-            } else {
-                leaderboard.push({ name, score: scoreToSave, userId });
-            }
-
-            leaderboard.sort((a, b) => b.score - a.score);
-            if (leaderboard.length > 20) {
-                leaderboard = leaderboard.slice(0, 20);
-            }
-            transaction.set(dailyDocRef, { leaderboard }, { merge: true });
-            newLeaderboard = leaderboard;
-        });
-        return newLeaderboard;
+            });
+        } catch (e) {
+            console.error("Failed to submit daily score:", e);
+        }
     }
     
     // --- UI & Animations ---
@@ -577,7 +662,7 @@
     
     function createFlyingScore(points, startTile) {
         const el = document.createElement('div'); el.className = 'flying-score';
-        el.style.animation = 'none'; // Use custom animation
+        el.style.animation = 'none'; 
         el.style.position = 'absolute';
         el.textContent = `+${points}`;
         const rect = startTile.getBoundingClientRect();
@@ -604,15 +689,26 @@
                 <div id="how-to-play-container" class="relative bg-slate-100 p-3 rounded-lg mb-4 h-[17rem] overflow-hidden">
                     <!-- Tutorial content will be injected here -->
                 </div>
-                <button id="modal-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-6 rounded-lg text-lg shadow-lg transition-transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-wait" disabled>
-                    <div class="flex items-center justify-center">
-                        <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        <span>Loading Game...</span>
-                    </div>
-                </button>
+                <div class="flex flex-col sm:flex-row sm:space-x-4 mb-3"> <!-- Flex container for side-by-side buttons -->
+                    <button id="play-practice-button" class="bg-blue-500 hover:bg-blue-600 flex-1 text-white font-bold py-1 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 mb-3 sm:mb-0 disabled:bg-slate-400 disabled:cursor-wait">
+                        <div class="flex items-center justify-center">
+                            <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span>Loading Game...</span>
+                        </div>
+                    </button>
+                    <button id="play-game-mode-button" class="bg-green-500 hover:bg-green-600 flex-1 text-white font-bold py-1 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-wait">
+                        <div class="flex items-center justify-center">
+                            <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span>Loading Game...</span>
+                        </div>
+                    </button>
+                </div>
                 <div class="flex justify-between items-center border-t border-slate-200 pt-3">
                     <div class="font-bold text-slate-600 text-base flex items-center">
                         <span class="text-xl mr-1">🏆</span>Your High: <span id="welcome-high-score" class="ml-1">0</span>
@@ -634,7 +730,14 @@
         document.getElementById('welcome-high-score').textContent = getLocalHighScore();
         document.getElementById('personal-play-count').textContent = localStorage.getItem('wordRushPersonalPlayCount') || 0;
         
+        document.getElementById('play-game-mode-button').onclick = () => startGame(false); // Changed ID
+        document.getElementById('play-practice-button').onclick = () => startGame(true);
         document.getElementById('show-leaderboard-button').onclick = showLeaderboardModal;
+
+        // Ensure Lucide icons are created for the welcome screen buttons AFTER they are in the DOM
+        if (typeof lucide !== 'undefined' && lucide.createIcons) {
+            lucide.createIcons();
+        }
     }
 
     async function showLeaderboardModal() {
@@ -664,6 +767,11 @@
         const loadingEl = document.getElementById('leaderboard-loading-secondary');
         
         const displayTab = (type) => {
+            if (!db) { 
+                listEl.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard is offline.</p>`;
+                if (loadingEl) loadingElement.style.display = 'none';
+                return;
+            }
             if(type === 'daily') {
                 dailyTab.classList.add('active');
                 allTimeTab.classList.remove('active');
@@ -678,7 +786,7 @@
         dailyTab.onclick = () => displayTab('daily');
         allTimeTab.onclick = () => displayTab('all-time');
         
-        displayTab('daily'); // Default to daily
+        displayTab('daily'); 
 
         document.getElementById('close-leaderboard-button').onclick = () => {
             leaderboardModal.classList.add('hidden');
@@ -688,31 +796,34 @@
 
     async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
         if (!listElement) return;
-        if(loadingElement) loadingElement.style.display = 'block';
+        if (loadingElement) loadingElement.style.display = 'block';
         listElement.innerHTML = '';
-        
+    
         if (!db) {
             listElement.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard offline.</p>`;
-            if(loadingElement) loadingElement.style.display = 'none';
+            if (loadingElement) loadingElement.style.display = 'none';
             return;
         }
-
+    
         let leaderboardHTML = `<p class="text-slate-500 text-center p-4">No scores yet.</p>`;
-        
+    
         try {
             let highScores = [];
-            if(type === 'daily') {
+            if (type === 'daily') {
                 const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-                const dailyDoc = await getDoc(doc(db, 'dailyScores', today));
-                if (dailyDoc.exists()) {
-                    highScores = dailyDoc.data().leaderboard || [];
-                }
-            } else { // all-time
-                const q = query(collection(db, "scores"), orderBy("score", "desc"), limit(10));
+                const entriesRef = collection(db, `dailyScores/${today}/entries`);
+                const q = query(entriesRef, orderBy("score", "desc"), limit(20));
+                const querySnapshot = await getDocs(q);
+                querySnapshot.forEach((doc) => {
+                    highScores.push(doc.data());
+                });
+    
+            } else { 
+                const q = query(collection(db, "scores"), orderBy("score", "desc"), limit(20));
                 const querySnapshot = await getDocs(q);
                 querySnapshot.forEach((doc) => highScores.push(doc.data()));
             }
-
+    
             if (highScores.length > 0) {
                 leaderboardHTML = highScores.map((s, i) => `
                     <li class="flex items-center p-2 rounded-lg ${i % 2 === 0 ? 'bg-slate-50' : ''}">
@@ -726,8 +837,8 @@
             console.error(`Could not fetch ${type} leaderboard`, e);
             leaderboardHTML = `<p class="text-red-500 text-center p-4">Could not load leaderboard.</p>`;
         }
-
-        if(loadingElement) loadingElement.style.display = 'none';
+    
+        if (loadingElement) loadingElement.style.display = 'none';
         listElement.innerHTML = leaderboardHTML;
     }
 
@@ -753,8 +864,8 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4 mb-2 text-left">
-                    <div>
+                <div class="grid grid-cols-5 gap-4 mb-2 text-left"> 
+                    <div class="col-span-3"> 
                         <h3 class="text-xl font-bold text-slate-700 mb-2 border-b pb-2">Leaderboard</h3>
                         <div class="flex p-1 bg-slate-100 rounded-lg mb-2">
                             <button id="endgame-daily-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-xs transition-colors duration-200">Daily</button>
@@ -765,7 +876,7 @@
                              <ol id="leaderboard-list-endgame" class="space-y-1"></ol>
                         </div>
                     </div>
-                    <div>
+                    <div class="col-span-2"> 
                          <h3 class="text-xl font-bold text-slate-700 mb-2 border-b pb-2">Your Words</h3>
                          <div class="space-y-1 max-h-44 overflow-y-auto pr-2">${foundWordsHTML}</div>
                     </div>
@@ -781,20 +892,26 @@
         const displayTab = (type) => {
             const listEl = document.getElementById('leaderboard-list-endgame');
             const loadingEl = document.getElementById('endgame-leaderboard-loading');
+            if (!db) { 
+                listEl.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard is offline.</p>`;
+                if (loadingEl) loadingElement.style.display = 'none';
+                return;
+            }
             if(type === 'daily') {
                 dailyTab.classList.add('active');
                 allTimeTab.classList.remove('active');
+                fetchAndDisplayLeaderboard('daily', listEl, loadingEl);
             } else {
                 allTimeTab.classList.add('active');
                 dailyTab.classList.remove('active');
+                fetchAndDisplayLeaderboard('all-time', listEl, loadingEl);
             }
-            fetchAndDisplayLeaderboard(type, listEl, loadingEl);
         };
 
         dailyTab.onclick = () => displayTab('daily');
         allTimeTab.onclick = () => displayTab('all-time');
         
-        displayTab('daily'); // Default to daily
+        displayTab('daily'); 
             
         document.getElementById('play-again-button').onclick = resetGame;
         const nameInput = document.getElementById('player-name');
@@ -834,7 +951,8 @@
 
     function resizeCanvas() { 
         const r = grid.getBoundingClientRect();
-        lineCanvas.width = r.width; lineCanvas.height = r.height;
+        lineCanvas.width = r.width; 
+        lineCanvas.height = r.height;
         cacheTilePositions();
         drawLines(); 
     }
@@ -913,6 +1031,11 @@
         grid.addEventListener('pointerleave', endInteraction); 
 
         window.addEventListener('resize', resizeCanvas);
+
+        homeButton.addEventListener('click', () => {
+            clearInterval(timerInterval); // Stop any active timer
+            resetGame(); // Return to welcome screen
+        });
     }
 
     // --- Smart Board Generation ---
@@ -959,7 +1082,6 @@
             }
             
             if(!dictionaryTrie && attempts > 0) {
-                 // If dictionary isn't ready, just create a random board and don't validate.
                 return board;
             }
 
@@ -1066,7 +1188,7 @@
                     <!-- Page 1: Animation -->
                     <div class="w-full flex-shrink-0 transition-transform duration-300 p-2 flex flex-col justify-center items-center">
                         <div id="tutorial-word-builder" class="h-8 mb-2 w-32 bg-white rounded-md flex items-center justify-center space-x-0.5 shadow-inner">
-                            <span class="opacity-0">W</span> <!-- Placeholder for height -->
+                            <span class="opacity-0">W</span> 
                         </div>
                         <div id="tutorial-grid-container" class="relative w-32 h-32">
                              <canvas id="tutorial-line-canvas" class="absolute top-0 left-0 w-full h-full pointer-events-none" style="z-index: 5;"></canvas>
@@ -1171,9 +1293,9 @@
         
         const handleSwipe = () => {
             const swipeDiff = touchStartX - touchEndX;
-            if (swipeDiff > 50) { // Swiped left
+            if (swipeDiff > 50) { 
                 if (currentPage < pages.length - 1) currentPage++;
-            } else if (swipeDiff < -50) { // Swiped right
+            } else if (swipeDiff < -50) { 
                 if (currentPage > 0) currentPage--;
             }
             updateTutorialView();
@@ -1265,11 +1387,8 @@
         
         if(animationInterval) clearInterval(animationInterval);
         
-        // Delay the first animation run to ensure the modal's entry animation is complete
-        // and all elements have their final positions calculated.
         setTimeout(() => {
-            runAnimation(); // Run the animation for the first time
-            // Then set it on an interval to repeat
+            runAnimation(); 
             animationInterval = setInterval(runAnimation, 6000);
         }, 350);
     }
