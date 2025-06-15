@@ -93,28 +93,6 @@
             }
         }
         
-        /* Lap Notification */
-        @keyframes fade-in-out {
-            0%, 100% { opacity: 0; transform: translate(-50%, 20px); }
-            10%, 90% { opacity: 1; transform: translate(-50%, 0); }
-        }
-        .lap-notification {
-            position: absolute;
-            top: -68px;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: rgba(0,0,0,0.75);
-            color: white;
-            padding: 8px 16px;
-            border-radius: 9999px;
-            font-size: 1rem;
-            font-weight: bold;
-            z-index: 200;
-            animation: fade-in-out 4s ease-in-out forwards;
-            pointer-events: none;
-            white-space: nowrap;
-        }
-        
         /* Dropdown Menu */
         .dropdown-menu {
             transition: all 0.2s ease-out;
@@ -123,26 +101,25 @@
 </head>
 <body class="bg-slate-100 flex justify-center items-start md:items-center min-h-screen">
 
-<div id="game-container" class="w-full max-w-sm mx-auto p-4 relative">
-    <!-- Menu Button and Dropdown - MOVED HERE -->
-    <div id="menu-container" class="absolute top-4 right-4 z-30">
-        <button id="menu-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 p-2 rounded-full shadow-md transition-transform hover:scale-105">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
-        </button>
-        <div id="dropdown-menu" class="dropdown-menu hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl origin-top-right" style="transform: scale(0.95); opacity: 0;">
-            <a id="menu-home" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">🏠 Home</a>
-            <a id="menu-stats" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">📊 Your Stats</a>
-            <a id="menu-leaderboard" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">🌍 Leaderboard</a>
-        </div>
-    </div>
-
+<div id="game-container" class="w-full max-w-sm mx-auto p-4">
     <div id="game-content">
-        <div class="flex items-center mb-3">
+        <div class="flex items-center justify-between mb-3">
             <div class="flex-grow flex items-center justify-center">
                 <h1 class="text-3xl font-black text-slate-800 tracking-tighter flex items-center justify-center">
                      <img src="https://raw.githubusercontent.com/tputerio/word-rush-game/main/word-worm-logo.png" alt="Word Worm Logo" class="w-9 h-9 mr-2">
                     <span>Word Worm</span>
                 </h1>
+            </div>
+             <!-- Menu Button and Dropdown -->
+             <div id="menu-container" class="relative">
+                <button id="menu-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 p-2 rounded-full shadow-md transition-transform hover:scale-105 z-30">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+                </button>
+                <div id="dropdown-menu" class="dropdown-menu hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl origin-top-right z-20" style="transform: scale(0.95); opacity: 0;">
+                    <a id="menu-home" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">🏠 Home</a>
+                    <a id="menu-stats" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">📊 Your Stats</a>
+                    <a id="menu-leaderboard" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">🌍 Leaderboard</a>
+                </div>
             </div>
         </div>
         <!-- SCOREBOARD -->
@@ -220,9 +197,6 @@
     let tilePositions = [], dictionaryTrie;
     let isPracticeMode = false; 
     let practiceTimeElapsed = 0;
-    let practiceBonusSeconds = 0;
-    let lastLapTotalScore = 0;
-    let peakLapScore = 0;
 
     // --- Trie Data Structure ---
     class TrieNode { constructor() { this.children = {}; this.isEndOfWord = false; } }
@@ -359,20 +333,11 @@
         
         if (isPracticeMode) {
             practiceTimeElapsed = 0;
-            practiceBonusSeconds = 0;
-            lastLapTotalScore = 0;
-            peakLapScore = 0;
-            topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-blue-500 uppercase tracking-wider">Peak Score</div><div id="peak-score" class="text-3xl font-black text-blue-400">0</div>`;
+            topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-blue-500 uppercase tracking-wider">Pace</div><div id="pace-score" class="text-3xl font-black text-blue-400">0</div>`;
             updatePracticeUI(); 
             timerInterval = setInterval(() => {
                 practiceTimeElapsed++;
                 updatePracticeUI();
-                if (practiceTimeElapsed > 0 && practiceTimeElapsed % 60 === 0) {
-                    const currentMinute = practiceTimeElapsed / 60;
-                    const scoreThisLap = score - lastLapTotalScore;
-                    showNotification(`Minute ${currentMinute} Score: ${scoreThisLap}`);
-                    lastLapTotalScore = score;
-                }
             }, 1000);
         } else {
             topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${getLocalHighScore()}</div>`;
@@ -384,12 +349,13 @@
             timerInterval = setInterval(() => { timer--; updateTimerUI(); if (timer <= 0) endGame(); }, 1000);
         }
 
-        grid.style.pointerEvents = 'auto'; 
         menuContainer.classList.remove('hidden');
-        
-        createGrid(); 
         gameContentEl.classList.remove('blurred');
         messageModal.classList.add('hidden');
+        if (!grid.hasChildNodes()) {
+            createGrid();
+        }
+        grid.style.pointerEvents = 'auto'; 
     }
     
     function endGame() {
@@ -457,9 +423,9 @@
             else if (word.length === 6) finalScore += 10;
             else if (word.length === 5) finalScore += 5;
             else if (word.length === 4) finalScore += 2;
-            if (timeBonus > 0) {
-                if (isPracticeMode) { practiceBonusSeconds += timeBonus; } 
-                else { timer += timeBonus; updateTimerUI(); }
+            if (timeBonus > 0 && !isPracticeMode) {
+                timer += timeBonus; 
+                updateTimerUI();
             }
             foundWords.push({ word, score: finalScore, length: word.length });
             createFlyingScore(finalScore, selectedTiles[0]);
@@ -549,26 +515,17 @@
     }
     
     function updatePracticeUI() {
-        const effectiveTime = Math.max(0, practiceTimeElapsed - practiceBonusSeconds);
-        const minutes = Math.floor(effectiveTime / 60);
-        const seconds = effectiveTime % 60;
+        const minutes = Math.floor(practiceTimeElapsed / 60);
+        const seconds = practiceTimeElapsed % 60;
         timerEl.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         timerEl.classList.remove('text-yellow-500', 'text-red-500', 'animate-pulse');
         timerEl.classList.add('text-green-500');
-        const scoreThisLap = score - lastLapTotalScore;
-        if (scoreThisLap > peakLapScore) { peakLapScore = scoreThisLap; }
-        const peakScoreEl = document.getElementById('peak-score');
-        if (peakScoreEl) { peakScoreEl.textContent = peakLapScore; }
-    }
-
-    function showNotification(message) {
-        const existingNotif = document.querySelector('.lap-notification');
-        if (existingNotif) existingNotif.remove();
-        const notification = document.createElement('div');
-        notification.className = 'lap-notification';
-        notification.textContent = message;
-        gridContainer.appendChild(notification);
-        setTimeout(() => { notification.remove(); }, 3900);
+        
+        const pace = Math.round((score / Math.max(1, practiceTimeElapsed)) * 60);
+        const paceScoreEl = document.getElementById('pace-score');
+        if (paceScoreEl) {
+             paceScoreEl.textContent = isNaN(pace) ? 0 : pace;
+        }
     }
 
     function triggerConfetti(tiles) { tiles.forEach(tile => { const rect = tile.getBoundingClientRect(); for (let i = 0; i < 10; i++) { const p = document.createElement('div'); p.className = 'particle'; const angle = Math.random() * Math.PI * 2, dist = Math.random() * 40 + 20; p.style.setProperty('--transform-end',`translate(${Math.cos(angle)*dist}px,${Math.sin(angle)*dist}px)`); p.style.left = `${rect.left+rect.width/2-4}px`; p.style.top = `${rect.top+rect.height/2-4}px`; document.body.appendChild(p); setTimeout(() => p.remove(), 800); } }); }
@@ -602,7 +559,7 @@
             </div>
         `;
         gameContentEl.classList.add('blurred');
-        menuContainer.classList.remove('hidden'); // Show menu on welcome screen
+        menuContainer.classList.remove('hidden'); 
         messageModal.classList.remove('hidden');
         setupTutorial();
         document.getElementById('welcome-high-score').textContent = getLocalHighScore();
