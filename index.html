@@ -225,6 +225,16 @@
     async function loadAssets() {
         const playGameModeButton = document.getElementById('play-game-mode-button');
         const playPracticeButton = document.getElementById('play-practice-button');
+        if (playGameModeButton) {
+    playGameModeButton.disabled = false;
+    playGameModeButton.innerHTML = ...;
+    playGameModeButton.onclick = () => startGame(false);
+}
+if (playPracticeButton) {
+    playPracticeButton.disabled = false;
+    playPracticeButton.innerHTML = ...;
+    playPracticeButton.onclick = () => startGame(true);
+}
         const loadingErrorEl = document.getElementById('loading-error');
         const globalPlayCountSpan = document.getElementById('global-play-count');
         const showLeaderboardButton = document.getElementById('show-leaderboard-button');
@@ -266,11 +276,13 @@
                 playGameModeButton.disabled = false;
                 // Update text and add emoji for "Game Mode"
                 playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><span class="mr-2">⚡</span><span>Game Mode</span></div>`;
+                playGameModeButton.onclick = () => startGame(false);
             }
             if (playPracticeButton) {
                 playPracticeButton.disabled = false;
                 // Update text and add emoji for "Practice Mode"
                 playPracticeButton.innerHTML = `<div class="flex items-center justify-center"><span class="mr-2">📖</span><span>Practice</span></div>`;
+                playGameModeButton.onclick = () => startGame(false);
             }
 
         } catch (e) {
@@ -766,8 +778,7 @@
         document.getElementById('welcome-high-score').textContent = getLocalHighScore();
         document.getElementById('personal-play-count').textContent = localStorage.getItem('wordRushPersonalPlayCount') || 0;
         
-        document.getElementById('play-game-mode-button').onclick = () => startGame(false);
-        document.getElementById('play-practice-button').onclick = () => startGame(true);
+        
         document.getElementById('show-leaderboard-button').onclick = showLeaderboardModal;
 
     }
