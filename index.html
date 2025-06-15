@@ -101,7 +101,18 @@
 </head>
 <body class="bg-slate-100 flex justify-center items-start md:items-center min-h-screen">
 
-<div id="game-container" class="w-full max-w-sm mx-auto p-4">
+<div id="game-container" class="w-full max-w-sm mx-auto p-4 relative">
+    <div id="menu-container" class="absolute top-4 right-4 z-30">
+        <button id="menu-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 p-2 rounded-full shadow-md transition-transform hover:scale-105">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button>
+        <div id="dropdown-menu" class="dropdown-menu hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl origin-top-right" style="transform: scale(0.95); opacity: 0;">
+            <a id="menu-home" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">🏠 Home</a>
+            <a id="menu-stats" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">📊 Your Stats</a>
+            <a id="menu-leaderboard" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">🌍 Leaderboard</a>
+        </div>
+    </div>
+
     <div id="game-content">
         <div class="flex items-center justify-between mb-3">
             <div class="flex-grow flex items-center justify-center">
@@ -110,19 +121,7 @@
                     <span>Word Worm</span>
                 </h1>
             </div>
-             <!-- Menu Button and Dropdown -->
-             <div id="menu-container" class="relative">
-                <button id="menu-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 p-2 rounded-full shadow-md transition-transform hover:scale-105 z-30">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
-                </button>
-                <div id="dropdown-menu" class="dropdown-menu hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl origin-top-right z-20" style="transform: scale(0.95); opacity: 0;">
-                    <a id="menu-home" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">🏠 Home</a>
-                    <a id="menu-stats" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">📊 Your Stats</a>
-                    <a id="menu-leaderboard" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">🌍 Leaderboard</a>
-                </div>
-            </div>
         </div>
-        <!-- SCOREBOARD -->
         <div id="scoreboard" class="grid grid-cols-3 items-center text-center bg-white rounded-xl shadow-lg p-2 mb-3">
             <div id="top-left-display">
                 <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div>
@@ -146,7 +145,6 @@
         </div>
     </div>
     
-    <!-- Modals -->
     <div id="message-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-20 p-4">
         <div id="modal-content" class="w-full max-w-sm mx-auto"></div>
     </div>
@@ -579,8 +577,8 @@
                 <button id="all-time-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">All-Time</button>
             </div>
             <div id="leaderboard-loading-secondary" class="text-slate-500 p-2">Fetching Scores...</div>
-            <div id="leaderboard-scroll-container" class="relative max-h-64 overflow-y-auto">
-                <ol id="leaderboard-list-simple" class="space-y-1 text-left"></ol>
+            <div id="leaderboard-scroll-container" class="relative max-h-[20rem] overflow-y-auto">
+                <div id="leaderboard-list-simple" class="space-y-2 text-left"></div>
             </div>
             <button id="close-leaderboard-button" class="mt-4 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 px-4 rounded-lg">Close</button>
         </div>`;
@@ -655,48 +653,60 @@
         if (!listElement) return;
         if (loadingElement) loadingElement.style.display = 'block';
         listElement.innerHTML = '';
-    
-        if (!db) {
-            listElement.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard offline.</p>`;
-            if (loadingElement) loadingElement.style.display = 'none';
-            return;
-        }
-    
-        let leaderboardHTML = `<p class="text-slate-500 text-center p-4">No scores yet.</p>`;
-    
+        if (!db) { listElement.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard is offline.</p>`; if (loadingElement) loadingElement.style.display = 'none'; return; }
+
         try {
-            let highScores = [];
+            let scoresRef;
+            let q;
+
             if (type === 'daily') {
                 const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-                const entriesRef = collection(db, `dailyScores/${today}/entries`);
-                const q = query(entriesRef, orderBy("score", "desc"), limit(20));
-                const querySnapshot = await getDocs(q);
-                querySnapshot.forEach((doc) => {
-                    highScores.push(doc.data());
-                });
-    
-            } else { 
-                const q = query(collection(db, "scores"), orderBy("score", "desc"), limit(20));
-                const querySnapshot = await getDocs(q);
-                querySnapshot.forEach((doc) => highScores.push(doc.data()));
+                scoresRef = collection(db, `dailyScores/${today}/entries`);
+                q = query(scoresRef, orderBy("score", "desc"));
+            } else { // All-Time
+                scoresRef = collection(db, 'scores');
+                q = query(scoresRef, orderBy('score', 'desc'));
             }
-    
-            if (highScores.length > 0) {
-                leaderboardHTML = highScores.map((s, i) => `
-                    <li class="flex items-center p-2 rounded-lg ${i % 2 === 0 ? 'bg-slate-50' : ''}">
-                        <span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span>
-                        <span class="font-semibold text-slate-800 flex-grow truncate mr-4">${s.name}</span>
-                        <span class="font-bold text-green-500">${s.score}</span>
-                    </li>
-                `).join('');
-            }
+            
+            const snapshot = await getDocs(q);
+            
+            const playerHighScores = new Map();
+            snapshot.forEach(doc => {
+                const { userId, name, score } = doc.data();
+                if (!playerHighScores.has(userId) || score > playerHighScores.get(userId).score) {
+                    playerHighScores.set(userId, { name, score });
+                }
+            });
+
+            const allBestScores = Array.from(playerHighScores.values()).sort((a, b) => b.score - a.score);
+
+            const gold = allBestScores.filter(s => s.score >= 1000);
+            const silver = allBestScores.filter(s => s.score >= 500 && s.score < 1000);
+            const bronze = allBestScores.filter(s => s.score < 500);
+
+            let leaderboardHTML = '';
+            const createTierHTML = (title, emoji, scores) => {
+                let html = `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center">${emoji} <span class="ml-2">${title}</span></h3>`;
+                if (scores.length === 0) {
+                    html += `<p class="text-slate-500 text-center text-sm p-2">No players in this tier yet.</p>`;
+                } else {
+                    html += `<ol class="space-y-1">${scores.slice(0, 10).map((s, i) => `<li class="flex items-center p-2 rounded-lg ${i % 2 === 0 ? 'bg-slate-50' : ''}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${s.name}</span><span class="font-bold text-green-500">${s.score}</span></li>`).join('')}</ol>`;
+                }
+                return html;
+            };
+
+            leaderboardHTML += createTierHTML('Gold', '🥇', gold);
+            leaderboardHTML += createTierHTML('Silver', '🥈', silver);
+            leaderboardHTML += createTierHTML('Bronze', '🥉', bronze);
+
+            listElement.innerHTML = leaderboardHTML;
+            
         } catch (e) {
             console.error(`Could not fetch ${type} leaderboard`, e);
-            leaderboardHTML = `<p class="text-red-500 text-center p-4">Could not load leaderboard.</p>`;
+            listElement.innerHTML = `<p class="text-red-500 text-center p-4">Could not load leaderboard.</p>`;
+        } finally {
+            if (loadingElement) loadingElement.style.display = 'none';
         }
-    
-        if (loadingElement) loadingElement.style.display = 'none';
-        listElement.innerHTML = leaderboardHTML;
     }
     
     function setupEventListeners() {
