@@ -123,7 +123,19 @@
 </head>
 <body class="bg-slate-100 flex justify-center items-start md:items-center min-h-screen">
 
-<div id="game-container" class="w-full max-w-sm mx-auto p-4">
+<div id="game-container" class="w-full max-w-sm mx-auto p-4 relative">
+    <!-- Menu Button and Dropdown - MOVED HERE -->
+    <div id="menu-container" class="absolute top-4 right-4 z-30">
+        <button id="menu-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 p-2 rounded-full shadow-md transition-transform hover:scale-105">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button>
+        <div id="dropdown-menu" class="dropdown-menu hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl origin-top-right" style="transform: scale(0.95); opacity: 0;">
+            <a id="menu-home" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">🏠 Home</a>
+            <a id="menu-stats" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">📊 Your Stats</a>
+            <a id="menu-leaderboard" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">🌍 Leaderboard</a>
+        </div>
+    </div>
+
     <div id="game-content">
         <div class="flex items-center mb-3">
             <div class="flex-grow flex items-center justify-center">
@@ -131,17 +143,6 @@
                      <img src="https://raw.githubusercontent.com/tputerio/word-rush-game/main/word-worm-logo.png" alt="Word Worm Logo" class="w-9 h-9 mr-2">
                     <span>Word Worm</span>
                 </h1>
-            </div>
-             <!-- Menu Button and Dropdown -->
-             <div id="menu-container" class="relative hidden">
-                <button id="menu-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 p-2 rounded-full shadow-md transition-transform hover:scale-105 z-30">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
-                </button>
-                <div id="dropdown-menu" class="dropdown-menu hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl z-20 origin-top-right" style="transform: scale(0.95); opacity: 0;">
-                    <a id="menu-home" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">🏠 Home</a>
-                    <a id="menu-stats" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">📊 Your Stats</a>
-                    <a id="menu-leaderboard" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">🌍 Leaderboard</a>
-                </div>
             </div>
         </div>
         <!-- SCOREBOARD -->
@@ -169,7 +170,7 @@
     </div>
     
     <!-- Modals -->
-    <div id="message-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div id="message-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-20 p-4">
         <div id="modal-content" class="w-full max-w-sm mx-auto"></div>
     </div>
     <div id="end-game-modal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
@@ -601,7 +602,7 @@
             </div>
         `;
         gameContentEl.classList.add('blurred');
-        menuContainer.classList.add('hidden');
+        menuContainer.classList.remove('hidden'); // Show menu on welcome screen
         messageModal.classList.remove('hidden');
         setupTutorial();
         document.getElementById('welcome-high-score').textContent = getLocalHighScore();
@@ -660,7 +661,7 @@
         } else {
             statsHTML = `
                 <div class="bg-white rounded-2xl shadow-2xl p-6 modal-enter">
-                    <div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold text-slate-800">📊 Your Stats</h2><button id="close-stats-button" class="text-3xl leading-none text-slate-500 hover:text-slate-800">&times;</button></div>
+                    <div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold text-slate-800 flex items-center">📊<span class="ml-2">Your Stats</span></h2><button id="close-stats-button" class="text-3xl leading-none text-slate-500 hover:text-slate-800">&times;</button></div>
                     <div class="grid grid-cols-3 gap-4 text-center mb-6 bg-slate-100 p-3 rounded-lg">
                         <div><div class="text-xs font-bold text-slate-500 uppercase">Total Games</div><div class="text-2xl font-black text-slate-800">${stats.totalGamesPlayed}</div></div>
                         <div><div class="text-xs font-bold text-slate-500 uppercase">Total Words</div><div class="text-2xl font-black text-slate-800">${stats.totalWordsFound}</div></div>
@@ -741,7 +742,6 @@
         listElement.innerHTML = leaderboardHTML;
     }
     
-    // --- Rest of functions are unchanged but included for completeness ---
     function setupEventListeners() {
         const getTileFromEvent = (e) => { const touch = e.touches ? e.touches[0] : e; const point = { x: touch.clientX, y: touch.clientY }; let closestTile = null; let minDistance = Infinity; tilePositions.forEach(tilePos => { const distance = Math.sqrt((point.x - tilePos.center.x)**2 + (point.y - tilePos.center.y)**2); if (distance < minDistance && distance < tilePos.hitRadius) { minDistance = distance; closestTile = tilePos.el; } }); return closestTile; };
         const startInteraction = e => { e.preventDefault(); isMouseDown = true; clearSelection(); const tile = getTileFromEvent(e); handleInteraction(tile); };
@@ -755,6 +755,7 @@
         document.getElementById('menu-stats').addEventListener('click', (e) => { e.preventDefault(); showStatsModal(); });
         document.getElementById('menu-leaderboard').addEventListener('click', (e) => { e.preventDefault(); showLeaderboardModal(); });
     }
+    
     function cacheTilePositions(){tilePositions=[];for(const t of grid.children){const e=t.getBoundingClientRect();tilePositions.push({el:t,center:{x:e.left+e.width/2,y:e.top+e.height/2},hitRadius:.4*t.offsetWidth})}}
     function resizeCanvas(){const t=grid.getBoundingClientRect();lineCanvas.width=t.width,lineCanvas.height=t.height,cacheTilePositions(),drawLines()}
     function drawLines(){if(clearLines(),!(selectedTiles.length<2)){ctx.beginPath(),ctx.strokeStyle="rgba(59, 130, 246, 0.8)",ctx.lineWidth=12,ctx.lineCap="round",ctx.lineJoin="round",selectedTiles.forEach((t,e)=>{const o=getTileCenter(t);0===e?ctx.moveTo(o.x,o.y):ctx.lineTo(o.x,o.y)}),ctx.stroke()}}
@@ -766,6 +767,7 @@
     function getNeighbors(t,e){const o=[];const[l,n]=[t%GRID_COLS,Math.floor(t/GRID_COLS)];for(let s=-1;s<=1;s++)for(let a=-1;a<=1;a++){if(0===s&&0===a)continue;const[r,i]=[l+s,n+a];r>=0&&r<GRID_COLS&&i>=0&&i<GRID_COLS&&o.push(e[i*GRID_COLS+r])}return o}
     function solveBoard(t){const e=new Set;for(let o=0;o<GRID_SIZE;o++)findWordsRecursive(o,"",[o],e,t);return e}
     function findWordsRecursive(t,e,o,l,n){if(e+=n[t],!dictionaryTrie||!dictionaryTrie.search(e,!0))return;e.length>=3&&dictionaryTrie.search(e)&&l.add(e);const[s,a]=[t%GRID_COLS,Math.floor(t/GRID_COLS)];for(let r=-1;r<=1;r++)for(let i=-1;i<=1;i++){if(0===r&&0===i)continue;const[c,d]=[s+r,a+i];const h=d*GRID_COLS+c;c>=0&&c<GRID_COLS&&d>=0&&d<GRID_COLS&&!o.includes(h)&&findWordsRecursive(h,e,[...o,h],l,n)}}
+    
     function showEndGameScreen() {
         gameContentEl.classList.add('blurred'); endGameModal.classList.remove('hidden');
         const sortedWords = [...foundWords].sort((a,b)=>b.score-a.score);
