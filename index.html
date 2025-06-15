@@ -362,9 +362,7 @@
         menuContainer.classList.add('hidden');
 
         if (!isPracticeMode) { 
-            saveLocalHighScore(score);
-            saveGameHistoryAndStats(score, foundWords);
-            showEndGameScreen();
+            saveGameHistoryAndStats(score);
         } else {
             resetGame();
         }
@@ -456,29 +454,42 @@
     function saveLocalHighScore(s) { const currentHighScore = getLocalHighScore(); if (s > currentHighScore) { localStorage.setItem('wordRushHighScore', s); } }
     function getLocalHighScore() { return parseInt(localStorage.getItem('wordRushHighScore')) || 0; }
     
-    async function saveGameHistoryAndStats(finalScore, wordsFound) {
-        if (!db || !userId || isPracticeMode) return; 
-        const gameData = { score: finalScore, timestamp: serverTimestamp(), words: wordsFound.map(w => ({ word: w.word, score: w.score, length: w.length })) };
+    async function saveGameHistoryAndStats(finalScore) {
+        if (!db || !userId || isPracticeMode) {
+            if (!isPracticeMode) showEndGameScreen();
+            return;
+        }
+
         const playerDocRef = doc(db, "players", userId);
+        const gameData = { score: finalScore, timestamp: serverTimestamp(), words: foundWords.map(w => ({ word: w.word, score: w.score, length: w.length })) };
+        
         try {
             await addDoc(collection(db, `players/${userId}/games`), gameData);
+            
             await runTransaction(db, async (transaction) => {
-                const currentPlayerDoc = await transaction.get(playerDocRef);
-                let totalGames = 1; let totalWordLength = wordsFound.reduce((sum, word) => sum + word.length, 0); let totalWords = wordsFound.length;
-                if (currentPlayerDoc.exists()) {
-                    const allGamesSnapshot = await getDocs(collection(db, `players/${userId}/games`));
-                    let cumulativeWordLength = 0; let cumulativeWordsCount = 0;
-                    allGamesSnapshot.forEach(gameDoc => {
-                        const gameWords = gameDoc.data().words || [];
-                        cumulativeWordLength += gameWords.reduce((sum, word) => sum + word.length, 0);
-                        cumulativeWordsCount += gameWords.length;
-                    });
-                    totalGames = allGamesSnapshot.size; totalWordLength = cumulativeWordLength; totalWords = cumulativeWordsCount;
+                const playerDoc = await transaction.get(playerDocRef);
+                const oldData = playerDoc.exists() ? playerDoc.data() : {};
+                const newHighScore = Math.max(finalScore, oldData.highScore || 0);
+
+                const updateData = {
+                    totalGamesPlayed: increment(1),
+                    lastPlayed: serverTimestamp(),
+                    highScore: newHighScore
+                };
+                
+                if (playerDoc.exists()) {
+                    transaction.update(playerDocRef, updateData);
+                } else {
+                    transaction.set(playerDocRef, updateData);
                 }
-                const avgWordLength = totalWords > 0 ? (totalWordLength / totalWords) : 0;
-                transaction.set(playerDocRef, { totalGamesPlayed: totalGames, avgWordLength: parseFloat(avgWordLength.toFixed(2)), lastPlayed: serverTimestamp() }, { merge: true });
             });
-        } catch (e) { console.error("Error saving game history:", e); }
+            
+            showEndGameScreen();
+
+        } catch (e) {
+            console.error("Error saving game history:", e);
+            showEndGameScreen();
+        }
     }
 
     async function submitLeaderboardScore(name, scoreToSave) {
@@ -656,25 +667,29 @@
         if (!db) { listElement.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard is offline.</p>`; if (loadingElement) loadingElement.style.display = 'none'; return; }
 
         try {
-            let scoresRef;
-            let q;
-
+            let scoresRef, q;
             if (type === 'daily') {
                 const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
                 scoresRef = collection(db, `dailyScores/${today}/entries`);
                 q = query(scoresRef, orderBy("score", "desc"));
-            } else { // All-Time
-                scoresRef = collection(db, 'scores');
-                q = query(scoresRef, orderBy('score', 'desc'));
+            } else { 
+                scoresRef = collection(db, 'players');
+                q = query(scoresRef, orderBy('highScore', 'desc'), limit(100));
             }
             
             const snapshot = await getDocs(q);
             
             const playerHighScores = new Map();
             snapshot.forEach(doc => {
-                const { userId, name, score } = doc.data();
-                if (!playerHighScores.has(userId) || score > playerHighScores.get(userId).score) {
-                    playerHighScores.set(userId, { name, score });
+                const data = doc.data();
+                const score = type === 'daily' ? data.score : data.highScore;
+                const name = data.name;
+                const docUserId = type === 'daily' ? data.userId : doc.id;
+
+                if (docUserId && name && typeof score === 'number') {
+                    if (!playerHighScores.has(docUserId) || score > playerHighScores.get(docUserId).score) {
+                        playerHighScores.set(docUserId, { name, score });
+                    }
                 }
             });
 
@@ -686,7 +701,7 @@
 
             let leaderboardHTML = '';
             const createTierHTML = (title, emoji, scores) => {
-                let html = `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center">${emoji} <span class="ml-2">${title}</span></h3>`;
+                let html = `<h3 class="text-base font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center">${emoji} <span class="ml-2">${title}</span></h3>`;
                 if (scores.length === 0) {
                     html += `<p class="text-slate-500 text-center text-sm p-2">No players in this tier yet.</p>`;
                 } else {
@@ -695,9 +710,9 @@
                 return html;
             };
 
-            leaderboardHTML += createTierHTML('Gold', '🥇', gold);
-            leaderboardHTML += createTierHTML('Silver', '🥈', silver);
-            leaderboardHTML += createTierHTML('Bronze', '🥉', bronze);
+            leaderboardHTML += createTierHTML('Word Worms (1000+)', '🥇', gold);
+            leaderboardHTML += createTierHTML('Book Worms (500-999)', '🥈', silver);
+            leaderboardHTML += createTierHTML('Inch Worms (<500)', '🥉', bronze);
 
             listElement.innerHTML = leaderboardHTML;
             
