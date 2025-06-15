@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Word Worm</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest/dist/lucide.min.js"></script> <!-- Moved Lucide script here for guaranteed loading -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; overflow: hidden; touch-action: none; }
@@ -74,7 +73,24 @@
             100% { transform: translate(-50%, -200%) scale(0.5); opacity: 0; }
         }
         #tutorial-slider.is-snapping {
-            transition: transform 0.3s ease-out;
+             transition: transform 0.3s ease-out;
+        }
+
+        .particle {
+            position: fixed;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #facc15;
+            z-index: 101;
+            animation: particle-anim 0.8s ease-out forwards;
+        }
+
+        @keyframes particle-anim {
+            to {
+                transform: var(--transform-end);
+                opacity: 0;
+            }
         }
     </style>
 </head>
@@ -84,21 +100,25 @@
     <div id="game-content">
         <div class="flex items-center mb-3">
             <!-- Game Title centered, Home Button to the right -->
-            <div class="flex-grow flex items-center justify-center">
+            <div class="flex-grow flex items-center justify-center relative">
                 <h1 class="text-3xl font-black text-slate-800 tracking-tighter flex items-center justify-center">
                      <img src="https://raw.githubusercontent.com/tputerio/word-rush-game/main/word-worm-logo.png" alt="Word Worm Logo" class="w-9 h-9 mr-2">
                     <span>Word Worm</span>
                 </h1>
+                <!-- Home Button positioned absolutely relative to this centered container -->
+                <button id="home-button" class="absolute right-0 top-1/2 -translate-y-1/2 bg-slate-200 hover:bg-slate-300 text-slate-700 p-2 rounded-full shadow-md transition-transform hover:scale-105 hidden z-20" title="Return Home">
+                    🏠 <!-- Home emoji -->
+                </button>
             </div>
-            <!-- Home Button for Practice Mode - always present but hidden/shown by JS -->
-            <button id="home-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 p-2 rounded-full shadow-md transition-transform hover:scale-105 hidden z-20 flex-shrink-0 ml-4" title="Return Home">
-                <svg data-lucide="home" class="h-6 w-6"></svg>
-            </button>
         </div>
         <div class="grid grid-cols-3 items-center text-center bg-white rounded-xl shadow-lg p-2 mb-3">
-            <div>
+            <div id="high-score-display">
                 <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div>
                 <div id="high-score" class="text-3xl font-black text-slate-400">0</div>
+            </div>
+            <div id="words-found-display" class="hidden">
+                 <div class="text-xs font-bold text-slate-500 uppercase tracking-wider"># Words</div>
+                 <div id="words-found-count" class="text-3xl font-black text-slate-800">0</div>
             </div>
             <div>
                 <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Score</div>
@@ -137,7 +157,7 @@
 <script type="module">
     // --- Firebase SDKs ---
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
-    import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
     import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, doc, getDoc, setDoc, updateDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
     // --- Config ---
@@ -158,9 +178,12 @@
     const messageModal = document.getElementById('message-modal'), modalContent = document.getElementById('modal-content');
     const endGameModal = document.getElementById('end-game-modal'), endGameModalContent = document.getElementById('end-game-modal-content');
     const leaderboardModal = document.getElementById('leaderboard-modal'), leaderboardModalContent = document.getElementById('leaderboard-modal-content');
+    const highScoreDisplay = document.getElementById('high-score-display');
+    const wordsFoundDisplay = document.getElementById('words-found-display');
+    const wordsFoundCount = document.getElementById('words-found-count');
 
     // --- Firebase State ---
-    let auth, db;
+    let auth, db, userId;
 
     // --- Game State ---
     let score = 0, timer = GAME_TIME, timerInterval, wordSet = new Set(), foundWords = [], selectedTiles = [], isMouseDown = false;
@@ -196,12 +219,11 @@
         setupEventListeners();
         displayHighScore();
         showWelcomeScreen();
-        // Lucide.createIcons() will be called after content is loaded.
         loadAssets(); // This loads the dictionary and Firebase, then enables buttons
     }
     
     async function loadAssets() {
-        const playGameModeButton = document.getElementById('play-game-mode-button'); // Renamed ID
+        const playGameModeButton = document.getElementById('play-game-mode-button');
         const playPracticeButton = document.getElementById('play-practice-button');
         const loadingErrorEl = document.getElementById('loading-error');
         const globalPlayCountSpan = document.getElementById('global-play-count');
@@ -242,19 +264,13 @@
             // Enable buttons after dictionary is loaded
             if (playGameModeButton) {
                 playGameModeButton.disabled = false;
-                // Update text and add icon for "Game Mode"
-                playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg data-lucide="zap" class="h-5 w-5 mr-2"></svg><span>Game Mode</span></div>`;
+                // Update text and add emoji for "Game Mode"
+                playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><span class="mr-2">⚡</span><span>Game Mode</span></div>`;
             }
             if (playPracticeButton) {
                 playPracticeButton.disabled = false;
-                // Update text and add icon for "Practice Mode"
-                playPracticeButton.innerHTML = `<div class="flex items-center justify-center"><svg data-lucide="book-open" class="h-5 w-5 mr-2"></svg><span>Practice Mode</span></div>`;
-            }
-
-            // Create Lucide icons for the updated buttons on the welcome screen
-            // This is crucial here after setting innerHTML.
-            if (typeof lucide !== 'undefined' && lucide.createIcons) {
-                lucide.createIcons();
+                // Update text and add emoji for "Practice Mode"
+                playPracticeButton.innerHTML = `<div class="flex items-center justify-center"><span class="mr-2">📖</span><span>Practice</span></div>`;
             }
 
         } catch (e) {
@@ -279,26 +295,24 @@
                 apiKey: "AIzaSyBa2DPRjwaI-G5mz-OmHVXEDJ4_MzBAZgA",
                 authDomain: "word-rush-game-9010a.firebaseapp.com",
                 projectId: "word-rush-game-9010a",
-                storageBucket: "word-rush-game-9010a.firebasestorage.app",
+                storageBucket: "word-rush-game-9010a.appspot.com",
                 messagingSenderId: "551838491871",
-                appId: "1:551838491871:web:757325be04daab9289b56a",
-                measurementId: "G-D0TSQFY1XS"
+                appId: "1:551838491871:web:757325be04daab9289b56a"
             };
             const app = initializeApp(firebaseConfig);
             auth = getAuth(app);
             db = getFirestore(app);
-            await signInAnonymously(auth);
-            console.log("Firebase connected.");
 
-            // Fetch Play Count
-            const statsRef = doc(db, "gameStats", "stats");
-            const docSnap = await getDoc(statsRef);
-            if (docSnap.exists()) {
-                if (globalPlayCountSpan) globalPlayCountSpan.textContent = docSnap.data().playCount.toLocaleString();
-            }
-            
-            // Enable Leaderboard button
-            if(showLeaderboardButton) showLeaderboardButton.disabled = false;
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                    console.log("Firebase connected. User ID:", userId);
+                    if (showLeaderboardButton) showLeaderboardButton.disabled = false;
+                    fetchGlobalStats();
+                } else {
+                    signInAnonymously(auth).catch(err => console.error("Anonymous sign-in failed:", err));
+                }
+            });
 
         } catch (firebaseError) {
             console.warn("Firebase features failed to load, continuing in offline mode:", firebaseError);
@@ -307,6 +321,21 @@
                 showLeaderboardButton.disabled = true;
                 showLeaderboardButton.classList.add('opacity-50', 'cursor-not-allowed');
             }
+        }
+    }
+
+    async function fetchGlobalStats() {
+        const globalPlayCountSpan = document.getElementById('global-play-count');
+        if (!db) return;
+        try {
+            const statsRef = doc(db, "gameStats", "stats");
+            const docSnap = await getDoc(statsRef);
+            if (docSnap.exists()) {
+                if (globalPlayCountSpan) globalPlayCountSpan.textContent = docSnap.data().playCount.toLocaleString();
+            }
+        } catch(e) {
+             console.warn("Could not fetch global stats:", e);
+             if (globalPlayCountSpan) globalPlayCountSpan.textContent = "N/A";
         }
     }
     
@@ -360,21 +389,21 @@
         if (isPracticeMode) {
             timerDisplayEl.classList.add('hidden');
             practiceModeLabelEl.classList.remove('hidden');
+            highScoreDisplay.classList.add('hidden');
+            wordsFoundDisplay.classList.remove('hidden');
+            wordsFoundCount.textContent = '0';
         } else {
             timer = GAME_TIME; 
             updateTimerUI(); 
             timerDisplayEl.classList.remove('hidden');
             practiceModeLabelEl.classList.add('hidden');
+            highScoreDisplay.classList.remove('hidden');
+            wordsFoundDisplay.classList.add('hidden');
         }
 
         grid.style.pointerEvents = 'auto'; 
         homeButton.classList.remove('hidden'); // Show home button in both modes
         
-        // Create Lucide icon for the home button after it's made visible.
-        if (typeof lucide !== 'undefined' && lucide.createIcons) {
-            lucide.createIcons();
-        }
-
         if (!isPracticeMode) { 
             let personalPlayCount = parseInt(localStorage.getItem('wordRushPersonalPlayCount')) || 0;
             localStorage.setItem('wordRushPersonalPlayCount', personalPlayCount + 1);
@@ -413,6 +442,9 @@
         score = 0; 
         foundWords = [];
         updateScoreDisplay(); 
+        // Reset UI to default state (show high score, hide # words)
+        highScoreDisplay.classList.remove('hidden');
+        wordsFoundDisplay.classList.add('hidden');
         showWelcomeScreen();
         loadAssets(); // Crucial: Re-run loadAssets to re-enable buttons after re-showing welcome screen
     }
@@ -442,7 +474,7 @@
 
     function submitWord() {
         const word = selectedTiles.map(t => t.dataset.letter).join('');
-        if (word.length >= 3 && wordSet.has(word)) {
+        if (word.length >= 3 && wordSet.has(word) && !foundWords.some(fw => fw.word === word)) {
             let baseScore = 0;
             let wordMultiplier = 1;
             let timeBonus = 0;
@@ -471,6 +503,10 @@
             }
 
             foundWords.push({ word, score: finalScore, length: word.length });
+            if(isPracticeMode) {
+                wordsFoundCount.textContent = foundWords.length;
+            }
+
             createFlyingScore(finalScore, selectedTiles[0]);
             triggerConfetti(selectedTiles);
             
@@ -534,13 +570,12 @@
     
     async function saveGameHistoryAndStats(finalScore, wordsFound) {
         // Only save in normal mode
-        if (!db || !auth.currentUser || isPracticeMode) return; 
-        const userId = auth.currentUser.uid;
+        if (!db || !userId || isPracticeMode) return; 
         
         const gameData = {
             score: finalScore,
             timestamp: serverTimestamp(),
-            words: foundWords.map(w => ({ word: w.word, score: w.score, length: w.length }))
+            words: wordsFound.map(w => ({ word: w.word, score: w.score, length: w.length }))
         };
         const playerDocRef = doc(db, "players", userId);
         
@@ -551,8 +586,8 @@
                 const currentPlayerDoc = await transaction.get(playerDocRef);
                 
                 let totalGames = 1;
-                let totalWordLength = foundWords.reduce((sum, word) => sum + word.length, 0); // Correctly calculate for current game
-                let totalWords = foundWords.length; // Correctly calculate for current game
+                let totalWordLength = wordsFound.reduce((sum, word) => sum + word.length, 0); // Correctly calculate for current game
+                let totalWords = wordsFound.length; // Correctly calculate for current game
 
                 if (currentPlayerDoc.exists()) {
                     const oldData = currentPlayerDoc.data();
@@ -585,32 +620,33 @@
 
     async function submitLeaderboardScore(name, scoreToSave) {
         // Don't save practice scores
-        if (!name || scoreToSave === 0 || !db || !auth.currentUser || isPracticeMode) return; 
-        const userId = auth.currentUser.uid;
+        if (!name || scoreToSave === 0 || !db || !userId || isPracticeMode) return; 
         localStorage.setItem('wordRushPlayerName', name);
     
+        // Update the player's name in their main profile document
         await setDoc(doc(db, "players", userId), { name: name }, { merge: true });
     
+        // Add the score to the "all-time" leaderboard collection. This adds every game played.
         await addDoc(collection(db, "scores"), {
             name: name,
             score: scoreToSave,
-            timestamp: serverTimestamp()
+            timestamp: serverTimestamp(),
+            userId: userId
         });
     
+        // *** CHANGE: This section is updated to add EVERY score to the daily leaderboard ***
         const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-        const dailyScoreDocRef = doc(db, `dailyScores/${today}/entries`, userId);
+        const dailyEntriesRef = collection(db, `dailyScores/${today}/entries`);
     
         try {
-            await runTransaction(db, async (transaction) => {
-                const currentScoreDoc = await transaction.get(dailyScoreDocRef);
-                if (!currentScoreDoc.exists() || currentScoreDoc.data().score < scoreToSave) {
-                    transaction.set(dailyScoreDocRef, {
-                        name: name,
-                        score: scoreToSave,
-                        userId: userId,
-                        timestamp: serverTimestamp()
-                    });
-                }
+            // Instead of updating a single document per user if the score is higher,
+            // we now add a new document for each score submitted. This allows a user 
+            // to have multiple entries on the daily leaderboard.
+            await addDoc(dailyEntriesRef, {
+                name: name,
+                score: scoreToSave,
+                userId: userId,
+                timestamp: serverTimestamp()
             });
         } catch (e) {
             console.error("Failed to submit daily score:", e);
@@ -690,22 +726,22 @@
                     <!-- Tutorial content will be injected here -->
                 </div>
                 <div class="flex flex-col sm:flex-row sm:space-x-4 mb-3"> <!-- Flex container for side-by-side buttons -->
-                    <button id="play-practice-button" class="bg-blue-500 hover:bg-blue-600 flex-1 text-white font-bold py-1 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 mb-3 sm:mb-0 disabled:bg-slate-400 disabled:cursor-wait">
+                    <button id="play-practice-button" class="bg-blue-500 hover:bg-blue-600 flex-1 text-white font-bold py-2 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 mb-3 sm:mb-0 disabled:bg-slate-400 disabled:cursor-wait">
                         <div class="flex items-center justify-center">
                             <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                             </svg>
-                            <span>Loading Game...</span>
+                            📖<span>Practice</span>
                         </div>
                     </button>
-                    <button id="play-game-mode-button" class="bg-green-500 hover:bg-green-600 flex-1 text-white font-bold py-1 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-wait">
+                    <button id="play-game-mode-button" class="bg-green-500 hover:bg-green-600 flex-1 text-white font-bold py-2 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-wait">
                         <div class="flex items-center justify-center">
                             <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                             </svg>
-                            <span>Loading Game...</span>
+                            ⚡<span>Game Mode</span>
                         </div>
                     </button>
                 </div>
@@ -730,14 +766,10 @@
         document.getElementById('welcome-high-score').textContent = getLocalHighScore();
         document.getElementById('personal-play-count').textContent = localStorage.getItem('wordRushPersonalPlayCount') || 0;
         
-        document.getElementById('play-game-mode-button').onclick = () => startGame(false); // Changed ID
+        document.getElementById('play-game-mode-button').onclick = () => startGame(false);
         document.getElementById('play-practice-button').onclick = () => startGame(true);
         document.getElementById('show-leaderboard-button').onclick = showLeaderboardModal;
 
-        // Ensure Lucide icons are created for the welcome screen buttons AFTER they are in the DOM
-        if (typeof lucide !== 'undefined' && lucide.createIcons) {
-            lucide.createIcons();
-        }
     }
 
     async function showLeaderboardModal() {
@@ -769,7 +801,7 @@
         const displayTab = (type) => {
             if (!db) { 
                 listEl.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard is offline.</p>`;
-                if (loadingEl) loadingElement.style.display = 'none';
+                if (loadingEl) loadingEl.style.display = 'none';
                 return;
             }
             if(type === 'daily') {
@@ -894,7 +926,7 @@
             const loadingEl = document.getElementById('endgame-leaderboard-loading');
             if (!db) { 
                 listEl.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard is offline.</p>`;
-                if (loadingEl) loadingElement.style.display = 'none';
+                if (loadingEl) loadingEl.style.display = 'none';
                 return;
             }
             if(type === 'daily') {
@@ -1177,7 +1209,7 @@
         }
     }
     
-    function setupTutorial() {
+        function setupTutorial() {
         const container = document.getElementById('how-to-play-container');
         if (!container) return;
 
@@ -1188,7 +1220,7 @@
                     <!-- Page 1: Animation -->
                     <div class="w-full flex-shrink-0 transition-transform duration-300 p-2 flex flex-col justify-center items-center">
                         <div id="tutorial-word-builder" class="h-8 mb-2 w-32 bg-white rounded-md flex items-center justify-center space-x-0.5 shadow-inner">
-                            <span class="opacity-0">W</span> 
+                            <span class="opacity-0">W</span> <!-- Placeholder for height -->
                         </div>
                         <div id="tutorial-grid-container" class="relative w-32 h-32">
                              <canvas id="tutorial-line-canvas" class="absolute top-0 left-0 w-full h-full pointer-events-none" style="z-index: 5;"></canvas>
@@ -1293,9 +1325,9 @@
         
         const handleSwipe = () => {
             const swipeDiff = touchStartX - touchEndX;
-            if (swipeDiff > 50) { 
+            if (swipeDiff > 50) { // Swiped left
                 if (currentPage < pages.length - 1) currentPage++;
-            } else if (swipeDiff < -50) { 
+            } else if (swipeDiff < -50) { // Swiped right
                 if (currentPage > 0) currentPage--;
             }
             updateTutorialView();
@@ -1387,8 +1419,11 @@
         
         if(animationInterval) clearInterval(animationInterval);
         
+        // Delay the first animation run to ensure the modal's entry animation is complete
+        // and all elements have their final positions calculated.
         setTimeout(() => {
-            runAnimation(); 
+            runAnimation(); // Run the animation for the first time
+            // Then set it on an interval to repeat
             animationInterval = setInterval(runAnimation, 6000);
         }, 350);
     }
