@@ -92,6 +92,28 @@
                 opacity: 0;
             }
         }
+        
+        /* Lap Notification -- UPDATED LOCATION */
+        @keyframes fade-in-out {
+            0%, 100% { opacity: 0; transform: translate(-50%, 20px); }
+            10%, 90% { opacity: 1; transform: translate(-50%, 0); }
+        }
+        .lap-notification {
+            position: absolute; /* Changed to absolute to position relative to the grid-container */
+            top: -68px; /* Position it above the grid, where the word builder is */
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0,0,0,0.75);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 9999px; /* Pill shape */
+            font-size: 1rem;
+            font-weight: bold;
+            z-index: 200;
+            animation: fade-in-out 4s ease-in-out forwards;
+            pointer-events: none;
+            white-space: nowrap; /* Prevent line breaks */
+        }
     </style>
 </head>
 <body class="bg-slate-100 flex justify-center items-start md:items-center min-h-screen">
@@ -99,38 +121,34 @@
 <div id="game-container" class="w-full max-w-sm mx-auto p-4">
     <div id="game-content">
         <div class="flex items-center mb-3">
-            <!-- Game Title centered, Home Button to the right -->
             <div class="flex-grow flex items-center justify-center relative">
                 <h1 class="text-3xl font-black text-slate-800 tracking-tighter flex items-center justify-center">
                      <img src="https://raw.githubusercontent.com/tputerio/word-rush-game/main/word-worm-logo.png" alt="Word Worm Logo" class="w-9 h-9 mr-2">
                     <span>Word Worm</span>
                 </h1>
-                <!-- Home Button positioned absolutely relative to this centered container -->
                 <button id="home-button" class="absolute right-0 top-1/2 -translate-y-1/2 bg-slate-200 hover:bg-slate-300 text-slate-700 p-2 rounded-full shadow-md transition-transform hover:scale-105 hidden z-20" title="Return Home">
                     🏠 <!-- Home emoji -->
                 </button>
             </div>
         </div>
-        <div class="grid grid-cols-3 items-center text-center bg-white rounded-xl shadow-lg p-2 mb-3">
-            <div id="high-score-display">
+        <!-- SCOREBOARD - THIS HAS BEEN UPDATED FOR PRACTICE MODE -->
+        <div id="scoreboard" class="grid grid-cols-3 items-center text-center bg-white rounded-xl shadow-lg p-2 mb-3">
+            <!-- Top-Left stat: High Score or Peak Score, populated by JS -->
+            <div id="top-left-display">
                 <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div>
                 <div id="high-score" class="text-3xl font-black text-slate-400">0</div>
             </div>
-            <div id="words-found-display" class="hidden">
-                 <div class="text-xs font-bold text-slate-500 uppercase tracking-wider"># Words</div>
-                 <div id="words-found-count" class="text-3xl font-black text-slate-800">0</div>
-            </div>
+            
+            <!-- Score (middle) -->
             <div>
                 <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Score</div>
                 <div id="score" class="text-3xl font-black text-slate-800">0</div>
             </div>
-            <div id="timer-display"> <!-- Added id for toggling visibility -->
+
+            <!-- Time (right) -->
+            <div id="timer-display">
                 <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Time</div>
                 <div id="timer" class="text-3xl font-bold text-green-500 transition-all duration-300">60</div>
-            </div>
-             <div id="practice-mode-label" class="hidden"> <!-- New element for practice mode -->
-                <div class="text-xs font-bold text-blue-500 uppercase tracking-wider">Mode</div>
-                <div class="text-xl font-black text-blue-400">PRACTICE</div> <!-- Font size reduced here -->
             </div>
         </div>
         <div id="current-word-container" class="mb-3 p-2 bg-slate-200 rounded-lg shadow-inner h-[52px] flex items-center justify-center">
@@ -169,18 +187,15 @@
 
     // --- DOM Elements ---
     const gameContentEl = document.getElementById('game-content');
+    const gridContainer = document.getElementById('grid-container'); // NEW reference
     const grid = document.getElementById('grid'), lineCanvas = document.getElementById('line-canvas'), ctx = lineCanvas.getContext('2d');
-    const scoreEl = document.getElementById('score'), timerEl = document.getElementById('timer'), highScoreEl = document.getElementById('high-score');
-    const timerDisplayEl = document.getElementById('timer-display'); 
-    const practiceModeLabelEl = document.getElementById('practice-mode-label'); 
+    const scoreEl = document.getElementById('score'), timerEl = document.getElementById('timer');
+    const topLeftDisplayEl = document.getElementById('top-left-display');
     const homeButton = document.getElementById('home-button'); 
     const currentWordLettersEl = document.getElementById('current-word-letters');
     const messageModal = document.getElementById('message-modal'), modalContent = document.getElementById('modal-content');
     const endGameModal = document.getElementById('end-game-modal'), endGameModalContent = document.getElementById('end-game-modal-content');
     const leaderboardModal = document.getElementById('leaderboard-modal'), leaderboardModalContent = document.getElementById('leaderboard-modal-content');
-    const highScoreDisplay = document.getElementById('high-score-display');
-    const wordsFoundDisplay = document.getElementById('words-found-display');
-    const wordsFoundCount = document.getElementById('words-found-count');
 
     // --- Firebase State ---
     let auth, db, userId;
@@ -189,6 +204,11 @@
     let score = 0, timer = GAME_TIME, timerInterval, wordSet = new Set(), foundWords = [], selectedTiles = [], isMouseDown = false;
     let tilePositions = [], dictionaryTrie;
     let isPracticeMode = false; 
+    // --- Practice Mode State Variables ---
+    let practiceTimeElapsed = 0;
+    let practiceBonusSeconds = 0;
+    let lastLapTotalScore = 0;
+    let peakLapScore = 0;
 
     // --- Trie Data Structure for Fast Lookups ---
     class TrieNode {
@@ -217,9 +237,9 @@
     // --- Init ---
     function main() {
         setupEventListeners();
-        displayHighScore();
+        topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${getLocalHighScore()}</div>`;
         showWelcomeScreen();
-        loadAssets(); // This loads the dictionary and Firebase, then enables buttons
+        loadAssets(); 
     }
     
     async function loadAssets() {
@@ -229,47 +249,33 @@
         const globalPlayCountSpan = document.getElementById('global-play-count');
         const showLeaderboardButton = document.getElementById('show-leaderboard-button');
 
-        // Initial state for buttons (disabled during loading)
         if (playGameModeButton) {
             playGameModeButton.disabled = true;
-            playGameModeButton.innerHTML = `<div class="flex items-center justify-center">
-                <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg><span>Loading Game...</span></div>`;
+            playGameModeButton.innerHTML = `<div class="flex items-center justify-center">...</div>`;
         }
         if (playPracticeButton) {
             playPracticeButton.disabled = true;
-            playPracticeButton.innerHTML = `<div class="flex items-center justify-center">
-                <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg><span>Loading Game...</span></div>`;
+            playPracticeButton.innerHTML = `<div class="flex items-center justify-center">...</div>`;
         }
 
-        // Load Dictionary (Critical Path)
         try {
             const res = await fetch('https://raw.githubusercontent.com/redbo/scrabble/master/dictionary.txt');
             if (!res.ok) throw new Error(`Dictionary download failed: ${res.statusText}`);
             const words = (await res.text()).split('\n').map(w => w.trim().toUpperCase()).filter(w => w.length >= 3);
             wordSet = new Set(words);
-            wordSet.add("ZEN"); // Adding specific words to dictionary
-            wordSet.add("KIN"); // Adding specific words to dictionary
+            wordSet.add("ZEN"); wordSet.add("KIN");
             dictionaryTrie = new Trie();
             for (const word of wordSet) dictionaryTrie.insert(word);
             console.log("Dictionary loaded. Game is playable.");
             
-            createGrid(); // Create initial grid once dictionary is loaded
+            createGrid(); 
             
-            // Enable buttons after dictionary is loaded
             if (playGameModeButton) {
                 playGameModeButton.disabled = false;
-                // Update text and add emoji for "Game Mode"
                 playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><span class="mr-2">⚡</span><span>Game Mode</span></div>`;
             }
             if (playPracticeButton) {
                 playPracticeButton.disabled = false;
-                // Update text and add emoji for "Practice Mode"
                 playPracticeButton.innerHTML = `<div class="flex items-center justify-center"><span class="mr-2">📖</span><span>Practice</span></div>`;
             }
 
@@ -286,10 +292,9 @@
                 playPracticeButton.classList.add('bg-red-500', 'cursor-not-allowed');
                 playPracticeButton.classList.remove('bg-green-500');
             }
-            return; // Stop if dictionary fails
+            return;
         }
 
-        // Load Firebase Features (Non-Critical Path)
         try {
             const firebaseConfig = {
                 apiKey: "AIzaSyBa2DPRjwaI-G5mz-OmHVXEDJ4_MzBAZgA",
@@ -374,7 +379,7 @@
         return null;
     }
 
-    // --- Gameplay ---
+    // --- Gameplay (UPDATED FOR PRACTICE MODE) ---
     function startGame(practiceMode = false) {
         isPracticeMode = practiceMode; 
         
@@ -383,28 +388,38 @@
         foundWords = []; 
 
         updateScoreDisplay(); 
-        displayHighScore(); 
         
-        // Toggle timer display and practice mode label
         if (isPracticeMode) {
-            timerDisplayEl.classList.add('hidden');
-            practiceModeLabelEl.classList.remove('hidden');
-            highScoreDisplay.classList.add('hidden');
-            wordsFoundDisplay.classList.remove('hidden');
-            wordsFoundCount.textContent = '0';
+            // --- Practice Mode Setup ---
+            practiceTimeElapsed = 0;
+            practiceBonusSeconds = 0;
+            lastLapTotalScore = 0;
+            peakLapScore = 0;
+
+            topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-blue-500 uppercase tracking-wider">Peak Score</div><div id="peak-score" class="text-3xl font-black text-blue-400">0</div>`;
+            
+            updatePracticeUI(); // Initial UI update
+            
+            timerInterval = setInterval(() => {
+                practiceTimeElapsed++;
+                updatePracticeUI();
+                
+                // Lap logic is now based on real time elapsed
+                if (practiceTimeElapsed > 0 && practiceTimeElapsed % 60 === 0) {
+                    const currentMinute = practiceTimeElapsed / 60;
+                    const scoreThisLap = score - lastLapTotalScore;
+                    showNotification(`Minute ${currentMinute} Score: ${scoreThisLap}`);
+                    lastLapTotalScore = score; // Reset for next lap
+                }
+            }, 1000);
+
         } else {
+            // --- Regular Game Mode Setup ---
+            topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${getLocalHighScore()}</div>`;
+            
             timer = GAME_TIME; 
             updateTimerUI(); 
-            timerDisplayEl.classList.remove('hidden');
-            practiceModeLabelEl.classList.add('hidden');
-            highScoreDisplay.classList.remove('hidden');
-            wordsFoundDisplay.classList.add('hidden');
-        }
-
-        grid.style.pointerEvents = 'auto'; 
-        homeButton.classList.remove('hidden'); // Show home button in both modes
-        
-        if (!isPracticeMode) { 
+            
             let personalPlayCount = parseInt(localStorage.getItem('wordRushPersonalPlayCount')) || 0;
             localStorage.setItem('wordRushPersonalPlayCount', personalPlayCount + 1);
 
@@ -417,6 +432,9 @@
                 if (timer <= 0) endGame();
             }, 1000);
         }
+
+        grid.style.pointerEvents = 'auto'; 
+        homeButton.classList.remove('hidden');
         
         createGrid(); 
         gameContentEl.classList.remove('blurred');
@@ -426,14 +444,14 @@
     function endGame() {
         clearInterval(timerInterval);
         grid.style.pointerEvents = 'none';
-        homeButton.classList.add('hidden'); // Hide home button when game ends and modal shows
+        homeButton.classList.add('hidden');
 
         if (!isPracticeMode) { 
             saveLocalHighScore(score);
             saveGameHistoryAndStats(score, foundWords);
             showEndGameScreen();
         } else {
-            resetGame(); // In practice mode, just reset and go to welcome screen
+            resetGame(); // In practice mode, just reset to welcome screen
         }
     }
 
@@ -442,11 +460,12 @@
         score = 0; 
         foundWords = [];
         updateScoreDisplay(); 
-        // Reset UI to default state (show high score, hide # words)
-        highScoreDisplay.classList.remove('hidden');
-        wordsFoundDisplay.classList.add('hidden');
+        
+        // Reset UI to default state (showing high score)
+        topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${getLocalHighScore()}</div>`;
+
         showWelcomeScreen();
-        loadAssets(); // Crucial: Re-run loadAssets to re-enable buttons after re-showing welcome screen
+        loadAssets(); 
     }
     
     // --- Input & Word Logic ---
@@ -474,7 +493,7 @@
 
     function submitWord() {
         const word = selectedTiles.map(t => t.dataset.letter).join('');
-        if (word.length >= 3 && wordSet.has(word)) {
+        if (word.length >= 3 && wordSet.has(word) && !foundWords.some(fw => fw.word === word)) {
             let baseScore = 0;
             let wordMultiplier = 1;
             let timeBonus = 0;
@@ -497,20 +516,20 @@
             else if (word.length === 5) finalScore += 5;
             else if (word.length === 4) finalScore += 2;
 
-            if (timeBonus > 0 && !isPracticeMode) { 
-                timer += timeBonus;
-                updateTimerUI();
+            if (timeBonus > 0) {
+                if (isPracticeMode) {
+                    practiceBonusSeconds += timeBonus;
+                } else {
+                    timer += timeBonus;
+                    updateTimerUI();
+                }
             }
 
             foundWords.push({ word, score: finalScore, length: word.length });
-            if(isPracticeMode) {
-                wordsFoundCount.textContent = foundWords.length;
-            }
-
+            
             createFlyingScore(finalScore, selectedTiles[0]);
             triggerConfetti(selectedTiles);
             
-            // Always update score in both modes now
             setTimeout(() => { 
                 score += finalScore; 
                 updateScoreDisplay(); 
@@ -569,7 +588,6 @@
     function getLocalHighScore() { return parseInt(localStorage.getItem('wordRushHighScore')) || 0; }
     
     async function saveGameHistoryAndStats(finalScore, wordsFound) {
-        // Only save in normal mode
         if (!db || !userId || isPracticeMode) return; 
         
         const gameData = {
@@ -586,13 +604,10 @@
                 const currentPlayerDoc = await transaction.get(playerDocRef);
                 
                 let totalGames = 1;
-                let totalWordLength = wordsFound.reduce((sum, word) => sum + word.length, 0); // Correctly calculate for current game
-                let totalWords = wordsFound.length; // Correctly calculate for current game
+                let totalWordLength = wordsFound.reduce((sum, word) => sum + word.length, 0);
+                let totalWords = wordsFound.length;
 
                 if (currentPlayerDoc.exists()) {
-                    const oldData = currentPlayerDoc.data();
-                    totalGames = (oldData.totalGamesPlayed || 0) + 1;
-                    // Recalculate cumulative stats from all games to ensure accuracy
                     const allGamesSnapshot = await getDocs(collection(db, `players/${userId}/games`));
                     let cumulativeWordLength = 0;
                     let cumulativeWordsCount = 0;
@@ -601,6 +616,7 @@
                         cumulativeWordLength += gameWords.reduce((sum, word) => sum + word.length, 0);
                         cumulativeWordsCount += gameWords.length;
                     });
+                    totalGames = allGamesSnapshot.size;
                     totalWordLength = cumulativeWordLength;
                     totalWords = cumulativeWordsCount;
                 }
@@ -619,14 +635,11 @@
     }
 
     async function submitLeaderboardScore(name, scoreToSave) {
-        // Don't save practice scores
         if (!name || scoreToSave === 0 || !db || !userId || isPracticeMode) return; 
         localStorage.setItem('wordRushPlayerName', name);
     
-        // Update the player's name in their main profile document
         await setDoc(doc(db, "players", userId), { name: name }, { merge: true });
     
-        // Add the score to the "all-time" leaderboard collection. This adds every game played.
         await addDoc(collection(db, "scores"), {
             name: name,
             score: scoreToSave,
@@ -634,14 +647,10 @@
             userId: userId
         });
     
-        // *** CHANGE: This section is updated to add EVERY score to the daily leaderboard ***
         const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
         const dailyEntriesRef = collection(db, `dailyScores/${today}/entries`);
     
         try {
-            // Instead of updating a single document per user if the score is higher,
-            // we now add a new document for each score submitted. This allows a user 
-            // to have multiple entries on the daily leaderboard.
             await addDoc(dailyEntriesRef, {
                 name: name,
                 score: scoreToSave,
@@ -653,22 +662,23 @@
         }
     }
     
-    // --- UI & Animations ---
+    // --- UI & Animations (UPDATED FOR PRACTICE MODE) ---
     function updateScoreDisplay() {
         scoreEl.textContent = score;
         scoreEl.classList.add('animate-pulse');
         scoreEl.addEventListener('animationend', () => scoreEl.classList.remove('animate-pulse'), { once: true });
         
-        const currentHighScore = getLocalHighScore();
-        if (score > currentHighScore) {
-            highScoreEl.textContent = score;
-            highScoreEl.classList.add('text-yellow-500', 'animate-pulse');
+        if (!isPracticeMode) {
+             const highScoreEl = document.getElementById('high-score');
+             const currentHighScore = getLocalHighScore();
+             if (highScoreEl && score > currentHighScore) {
+                 highScoreEl.textContent = score;
+                 highScoreEl.classList.add('text-yellow-500', 'animate-pulse');
+             }
+        } else {
+            // In practice mode, call the UI update to refresh peak score
+            updatePracticeUI();
         }
-    }
-    
-    function displayHighScore() {
-        highScoreEl.textContent = getLocalHighScore();
-        highScoreEl.classList.remove('text-yellow-500', 'animate-pulse');
     }
 
     function updateTimerUI() {
@@ -681,6 +691,48 @@
         } else {
             timerEl.classList.add('text-green-500');
         }
+    }
+    
+    // NEW: Function to handle all UI updates in practice mode
+    function updatePracticeUI() {
+        // Calculate effective time, ensuring it doesn't go below zero
+        const effectiveTime = Math.max(0, practiceTimeElapsed - practiceBonusSeconds);
+        
+        // Format time as MM:SS
+        const minutes = Math.floor(effectiveTime / 60);
+        const seconds = effectiveTime % 60;
+        timerEl.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        timerEl.classList.remove('text-yellow-500', 'text-red-500', 'animate-pulse');
+        timerEl.classList.add('text-green-500');
+
+        // Calculate score for the current lap
+        const scoreThisLap = score - lastLapTotalScore;
+
+        // Update peak lap score if current lap's score is higher
+        if (scoreThisLap > peakLapScore) {
+            peakLapScore = scoreThisLap;
+        }
+
+        // Display peak lap score
+        const peakScoreEl = document.getElementById('peak-score');
+        if (peakScoreEl) {
+             peakScoreEl.textContent = peakLapScore;
+        }
+    }
+
+    // NEW: Function to show lap notifications
+    function showNotification(message) {
+        // Remove any existing notification first
+        const existingNotif = document.querySelector('.lap-notification');
+        if (existingNotif) existingNotif.remove();
+
+        const notification = document.createElement('div');
+        notification.className = 'lap-notification';
+        notification.textContent = message;
+        gridContainer.appendChild(notification); // Append to grid container
+        setTimeout(() => {
+            notification.remove();
+        }, 3900); // Remove slightly before animation ends
     }
 
     function triggerConfetti(tiles) {
@@ -723,26 +775,13 @@
                 </h1>
                 <p class="text-slate-500 text-sm mb-4">The fast-paced word finding game!</p>
                 <div id="how-to-play-container" class="relative bg-slate-100 p-3 rounded-lg mb-4 h-[17rem] overflow-hidden">
-                    <!-- Tutorial content will be injected here -->
                 </div>
-                <div class="flex flex-col sm:flex-row sm:space-x-4 mb-3"> <!-- Flex container for side-by-side buttons -->
+                <div class="flex flex-col sm:flex-row sm:space-x-4 mb-3">
                     <button id="play-practice-button" class="bg-blue-500 hover:bg-blue-600 flex-1 text-white font-bold py-2 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 mb-3 sm:mb-0 disabled:bg-slate-400 disabled:cursor-wait">
-                        <div class="flex items-center justify-center">
-                            <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            📖<span>Practice</span>
-                        </div>
+                        ...
                     </button>
                     <button id="play-game-mode-button" class="bg-green-500 hover:bg-green-600 flex-1 text-white font-bold py-2 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-wait">
-                        <div class="flex items-center justify-center">
-                            <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            ⚡<span>Game Mode</span>
-                        </div>
+                        ...
                     </button>
                 </div>
                 <div class="flex justify-between items-center border-t border-slate-200 pt-3">
@@ -769,7 +808,6 @@
         document.getElementById('play-game-mode-button').onclick = () => startGame(false);
         document.getElementById('play-practice-button').onclick = () => startGame(true);
         document.getElementById('show-leaderboard-button').onclick = showLeaderboardModal;
-
     }
 
     async function showLeaderboardModal() {
@@ -944,7 +982,7 @@
         allTimeTab.onclick = () => displayTab('all-time');
         
         displayTab('daily'); 
-            
+        
         document.getElementById('play-again-button').onclick = resetGame;
         const nameInput = document.getElementById('player-name');
         nameInput.value = localStorage.getItem('wordRushPlayerName') || '';
@@ -1209,7 +1247,7 @@
         }
     }
     
-        function setupTutorial() {
+    function setupTutorial() {
         const container = document.getElementById('how-to-play-container');
         if (!container) return;
 
@@ -1274,7 +1312,6 @@
                              <div class="pt-2">
                                 <strong class="font-semibold text-slate-700">Letter Point Values:</strong>
                                 <div id="letter-values-container" class="flex flex-wrap gap-1 mt-1">
-                                    <!-- Letter value tiles are injected here by JS -->
                                 </div>
                             </div>
                         </div>
@@ -1341,7 +1378,6 @@
         
         updateTutorialView();
 
-        // Animation Logic
         const tutorialGridContainer = container.querySelector('#tutorial-grid-container');
         const tutorialCanvas = container.querySelector('#tutorial-line-canvas');
         const tutorialCtx = tutorialCanvas.getContext('2d');
@@ -1363,7 +1399,6 @@
                 };
             });
 
-            // Reset state for this animation run
             wordBuilder.innerHTML = '<span class="opacity-0">W</span>';
             tutorialTiles.forEach(t => t.classList.remove('highlight'));
             tutorialCtx.clearRect(0, 0, tutorialCanvas.width, tutorialCanvas.height);
@@ -1372,7 +1407,6 @@
 
             const pathPoints = [];
 
-            // Animate
             animationSequence.forEach((tileIndex, step) => {
                 setTimeout(() => {
                     tutorialTiles[tileIndex].classList.add('highlight');
@@ -1419,11 +1453,8 @@
         
         if(animationInterval) clearInterval(animationInterval);
         
-        // Delay the first animation run to ensure the modal's entry animation is complete
-        // and all elements have their final positions calculated.
         setTimeout(() => {
-            runAnimation(); // Run the animation for the first time
-            // Then set it on an interval to repeat
+            runAnimation();
             animationInterval = setInterval(runAnimation, 6000);
         }, 350);
     }
