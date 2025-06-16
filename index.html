@@ -403,10 +403,13 @@
         clearInterval(timerInterval);
         endGameModal.classList.add('hidden');
         statsModal.classList.add('hidden');
-        score = 0; 
+        score = 0;
         foundWords = [];
-        updateScoreDisplay(); 
-        const currentHighScore = document.getElementById('high-score').textContent || '0';
+        updateScoreDisplay();
+
+        const highScoreEl = document.getElementById('high-score');
+        const currentHighScore = highScoreEl ? highScoreEl.textContent : '0';
+
         topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${currentHighScore}</div>`;
         showWelcomeScreen();
         loadAssets();
