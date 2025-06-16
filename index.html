@@ -822,14 +822,66 @@
     function solveBoard(t){const e=new Set;for(let o=0;o<GRID_SIZE;o++)findWordsRecursive(o,"",[o],e,t);return e}
     function findWordsRecursive(t,e,o,l,n){if(e+=n[t],!dictionaryTrie||!dictionaryTrie.search(e,!0))return;e.length>=3&&dictionaryTrie.search(e)&&l.add(e);const[s,a]=[t%GRID_COLS,Math.floor(t/GRID_COLS)];for(let r=-1;r<=1;r++)for(let i=-1;i<=1;i++){if(0===r&&0===i)continue;const[c,d]=[s+r,a+i];const h=d*GRID_COLS+c;c>=0&&c<GRID_COLS&&d>=0&&d<GRID_COLS&&!o.includes(h)&&findWordsRecursive(h,e,[...o,h],l,n)}}
     
+    async function getPlayerDailyRank(finalScore) {
+        if (!db || !userId) return null;
+
+        const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+        const dailyRef = collection(db, `dailyScores/${today}/entries`);
+        const q = query(dailyRef);
+        const snapshot = await getDocs(q);
+
+        if (snapshot.empty) return 1; 
+
+        const dailyHighScores = new Map();
+        snapshot.forEach(doc => {
+            const { userId: entryUserId, name, score } = doc.data();
+            if(!entryUserId || !name || typeof score !== 'number') return;
+            if (!dailyHighScores.has(entryUserId) || score > dailyHighScores.get(entryUserId).score) {
+                dailyHighScores.set(entryUserId, { name, score, userId: entryUserId });
+            }
+        });
+        
+        // Ensure the current player's submitted score is in the list for ranking
+        if (!dailyHighScores.has(userId) || finalScore > dailyHighScores.get(userId).score) {
+             const playerDoc = await getDoc(doc(db, "players", userId));
+             const playerName = playerDoc.exists() ? playerDoc.data().name : 'Anonymous';
+             dailyHighScores.set(userId, { name: playerName, score: finalScore, userId: userId });
+        }
+
+        const highScoresList = [...dailyHighScores.values()].sort((a, b) => b.score - a.score);
+        const rankIndex = highScoresList.findIndex(entry => entry.userId === userId);
+
+        return rankIndex !== -1 ? rankIndex + 1 : null;
+    }
+
     async function showEndGameScreen() {
         gameContentEl.classList.add('blurred');
         endGameModal.classList.remove('hidden');
 
         const sortedWords = [...foundWords].sort((a,b)=>b.score-a.score);
-        const foundWordsHTML = sortedWords.length ? sortedWords.map(fw => `<div class="flex justify-between text-sm"><span class="font-semibold">${fw.word.toUpperCase()}</span><span>+${fw.score}</span></div>`).join('') : '<p class="text-sm text-slate-500 text-center">No words found.</p>';
+        const foundWordsHTML = sortedWords.length ? sortedWords.map(fw => `<div class="flex justify-between text-sm p-1 ${sortedWords.indexOf(fw) % 2 === 0 ? 'bg-slate-50' : ''} rounded"><span class="font-semibold">${fw.word.toUpperCase()}</span><span>+${fw.score}</span></div>`).join('') : '<p class="text-sm text-slate-500 text-center py-4">No words found.</p>';
 
-        let submitFormHTML = '';
+        endGameModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
+                <h2 class="text-3xl font-black text-green-500">Great Game!</h2>
+                <p class="text-slate-600 mb-2">Your final score is:</p>
+                <p class="text-6xl font-black text-slate-800 mb-4">${score}</p>
+                <div id="submission-container" class="h-12 flex items-center justify-center"></div>
+                <div class="text-left w-full mt-4">
+                    <h3 class="text-xl font-bold text-slate-700 mb-2 border-b pb-2">Your Words (${foundWords.length})</h3>
+                    <div class="space-y-1 max-h-48 overflow-y-auto pr-2">${foundWordsHTML}</div>
+                </div>
+                <div class="flex space-x-2 mt-6">
+                    <button id="endgame-leaderboard-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg flex-1">Leaderboard</button>
+                    <button id="play-again-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-lg shadow-lg transition-transform hover:scale-105 flex-1">Play Again</button>
+                </div>
+            </div>`;
+            
+        document.getElementById('play-again-button').onclick = resetGame;
+        document.getElementById('endgame-leaderboard-button').onclick = showLeaderboardModal;
+
+        const submissionContainer = document.getElementById('submission-container');
+        submissionContainer.innerHTML = `<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>`;
+
         let playerName = null;
         let showSubmitForm = true;
 
@@ -837,48 +889,34 @@
             const playerDoc = await getDoc(doc(db, "players", userId));
             if (playerDoc.exists() && playerDoc.data().name && playerDoc.data().name !== 'Anonymous') {
                 playerName = playerDoc.data().name;
-                await submitLeaderboardScore(playerName, score);
-                submitFormHTML = `<div class="flex items-center justify-center text-green-600 font-bold mb-4 pop-in"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span>Score submitted as <strong>${playerName}</strong>!</span></div>`;
                 showSubmitForm = false;
             }
         }
         
-        if (showSubmitForm) {
-            submitFormHTML = `<div id="submit-score-form"><div class="flex space-x-2 mb-4"><input type="text" id="player-name" placeholder="Enter your name" class="w-full px-3 py-2 border border-slate-300 rounded-lg" maxlength="10"><button id="submit-global-score" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Submit</button></div></div>`;
-        }
-
-        endGameModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter"><h2 class="text-3xl font-black text-green-500">Great Game!</h2><p class="text-slate-600 mb-2">Your final score is:</p><p class="text-6xl font-black text-slate-800 mb-2">${score}</p>${submitFormHTML}<div class="grid grid-cols-5 gap-4 mb-2 text-left"><div class="col-span-3"><h3 class="text-xl font-bold text-slate-700 mb-2 border-b pb-2">Leaderboard</h3><div class="flex p-1 bg-slate-100 rounded-lg mb-2"><button id="endgame-daily-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-xs transition-colors duration-200">Daily</button><button id="endgame-all-time-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-xs transition-colors duration-200">All-Time</button></div><div id="leaderboard-list-endgame-container" class="space-y-0.5 max-h-40 overflow-y-auto pr-2"><div id="endgame-leaderboard-loading" class="text-slate-500 p-2 text-center text-sm">Fetching...</div><ol id="leaderboard-list-endgame" class="space-y-1"></ol></div></div><div class="col-span-2"><h3 class="text-xl font-bold text-slate-700 mb-2 border-b pb-2">Your Words</h3><div class="space-y-1 max-h-44 overflow-y-auto pr-2">${foundWordsHTML}</div></div></div><button id="play-again-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-8 rounded-lg text-lg shadow-lg transition-transform hover:scale-105 mt-4">Play Again</button></div>`;
-        
-        const dailyTab = document.getElementById('endgame-daily-tab'); 
-        const allTimeTab = document.getElementById('endgame-all-time-tab');
-        const displayTab = (type) => { 
-            const listEl = document.getElementById('leaderboard-list-endgame'); 
-            const loadingEl = document.getElementById('endgame-leaderboard-loading'); 
-            if (!db) { listEl.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard is offline.</p>`; if (loadingEl) loadingEl.style.display = 'none'; return; } 
-            if(type === 'daily') { dailyTab.classList.add('active'); allTimeTab.classList.remove('active'); fetchAndDisplayLeaderboard('daily', listEl, loadingEl); } 
-            else { allTimeTab.classList.add('active'); dailyTab.classList.remove('active'); fetchAndDisplayLeaderboard('all-time', listEl, loadingEl); } 
-        };
-        
-        dailyTab.onclick = () => displayTab('daily'); 
-        allTimeTab.onclick = () => displayTab('all-time');
-        displayTab('daily'); 
-        
-        document.getElementById('play-again-button').onclick = resetGame;
-        
-        if (showSubmitForm) {
+        if (!showSubmitForm) {
+            await submitLeaderboardScore(playerName, score);
+            const rank = await getPlayerDailyRank(score);
+            let message = `Score submitted as <strong>${playerName}</strong>!`;
+            if (rank) {
+                message = `You placed <strong>#${rank}</strong> on today's leaderboard!`;
+            }
+            submissionContainer.innerHTML = `<div class="flex items-center justify-center text-green-600 font-bold pop-in"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span>${message}</span></div>`;
+        } else {
+            submissionContainer.innerHTML = `<div id="submit-score-form" class="w-full"><div class="flex space-x-2"><input type="text" id="player-name" placeholder="Enter your name" class="w-full px-3 py-2 border border-slate-300 rounded-lg" maxlength="10"><button id="submit-global-score" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Submit</button></div></div>`;
             const nameInput = document.getElementById('player-name'); 
             nameInput.value = localStorage.getItem('wordRushPlayerName') || '';
             document.getElementById('submit-global-score').onclick = async (e) => { 
                 const button = e.target; 
-                button.disabled = true; button.textContent = 'Submitting...'; 
+                button.disabled = true; button.textContent = '...'; 
                 const newPlayerName = nameInput.value.trim(); 
                 if (newPlayerName) { 
                     await submitLeaderboardScore(newPlayerName, score); 
-                    const form = document.getElementById('submit-score-form'); 
-                    if (form) { 
-                        form.innerHTML = `<div class="flex items-center justify-center text-green-600 font-bold mb-4 pop-in"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span>Score Submitted!</span></div>`; 
-                    } 
-                    const currentActiveTab = dailyTab.classList.contains('active') ? 'daily' : 'all-time'; displayTab(currentActiveTab); 
+                    const rank = await getPlayerDailyRank(score);
+                    let message = `Score submitted as <strong>${newPlayerName}</strong>!`;
+                    if (rank) {
+                       message = `You placed <strong>#${rank}</strong> on today's leaderboard!`;
+                    }
+                    submissionContainer.innerHTML = `<div class="flex items-center justify-center text-green-600 font-bold pop-in"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span>${message}</span></div>`;
                 } else { 
                     button.disabled = false; button.textContent = 'Submit'; 
                 } 
