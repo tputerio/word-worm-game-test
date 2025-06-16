@@ -163,7 +163,7 @@
     // --- Firebase SDKs ---
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, doc, getDoc, setDoc, updateDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, getDocs, query, where, orderBy, limit, doc, getDoc, setDoc, updateDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
     // --- Config ---
     const [GRID_SIZE, GRID_COLS, GAME_TIME] = [16, 4, 60];
@@ -370,12 +370,11 @@
                 updatePracticeUI();
             }, 1000);
         } else {
-            // High score is now set from Firebase, so we ensure the display is correct
-            const currentHighScore = document.getElementById('high-score').textContent || '0';
+            const highScoreEl = document.getElementById('high-score');
+            const currentHighScore = highScoreEl ? highScoreEl.textContent : '0';
             topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${currentHighScore}</div>`;
             timer = GAME_TIME; 
             updateTimerUI(); 
-            // Game count is now handled by Firebase, no need to update localStorage
             if (db) { const statsRef = doc(db, "gameStats", "stats"); updateDoc(statsRef, { playCount: increment(1) }).catch(console.warn); }
             timerInterval = setInterval(() => { timer--; updateTimerUI(); if (timer <= 0) endGame(); }, 1000);
         }
@@ -439,7 +438,7 @@
 
     function submitWord() {
         const word = selectedTiles.map(t => t.dataset.letter).join('');
-        if (word.length >= 3 && wordSet.has(word)) {
+        if (word.length >= 3 && wordSet.has(word) && !foundWords.some(fw => fw.word === word)) {
             let baseScore = 0; let wordMultiplier = 1; let timeBonus = 0;
             selectedTiles.forEach(tile => {
                 let letterScore = parseInt(tile.dataset.points);
@@ -825,36 +824,27 @@
     function solveBoard(t){const e=new Set;for(let o=0;o<GRID_SIZE;o++)findWordsRecursive(o,"",[o],e,t);return e}
     function findWordsRecursive(t,e,o,l,n){if(e+=n[t],!dictionaryTrie||!dictionaryTrie.search(e,!0))return;e.length>=3&&dictionaryTrie.search(e)&&l.add(e);const[s,a]=[t%GRID_COLS,Math.floor(t/GRID_COLS)];for(let r=-1;r<=1;r++)for(let i=-1;i<=1;i++){if(0===r&&0===i)continue;const[c,d]=[s+r,a+i];const h=d*GRID_COLS+c;c>=0&&c<GRID_COLS&&d>=0&&d<GRID_COLS&&!o.includes(h)&&findWordsRecursive(h,e,[...o,h],l,n)}}
     
-    async function getPlayerDailyRank(finalScore) {
+    async function getDailyRankForScore(finalScore) {
         if (!db || !userId) return null;
 
         const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
         const dailyRef = collection(db, `dailyScores/${today}/entries`);
-        const q = query(dailyRef);
-        const snapshot = await getDocs(q);
-
-        if (snapshot.empty) return 1; 
-
+        
+        // Get all unique player high scores for the day
+        const allScoresSnapshot = await getDocs(query(dailyRef));
         const dailyHighScores = new Map();
-        snapshot.forEach(doc => {
-            const { userId: entryUserId, name, score } = doc.data();
-            if(!entryUserId || !name || typeof score !== 'number') return;
-            if (!dailyHighScores.has(entryUserId) || score > dailyHighScores.get(entryUserId).score) {
-                dailyHighScores.set(entryUserId, { name, score, userId: entryUserId });
+        allScoresSnapshot.forEach(doc => {
+            const { userId: entryUserId, score } = doc.data();
+            if (entryUserId && typeof score === 'number') {
+                if (!dailyHighScores.has(entryUserId) || score > dailyHighScores.get(entryUserId)) {
+                    dailyHighScores.set(entryUserId, score);
+                }
             }
         });
-        
-        // Ensure the current player's submitted score is in the list for ranking
-        if (!dailyHighScores.has(userId) || finalScore > dailyHighScores.get(userId).score) {
-             const playerDoc = await getDoc(doc(db, "players", userId));
-             const playerName = playerDoc.exists() ? playerDoc.data().name : 'Anonymous';
-             dailyHighScores.set(userId, { name: playerName, score: finalScore, userId: userId });
-        }
 
-        const highScoresList = [...dailyHighScores.values()].sort((a, b) => b.score - a.score);
-        const rankIndex = highScoresList.findIndex(entry => entry.userId === userId);
-
-        return rankIndex !== -1 ? rankIndex + 1 : null;
+        const leaderboardScores = Array.from(dailyHighScores.values());
+        const higherScoresCount = leaderboardScores.filter(s => s > finalScore).length;
+        return higherScoresCount + 1;
     }
 
     async function showEndGameScreen() {
@@ -896,14 +886,33 @@
             }
         }
         
-        if (!showSubmitForm) {
-            await submitLeaderboardScore(playerName, score);
-            const rank = await getPlayerDailyRank(score);
-            let message = `Score submitted as <strong>${playerName}</strong>!`;
-            if (rank) {
-                message = `You placed <strong>#${rank}</strong> on today's leaderboard!`;
+        const processSubmission = async (name, currentScore) => {
+            const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            const dailyRef = collection(db, `dailyScores/${today}/entries`);
+            const userScoresQuery = query(dailyRef, where("userId", "==", userId));
+            const userScoresSnapshot = await getDocs(userScoresQuery);
+            let previousDailyHigh = 0;
+            userScoresSnapshot.forEach(doc => {
+                if (doc.data().score > previousDailyHigh) {
+                    previousDailyHigh = doc.data().score;
+                }
+            });
+
+            await submitLeaderboardScore(name, currentScore);
+
+            let message = `Score submitted as <strong>${name}</strong>!`;
+            if (currentScore > previousDailyHigh) {
+                const rank = await getDailyRankForScore(currentScore);
+                const leaderboardDisplayLimit = 10;
+                 if (rank && rank <= leaderboardDisplayLimit) {
+                    message = `You placed <strong>#${rank}</strong> on today's leaderboard!`;
+                }
             }
             submissionContainer.innerHTML = `<div class="flex items-center justify-center text-green-600 font-bold pop-in"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span>${message}</span></div>`;
+        };
+
+        if (!showSubmitForm) {
+            processSubmission(playerName, score);
         } else {
             submissionContainer.innerHTML = `<div id="submit-score-form" class="w-full"><div class="flex space-x-2"><input type="text" id="player-name" placeholder="Enter your name" class="w-full px-3 py-2 border border-slate-300 rounded-lg" maxlength="10"><button id="submit-global-score" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Submit</button></div></div>`;
             const nameInput = document.getElementById('player-name'); 
@@ -913,13 +922,7 @@
                 button.disabled = true; button.textContent = '...'; 
                 const newPlayerName = nameInput.value.trim(); 
                 if (newPlayerName) { 
-                    await submitLeaderboardScore(newPlayerName, score); 
-                    const rank = await getPlayerDailyRank(score);
-                    let message = `Score submitted as <strong>${newPlayerName}</strong>!`;
-                    if (rank) {
-                       message = `You placed <strong>#${rank}</strong> on today's leaderboard!`;
-                    }
-                    submissionContainer.innerHTML = `<div class="flex items-center justify-center text-green-600 font-bold pop-in"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span>${message}</span></div>`;
+                    await processSubmission(newPlayerName, score);
                 } else { 
                     button.disabled = false; button.textContent = 'Submit'; 
                 } 
