@@ -297,11 +297,13 @@
             const docSnap = await getDoc(playerDocRef);
             let highScore = 0;
             let gamesPlayed = 0;
+            let playerName = 'Anonymous';
 
             if (docSnap.exists()) {
                 const playerData = docSnap.data();
                 highScore = playerData.highScore || 0;
                 gamesPlayed = playerData.totalGamesPlayed || 0;
+                playerName = playerData.name || 'Anonymous';
             }
 
             // Update all relevant UI elements with data from Firebase
@@ -313,6 +315,11 @@
             
             const personalPlayCountEl = document.getElementById('personal-play-count');
             if (personalPlayCountEl) personalPlayCountEl.textContent = gamesPlayed;
+            
+            const playerNameDisplayEl = document.getElementById('player-name-display');
+            if (playerNameDisplayEl) {
+                playerNameDisplayEl.innerHTML = `Playing as <strong class="text-slate-500">${playerName}</strong>`;
+            }
 
         } catch (e) {
             console.error("Could not fetch player stats:", e);
@@ -604,13 +611,14 @@
                         Leaderboard <span class="text-xl ml-1">🌍</span>
                     </button>
                 </div>
-                <p class="text-xs text-slate-400 mt-2">You've played <span id="personal-play-count">0</span> games!</p>
-                <p class="text-xs text-slate-400"><span id="global-play-count">...</span> games played globally</p>
+                <p id="player-name-display" class="text-xs text-slate-400 mt-3"></p>
+                <p class="text-xs text-slate-400 mt-1">You've played <span id="personal-play-count">0</span> games!</p>
+                <p class="text-xs text-slate-400 mt-1"><span id="global-play-count">...</span> games played globally</p>
                 <p id="loading-error" class="text-red-500 mt-2 font-semibold"></p>
             </div>
         `;
         gameContentEl.classList.remove('blurred');
-        menuContainer.classList.remove('hidden'); 
+        menuContainer.classList.add('hidden'); 
         messageModal.classList.remove('hidden');
         setupTutorial();
         document.getElementById('play-game-mode-button').onclick = () => startGame(false);
