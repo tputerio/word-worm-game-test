@@ -107,14 +107,14 @@
 <body class="bg-slate-100 flex justify-center items-start md:items-center min-h-screen">
 
 <div id="game-container" class="w-full max-w-sm mx-auto p-4 relative">
-    <div id="menu-container" class="absolute top-4 right-4 z-30">
+    <div id="menu-container" class="absolute top-4 right-4 z-30 hidden">
         <button id="menu-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 p-2 rounded-full shadow-md transition-transform hover:scale-105">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
         </button>
         <div id="dropdown-menu" class="dropdown-menu hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl origin-top-right" style="transform: scale(0.95); opacity: 0;">
-            <a id="menu-home" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">🏠 Home</a>
-            <a id="menu-stats" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">📊 Your Stats</a>
-            <a id="menu-leaderboard" href="#" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">🌍 Leaderboard</a>
+            <a id="menu-home" href="#" class="flex items-center px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">🏠<span class="ml-3">Home</span></a>
+            <a id="menu-stats" href="#" class="flex items-center px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">📊<span class="ml-3">Your Stats</span></a>
+            <a id="menu-leaderboard" href="#" class="flex items-center px-4 py-2 text-sm text-slate-700 hover:bg-slate-100">🌍<span class="ml-3">Leaderboard</span></a>
         </div>
     </div>
 
@@ -178,6 +178,7 @@
     const LETTER_BAG_STRING = "EEEEEEEEEEEEAAAAAAAAAARRRRRRRRRRIIIIIIIIIOOOOOOOOTTTTTTTTNNNNNNNNSSSSSSSLLLLLLUUUUDDDDGGGBBCCMMPPFFHHVVWWYYKJXQZ";
 
     // --- DOM Elements ---
+    const gameContainer = document.getElementById('game-container');
     const gameContentEl = document.getElementById('game-content');
     const gridContainer = document.getElementById('grid-container');
     const grid = document.getElementById('grid'), lineCanvas = document.getElementById('line-canvas'), ctx = lineCanvas.getContext('2d');
@@ -221,9 +222,7 @@
         const playGameModeButton = document.getElementById('play-game-mode-button');
         const playPracticeButton = document.getElementById('play-practice-button');
         const loadingErrorEl = document.getElementById('loading-error');
-        const showLeaderboardButton = document.getElementById('show-leaderboard-button');
-        const showStatsButton = document.getElementById('show-stats-button');
-
+        
         if (playGameModeButton) {
             playGameModeButton.disabled = true;
             playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
@@ -263,10 +262,8 @@
                 if (user) {
                     userId = user.uid;
                     console.log("Firebase connected. User ID:", userId);
-                    if (showLeaderboardButton) showLeaderboardButton.disabled = false;
-                    if (showStatsButton) showStatsButton.disabled = false;
                     fetchGlobalStats();
-                    fetchPlayerStats(userId); // Fetch player-specific stats
+                    fetchPlayerStats(userId);
                 } else {
                     signInAnonymously(auth).catch(err => console.error("Anonymous sign-in failed:", err));
                 }
@@ -276,8 +273,6 @@
             console.warn("Firebase features failed to load, continuing in offline mode:", firebaseError);
             const globalPlayCountSpan = document.getElementById('global-play-count');
             if (globalPlayCountSpan) globalPlayCountSpan.textContent = "N/A";
-            if (showLeaderboardButton) { showLeaderboardButton.disabled = true; showLeaderboardButton.classList.add('opacity-50'); }
-            if (showStatsButton) { showStatsButton.disabled = true; showStatsButton.classList.add('opacity-50'); }
         }
     }
 
@@ -314,7 +309,6 @@
                 playerName = playerData.name && playerData.name !== 'Anonymous' ? playerData.name : 'Anonymous';
             }
 
-            // Update all relevant UI elements with data from Firebase
             const highScoreEl = document.getElementById('high-score');
             if (highScoreEl) highScoreEl.textContent = highScore;
 
@@ -369,6 +363,11 @@
         foundWords = []; 
         updateScoreDisplay(); 
         
+        gameContainer.appendChild(menuContainer);
+        menuContainer.className = 'absolute top-4 right-4 z-30';
+        document.getElementById('menu-home').style.display = 'flex';
+        menuContainer.classList.remove('hidden');
+
         if (isPracticeMode) {
             practiceTimeElapsed = 0;
             topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-blue-500 uppercase tracking-wider">Pace</div><div id="pace-score" class="text-3xl font-black text-blue-400">0</div>`;
@@ -387,7 +386,6 @@
             timerInterval = setInterval(() => { timer--; updateTimerUI(); if (timer <= 0) endGame(); }, 1000);
         }
 
-        menuContainer.classList.remove('hidden');
         gameContentEl.classList.remove('blurred');
         messageModal.classList.add('hidden');
         createGrid();
@@ -398,7 +396,7 @@
         clearInterval(timerInterval);
         grid.style.pointerEvents = 'none';
         menuContainer.classList.add('hidden');
-
+        
         if (!isPracticeMode) { 
             saveGameHistoryAndStats(score);
         } else {
@@ -446,7 +444,7 @@
 
     function submitWord() {
         const word = selectedTiles.map(t => t.dataset.letter).join('');
-        if (word.length >= 3 && wordSet.has(word) && !foundWords.some(fw => fw.word === word)) {
+        if (word.length >= 3 && wordSet.has(word)) {
             let baseScore = 0; let wordMultiplier = 1; let timeBonus = 0;
             selectedTiles.forEach(tile => {
                 let letterScore = parseInt(tile.dataset.points);
@@ -610,16 +608,13 @@
                     <button id="play-practice-button" class="bg-blue-500 hover:bg-blue-600 flex-1 text-white font-bold py-2 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 mb-3 sm:mb-0 disabled:bg-slate-400 disabled:cursor-wait">...</button>
                     <button id="play-game-mode-button" class="bg-green-500 hover:bg-green-600 flex-1 text-white font-bold py-2 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-wait">...</button>
                 </div>
-                <div class="border-t border-slate-200 pt-3">
-                    <div class="text-center mb-3">
-                        <div class="font-bold text-slate-600 text-base">
-                            <span class="text-xl mr-1">🏆</span>Your High: <span id="welcome-high-score">0</span>
-                        </div>
+                <div class="flex justify-between items-center border-t border-slate-200 pt-3">
+                    <div class="font-bold text-slate-600 text-base flex items-center">
+                        <span class="text-xl mr-1">🏆</span>Your High: <span id="welcome-high-score">0</span>
                     </div>
-                    <div class="flex space-x-2">
-                        <button id="show-stats-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 px-4 rounded-lg flex-1 disabled:opacity-50 disabled:cursor-not-allowed">📊 My Stats</button>
-                        <button id="show-leaderboard-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 px-4 rounded-lg flex-1 disabled:opacity-50 disabled:cursor-not-allowed">🌍 Leaderboard</button>
-                    </div>
+                    <button id="show-leaderboard-button" class="font-bold text-green-500 hover:text-green-600 text-base flex items-center" disabled>
+                        Leaderboard <span class="text-xl ml-1">🌍</span>
+                    </button>
                 </div>
                 <p id="player-stats-display" class="text-xs text-slate-400 mt-3"></p>
                 <p class="text-xs text-slate-400 mt-1"><span id="global-play-count">...</span> games played globally</p>
@@ -627,13 +622,15 @@
             </div>
         `;
         gameContentEl.classList.remove('blurred');
-        menuContainer.classList.add('hidden'); 
         messageModal.classList.remove('hidden');
         setupTutorial();
+
+        menuContainer.classList.add('hidden');
+        
         document.getElementById('play-game-mode-button').onclick = () => startGame(false);
         document.getElementById('play-practice-button').onclick = () => startGame(true);
-        document.getElementById('show-leaderboard-button').onclick = showLeaderboardModal;
-        document.getElementById('show-stats-button').onclick = showStatsModal;
+        const showLeaderboardButton = document.getElementById('show-leaderboard-button');
+        if(showLeaderboardButton) showLeaderboardButton.onclick = showLeaderboardModal;
     }
 
     async function showLeaderboardModal() {
@@ -871,7 +868,10 @@
                 <p class="text-6xl font-black text-slate-800 mb-4">${score}</p>
                 <div id="submission-container" class="h-12 flex items-center justify-center"></div>
                 <div class="text-left w-full mt-4">
-                    <h3 class="text-xl font-bold text-slate-700 mb-2 border-b pb-2">Your Words (${foundWords.length})</h3>
+                    <div class="flex justify-between items-baseline mb-2 border-b pb-2">
+                         <h3 class="text-xl font-bold text-slate-700">Your Words (${foundWords.length})</h3>
+                         <button id="endgame-stats-button" class="flex items-center text-sm font-bold text-blue-500 hover:text-blue-600">📊<span class="ml-1">Your Stats</span></button>
+                    </div>
                     <div class="space-y-1 max-h-48 overflow-y-auto pr-2">${foundWordsHTML}</div>
                 </div>
                 <div class="flex space-x-2 mt-6">
@@ -882,6 +882,7 @@
             
         document.getElementById('play-again-button').onclick = resetGame;
         document.getElementById('endgame-leaderboard-button').onclick = showLeaderboardModal;
+        document.getElementById('endgame-stats-button').onclick = showStatsModal;
 
         const submissionContainer = document.getElementById('submission-container');
         submissionContainer.innerHTML = `<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>`;
@@ -944,7 +945,6 @@
     function setupTutorial() {
         const container = document.getElementById('how-to-play-container'); if (!container) return;
         container.innerHTML = `<div class="relative w-full h-full flex flex-col">
-            <h3 class="text-md font-bold text-slate-700 text-center mb-2">How to Play</h3>
             <div id="tutorial-content" class="flex-grow overflow-y-auto pr-2">
                 <div class="mb-4 flex flex-col justify-center items-center">
                     <div id="tutorial-word-builder" class="h-8 mb-2 w-32 bg-white rounded-md flex items-center justify-center space-x-0.5 shadow-inner"><span class="opacity-0">W</span></div>
