@@ -350,9 +350,8 @@
         menuContainer.classList.remove('hidden');
         gameContentEl.classList.remove('blurred');
         messageModal.classList.add('hidden');
-        if (!grid.hasChildNodes()) {
-            createGrid();
-        }
+        // FIX: Always create a new grid when a game starts
+        createGrid();
         grid.style.pointerEvents = 'auto'; 
     }
     
@@ -404,7 +403,8 @@
 
     function submitWord() {
         const word = selectedTiles.map(t => t.dataset.letter).join('');
-        if (word.length >= 3 && wordSet.has(word) && !foundWords.some(fw => fw.word === word)) {
+        // FIX: Removed the check for foundWords to allow duplicate submissions
+        if (word.length >= 3 && wordSet.has(word)) {
             let baseScore = 0; let wordMultiplier = 1; let timeBonus = 0;
             selectedTiles.forEach(tile => {
                 let letterScore = parseInt(tile.dataset.points);
@@ -469,17 +469,25 @@
             await runTransaction(db, async (transaction) => {
                 const playerDoc = await transaction.get(playerDocRef);
                 const oldData = playerDoc.exists() ? playerDoc.data() : {};
+                
                 const newHighScore = Math.max(finalScore, oldData.highScore || 0);
+                
+                const currentBestWord = oldData.bestWord || { score: 0, word: ''};
+                const gameBestWord = foundWords.length > 0 ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { score: 0 }) : { score: 0, word: ''};
+                const newBestWord = gameBestWord.score > currentBestWord.score ? { word: gameBestWord.word, score: gameBestWord.score } : currentBestWord;
 
                 const updateData = {
                     totalGamesPlayed: increment(1),
+                    totalPoints: increment(finalScore),
                     lastPlayed: serverTimestamp(),
-                    highScore: newHighScore
+                    highScore: newHighScore,
+                    bestWord: newBestWord
                 };
                 
                 if (playerDoc.exists()) {
                     transaction.update(playerDocRef, updateData);
                 } else {
+                    updateData.name = localStorage.getItem('wordRushPlayerName') || 'Anonymous';
                     transaction.set(playerDocRef, updateData);
                 }
             });
@@ -496,10 +504,16 @@
         if (!name || scoreToSave === 0 || !db || !userId || isPracticeMode) return; 
         localStorage.setItem('wordRushPlayerName', name);
         await setDoc(doc(db, "players", userId), { name: name }, { merge: true });
-        await addDoc(collection(db, "scores"), { name: name, score: scoreToSave, timestamp: serverTimestamp(), userId: userId });
+
+        const gameBestWord = foundWords.length > 0 ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { score: 0 }) : null;
+
         const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
         const dailyEntriesRef = collection(db, `dailyScores/${today}/entries`);
-        try { await addDoc(dailyEntriesRef, { name: name, score: scoreToSave, userId: userId, timestamp: serverTimestamp() }); } catch (e) { console.error("Failed to submit daily score:", e); }
+        const dailyData = { name, score: scoreToSave, userId, timestamp: serverTimestamp() };
+        if (gameBestWord) {
+            dailyData.bestWord = { word: gameBestWord.word, score: gameBestWord.score };
+        }
+        try { await addDoc(dailyEntriesRef, dailyData); } catch (e) { console.error("Failed to submit daily score:", e); }
     }
     
     function updateScoreDisplay() {
@@ -567,7 +581,7 @@
                 <p id="loading-error" class="text-red-500 mt-2 font-semibold"></p>
             </div>
         `;
-        gameContentEl.classList.add('blurred');
+        gameContentEl.classList.remove('blurred');
         menuContainer.classList.remove('hidden'); 
         messageModal.classList.remove('hidden');
         setupTutorial();
@@ -667,55 +681,80 @@
         if (!db) { listElement.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard is offline.</p>`; if (loadingElement) loadingElement.style.display = 'none'; return; }
 
         try {
-            let scoresRef, q;
-            if (type === 'daily') {
-                const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-                scoresRef = collection(db, `dailyScores/${today}/entries`);
-                q = query(scoresRef, orderBy("score", "desc"));
-            } else { 
-                scoresRef = collection(db, 'players');
-                q = query(scoresRef, orderBy('highScore', 'desc'), limit(100));
-            }
-            
-            const snapshot = await getDocs(q);
-            
-            const playerHighScores = new Map();
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                const score = type === 'daily' ? data.score : data.highScore;
-                const name = data.name;
-                const docUserId = type === 'daily' ? data.userId : doc.id;
-
-                if (docUserId && name && typeof score === 'number') {
-                    if (!playerHighScores.has(docUserId) || score > playerHighScores.get(docUserId).score) {
-                        playerHighScores.set(docUserId, { name, score });
+            let html = '';
+            if (type === 'all-time') {
+                const categories = [
+                    { field: 'highScore', title: '🏆 High Score' },
+                    { field: 'totalPoints', title: '📈 Total Points' },
+                    { field: 'bestWord.score', title: '✨ Best Word' }
+                ];
+                for (const cat of categories) {
+                    const q = query(collection(db, 'players'), orderBy(cat.field, 'desc'), limit(10));
+                    const snapshot = await getDocs(q);
+                    html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center">${cat.title}</h3>`;
+                    if (snapshot.empty) {
+                        html += `<p class="text-slate-500 text-center text-sm p-2">No players in this category yet.</p>`;
+                    } else {
+                        const scores = snapshot.docs.map((doc, i) => {
+                            const data = doc.data();
+                            let value;
+                            if (cat.field === 'bestWord.score') {
+                                value = data.bestWord && data.bestWord.word ? `${data.bestWord.word} (${data.bestWord.score})` : 'N/A';
+                            } else {
+                                value = data[cat.field]?.toLocaleString() || 0;
+                            }
+                            return `<li class="flex items-center p-2 rounded-lg ${i % 2 === 0 ? 'bg-slate-50' : ''}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${data.name || 'Anonymous'}</span><span class="font-bold text-green-500">${value}</span></li>`;
+                        });
+                        html += `<ol class="space-y-1">${scores.join('')}</ol>`;
                     }
                 }
-            });
+                listElement.innerHTML = html;
 
-            const allBestScores = Array.from(playerHighScores.values()).sort((a, b) => b.score - a.score);
+            } else { // Daily
+                const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+                const dailyRef = collection(db, `dailyScores/${today}/entries`);
+                const q = query(dailyRef, orderBy("timestamp", "desc"));
+                const snapshot = await getDocs(q);
 
-            const gold = allBestScores.filter(s => s.score >= 1000);
-            const silver = allBestScores.filter(s => s.score >= 500 && s.score < 1000);
-            const bronze = allBestScores.filter(s => s.score < 500);
+                const dailyHighScores = new Map();
+                const dailyTotalScores = new Map();
+                const dailyBestWords = new Map();
 
-            let leaderboardHTML = '';
-            const createTierHTML = (title, emoji, scores) => {
-                let html = `<h3 class="text-base font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center">${emoji} <span class="ml-2">${title}</span></h3>`;
-                if (scores.length === 0) {
-                    html += `<p class="text-slate-500 text-center text-sm p-2">No players in this tier yet.</p>`;
-                } else {
-                    html += `<ol class="space-y-1">${scores.slice(0, 10).map((s, i) => `<li class="flex items-center p-2 rounded-lg ${i % 2 === 0 ? 'bg-slate-50' : ''}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${s.name}</span><span class="font-bold text-green-500">${s.score}</span></li>`).join('')}</ol>`;
+                snapshot.forEach(doc => {
+                    const { userId, name, score, bestWord } = doc.data();
+                    if(!userId || !name || typeof score !== 'number') return;
+                    
+                    if (!dailyHighScores.has(userId) || score > dailyHighScores.get(userId).score) {
+                        dailyHighScores.set(userId, { name, score });
+                    }
+                    dailyTotalScores.set(userId, { name, score: (dailyTotalScores.get(userId)?.score || 0) + score });
+                    if (bestWord && typeof bestWord.score === 'number') {
+                         if (!dailyBestWords.has(userId) || bestWord.score > dailyBestWords.get(userId).score) {
+                            dailyBestWords.set(userId, { name, bestWord });
+                        }
+                    }
+                });
+
+                const highScoresList = [...dailyHighScores.values()].sort((a,b) => b.score - a.score);
+                const totalScoresList = [...dailyTotalScores.values()].sort((a,b) => b.score - a.score);
+                const bestWordsList = [...dailyBestWords.values()].sort((a,b) => b.bestWord.score - a.bestWord.score);
+                
+                const createCategoryHTML = (title, emoji, scores, formatter) => {
+                    let html = `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center">${emoji} <span class="ml-2">${title}</span></h3>`;
+                    if(scores.length === 0) {
+                         html += `<p class="text-slate-500 text-center text-sm p-2">No scores yet today.</p>`;
+                    } else {
+                         html += `<ol class="space-y-1">${scores.slice(0, 10).map((s, i) => `<li class="flex items-center p-2 rounded-lg ${i % 2 === 0 ? 'bg-slate-50' : ''}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${s.name}</span><span class="font-bold text-green-500">${formatter(s)}</span></li>`).join('')}</ol>`;
+                    }
+                    return html;
                 }
-                return html;
-            };
 
-            leaderboardHTML += createTierHTML('Word Worms (1000+)', '🥇', gold);
-            leaderboardHTML += createTierHTML('Book Worms (500-999)', '🥈', silver);
-            leaderboardHTML += createTierHTML('Inch Worms (<500)', '🥉', bronze);
+                html += createCategoryHTML('High Score', '🏆', highScoresList, (s) => s.score);
+                html += createCategoryHTML('Total Points', '📈', totalScoresList, (s) => s.score.toLocaleString());
+                html += createCategoryHTML('Best Word', '✨', bestWordsList, (s) => `${s.bestWord.word} (${s.bestWord.score})`);
 
-            listElement.innerHTML = leaderboardHTML;
-            
+                listElement.innerHTML = html;
+            }
         } catch (e) {
             console.error(`Could not fetch ${type} leaderboard`, e);
             listElement.innerHTML = `<p class="text-red-500 text-center p-4">Could not load leaderboard.</p>`;
