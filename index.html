@@ -63,17 +63,17 @@
         
         /* Tutorial Animation */
         .tutorial-tile.highlight {
-             background: linear-gradient(45deg, #60a5fa, #3b82f6);
-             color: white;
-             transform: scale(1.08);
-             border-color: #2563eb;
+            background: linear-gradient(45deg, #60a5fa, #3b82f6);
+            color: white;
+            transform: scale(1.08);
+            border-color: #2563eb;
         }
         @keyframes fly-up-tutorial {
             0% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
             100% { transform: translate(-50%, -200%) scale(0.5); opacity: 0; }
         }
         #tutorial-slider.is-snapping {
-             transition: transform 0.3s ease-out;
+            transition: transform 0.3s ease-out;
         }
 
         .particle {
@@ -117,7 +117,7 @@
         <div class="flex items-center justify-between mb-3">
             <div class="flex-grow flex items-center justify-center">
                 <h1 class="text-3xl font-black text-slate-800 tracking-tighter flex items-center justify-center">
-                     <img src="https://raw.githubusercontent.com/tputerio/word-rush-game/main/word-worm-logo.png" alt="Word Worm Logo" class="w-9 h-9 mr-2">
+                    <img src="https://raw.githubusercontent.com/tputerio/word-rush-game/main/word-worm-logo.png" alt="Word Worm Logo" class="w-9 h-9 mr-2">
                     <span>Word Worm</span>
                 </h1>
             </div>
@@ -151,7 +151,7 @@
     <div id="end-game-modal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
         <div id="end-game-modal-content" class="w-full max-w-sm mx-auto"></div>
     </div>
-     <div id="leaderboard-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+    <div id="leaderboard-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
         <div id="leaderboard-modal-content" class="w-full max-w-xs mx-auto"></div>
     </div>
     <div id="stats-modal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[70] p-4 overflow-y-auto">
@@ -207,7 +207,7 @@
     // --- Init ---
     function main() {
         setupEventListeners();
-        topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${getLocalHighScore()}</div>`;
+        topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">0</div>`;
         showWelcomeScreen();
         loadAssets(); 
     }
@@ -216,7 +216,6 @@
         const playGameModeButton = document.getElementById('play-game-mode-button');
         const playPracticeButton = document.getElementById('play-practice-button');
         const loadingErrorEl = document.getElementById('loading-error');
-        const globalPlayCountSpan = document.getElementById('global-play-count');
         const showLeaderboardButton = document.getElementById('show-leaderboard-button');
 
         if (playGameModeButton) {
@@ -260,6 +259,7 @@
                     console.log("Firebase connected. User ID:", userId);
                     if (showLeaderboardButton) showLeaderboardButton.disabled = false;
                     fetchGlobalStats();
+                    fetchPlayerStats(userId); // Fetch player-specific stats
                 } else {
                     signInAnonymously(auth).catch(err => console.error("Anonymous sign-in failed:", err));
                 }
@@ -268,7 +268,6 @@
         } catch (firebaseError) {
             console.warn("Firebase features failed to load, continuing in offline mode:", firebaseError);
             const globalPlayCountSpan = document.getElementById('global-play-count');
-            const showLeaderboardButton = document.getElementById('show-leaderboard-button');
             if (globalPlayCountSpan) globalPlayCountSpan.textContent = "N/A";
             if (showLeaderboardButton) { showLeaderboardButton.disabled = true; showLeaderboardButton.classList.add('opacity-50'); }
         }
@@ -283,11 +282,40 @@
             if (docSnap.exists()) {
                 globalPlayCountSpan.textContent = docSnap.data().playCount.toLocaleString();
             } else {
-                 globalPlayCountSpan.textContent = "0";
+                globalPlayCountSpan.textContent = "0";
             }
         } catch(e) {
-             console.warn("Could not fetch global stats:", e);
-             if (globalPlayCountSpan) globalPlayCountSpan.textContent = "N/A";
+            console.warn("Could not fetch global stats:", e);
+            if (globalPlayCountSpan) globalPlayCountSpan.textContent = "N/A";
+        }
+    }
+
+    async function fetchPlayerStats(uid) {
+        if (!db) return;
+        const playerDocRef = doc(db, "players", uid);
+        try {
+            const docSnap = await getDoc(playerDocRef);
+            let highScore = 0;
+            let gamesPlayed = 0;
+
+            if (docSnap.exists()) {
+                const playerData = docSnap.data();
+                highScore = playerData.highScore || 0;
+                gamesPlayed = playerData.totalGamesPlayed || 0;
+            }
+
+            // Update all relevant UI elements with data from Firebase
+            const highScoreEl = document.getElementById('high-score');
+            if (highScoreEl) highScoreEl.textContent = highScore;
+
+            const welcomeHighScoreEl = document.getElementById('welcome-high-score');
+            if (welcomeHighScoreEl) welcomeHighScoreEl.textContent = highScore;
+            
+            const personalPlayCountEl = document.getElementById('personal-play-count');
+            if (personalPlayCountEl) personalPlayCountEl.textContent = gamesPlayed;
+
+        } catch (e) {
+            console.error("Could not fetch player stats:", e);
         }
     }
     
@@ -338,11 +366,12 @@
                 updatePracticeUI();
             }, 1000);
         } else {
-            topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${getLocalHighScore()}</div>`;
+            // High score is now set from Firebase, so we ensure the display is correct
+            const currentHighScore = document.getElementById('high-score').textContent || '0';
+            topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${currentHighScore}</div>`;
             timer = GAME_TIME; 
             updateTimerUI(); 
-            let personalPlayCount = parseInt(localStorage.getItem('wordRushPersonalPlayCount')) || 0;
-            localStorage.setItem('wordRushPersonalPlayCount', personalPlayCount + 1);
+            // Game count is now handled by Firebase, no need to update localStorage
             if (db) { const statsRef = doc(db, "gameStats", "stats"); updateDoc(statsRef, { playCount: increment(1) }).catch(console.warn); }
             timerInterval = setInterval(() => { timer--; updateTimerUI(); if (timer <= 0) endGame(); }, 1000);
         }
@@ -373,7 +402,8 @@
         score = 0; 
         foundWords = [];
         updateScoreDisplay(); 
-        topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${getLocalHighScore()}</div>`;
+        const currentHighScore = document.getElementById('high-score').textContent || '0';
+        topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${currentHighScore}</div>`;
         showWelcomeScreen();
         loadAssets();
     }
@@ -449,9 +479,6 @@
     
     function clearSelection() { selectedTiles.forEach(t => t.classList.remove('selected')); selectedTiles = []; updateCurrentWord(); drawLines(); }
     
-    function saveLocalHighScore(s) { const currentHighScore = getLocalHighScore(); if (s > currentHighScore) { localStorage.setItem('wordRushHighScore', s); } }
-    function getLocalHighScore() { return parseInt(localStorage.getItem('wordRushHighScore')) || 0; }
-    
     async function saveGameHistoryAndStats(finalScore) {
         if (!db || !userId || isPracticeMode) {
             if (!isPracticeMode) showEndGameScreen();
@@ -519,9 +546,12 @@
         scoreEl.classList.add('animate-pulse');
         scoreEl.addEventListener('animationend', () => scoreEl.classList.remove('animate-pulse'), { once: true });
         if (!isPracticeMode) {
-             const highScoreEl = document.getElementById('high-score');
-             const currentHighScore = getLocalHighScore();
-             if (highScoreEl && score > currentHighScore) { highScoreEl.textContent = score; highScoreEl.classList.add('text-yellow-500', 'animate-pulse'); }
+            const highScoreEl = document.getElementById('high-score');
+            const currentHighScore = parseInt(highScoreEl.textContent) || 0;
+            if (score > currentHighScore) { 
+                highScoreEl.textContent = score; 
+                highScoreEl.classList.add('text-yellow-500', 'animate-pulse');
+            }
         } else {
             updatePracticeUI();
         }
@@ -545,7 +575,7 @@
         const pace = Math.round((score / Math.max(1, practiceTimeElapsed)) * 60);
         const paceScoreEl = document.getElementById('pace-score');
         if (paceScoreEl) {
-             paceScoreEl.textContent = isNaN(pace) ? 0 : pace;
+            paceScoreEl.textContent = isNaN(pace) ? 0 : pace;
         }
     }
 
@@ -583,8 +613,6 @@
         menuContainer.classList.remove('hidden'); 
         messageModal.classList.remove('hidden');
         setupTutorial();
-        document.getElementById('welcome-high-score').textContent = getLocalHighScore();
-        document.getElementById('personal-play-count').textContent = localStorage.getItem('wordRushPersonalPlayCount') || 0;
         document.getElementById('play-game-mode-button').onclick = () => startGame(false);
         document.getElementById('play-practice-button').onclick = () => startGame(true);
         document.getElementById('show-leaderboard-button').onclick = showLeaderboardModal;
@@ -730,7 +758,7 @@
                     }
                     dailyTotalScores.set(userId, { name, score: (dailyTotalScores.get(userId)?.score || 0) + score });
                     if (bestWord && typeof bestWord.score === 'number') {
-                         if (!dailyBestWords.has(userId) || bestWord.score > dailyBestWords.get(userId).score) {
+                        if (!dailyBestWords.has(userId) || bestWord.score > dailyBestWords.get(userId).score) {
                             dailyBestWords.set(userId, { name, bestWord });
                         }
                     }
@@ -743,9 +771,9 @@
                 const createCategoryHTML = (title, emoji, scores, formatter) => {
                     let html = `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center">${emoji} <span class="ml-2">${title}</span></h3>`;
                     if(scores.length === 0) {
-                         html += `<p class="text-slate-500 text-center text-sm p-2">No scores yet today.</p>`;
+                        html += `<p class="text-slate-500 text-center text-sm p-2">No scores yet today.</p>`;
                     } else {
-                         html += `<ol class="space-y-1">${scores.slice(0, 10).map((s, i) => `<li class="flex items-center p-2 rounded-lg ${i % 2 === 0 ? 'bg-slate-50' : ''}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${s.name}</span><span class="font-bold text-green-500">${formatter(s)}</span></li>`).join('')}</ol>`;
+                        html += `<ol class="space-y-1">${scores.slice(0, 10).map((s, i) => `<li class="flex items-center p-2 rounded-lg ${i % 2 === 0 ? 'bg-slate-50' : ''}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${s.name}</span><span class="font-bold text-green-500">${formatter(s)}</span></li>`).join('')}</ol>`;
                     }
                     return html;
                 }
