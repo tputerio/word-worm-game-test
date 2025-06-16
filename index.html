@@ -350,7 +350,6 @@
         menuContainer.classList.remove('hidden');
         gameContentEl.classList.remove('blurred');
         messageModal.classList.add('hidden');
-        // FIX: Always create a new grid when a game starts
         createGrid();
         grid.style.pointerEvents = 'auto'; 
     }
@@ -403,7 +402,6 @@
 
     function submitWord() {
         const word = selectedTiles.map(t => t.dataset.letter).join('');
-        // FIX: Removed the check for foundWords to allow duplicate submissions
         if (word.length >= 3 && wordSet.has(word)) {
             let baseScore = 0; let wordMultiplier = 1; let timeBonus = 0;
             selectedTiles.forEach(tile => {
@@ -692,10 +690,13 @@
                     const q = query(collection(db, 'players'), orderBy(cat.field, 'desc'), limit(10));
                     const snapshot = await getDocs(q);
                     html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center">${cat.title}</h3>`;
-                    if (snapshot.empty) {
+                    
+                    const docsWithNames = snapshot.docs.filter(doc => doc.data().name && doc.data().name !== 'Anonymous');
+
+                    if (docsWithNames.length === 0) {
                         html += `<p class="text-slate-500 text-center text-sm p-2">No players in this category yet.</p>`;
                     } else {
-                        const scores = snapshot.docs.map((doc, i) => {
+                        const scores = docsWithNames.map((doc, i) => {
                             const data = doc.data();
                             let value;
                             if (cat.field === 'bestWord.score') {
@@ -703,7 +704,7 @@
                             } else {
                                 value = data[cat.field]?.toLocaleString() || 0;
                             }
-                            return `<li class="flex items-center p-2 rounded-lg ${i % 2 === 0 ? 'bg-slate-50' : ''}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${data.name || 'Anonymous'}</span><span class="font-bold text-green-500">${value}</span></li>`;
+                            return `<li class="flex items-center p-2 rounded-lg ${i % 2 === 0 ? 'bg-slate-50' : ''}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${data.name}</span><span class="font-bold text-green-500">${value}</span></li>`;
                         });
                         html += `<ol class="space-y-1">${scores.join('')}</ol>`;
                     }
