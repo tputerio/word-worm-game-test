@@ -110,8 +110,8 @@
     <div id="menu-container" class="absolute top-4 right-4 z-30 hidden">
         <button id="menu-button" class="text-slate-700 p-2 transition-transform hover:scale-105">
              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-            </svg>
+                 <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+             </svg>
         </button>
         <div id="dropdown-menu" class="dropdown-menu hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl origin-top-right" style="transform: scale(0.95); opacity: 0;">
             <a id="menu-home" href="#" class="flex items-center px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg><span class="ml-3">Home</span></a>
@@ -231,56 +231,75 @@
         const playGameModeButton = document.getElementById('play-game-mode-button');
         const playPracticeButton = document.getElementById('play-practice-button');
         const loadingErrorEl = document.getElementById('loading-error');
+        const globalPlayCountSpan = document.getElementById('global-play-count');
+
+        // --- Task 1: Initialize Firebase and fetch user data (runs in the background) ---
+        const initializeFirebase = async () => {
+            try {
+                const firebaseConfig = { apiKey: "AIzaSyBa2DPRjwaI-G5mz-OmHVXEDJ4_MzBAZgA", authDomain: "word-rush-game-9010a.firebaseapp.com", projectId: "word-rush-game-9010a", storageBucket: "word-rush-game-9010a.appspot.com", messagingSenderId: "551838491871", appId: "1:551838491871:web:757325be04daab9289b56a" };
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        console.log("Firebase connected. User ID:", userId);
+                        // Fetch stats in the background. Don't need to wait for them.
+                        Promise.all([fetchGlobalStats(), fetchPlayerStats(userId)]).then(() => {
+                           document.getElementById('show-leaderboard-button').disabled = false;
+                        });
+                    } else {
+                        signInAnonymously(auth).catch(err => {
+                            console.error("Anonymous sign-in failed:", err);
+                        });
+                    }
+                });
+            } catch (firebaseError) {
+                console.warn("Firebase features failed to load, continuing in offline mode:", firebaseError);
+                if (globalPlayCountSpan) globalPlayCountSpan.textContent = "N/A";
+            }
+        };
         
-        if (playGameModeButton) {
-            playGameModeButton.disabled = true;
-            playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
-        }
-        if (playPracticeButton) {
-            playPracticeButton.disabled = true;
-            playPracticeButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
-        }
-
-        try {
-            const res = await fetch('https://raw.githubusercontent.com/tputerio/word-rush-game/main/dictionary.json');            if (!res.ok) throw new Error(`Dictionary download failed: ${res.statusText}`);
-            const trieData = await res.json();
-            dictionaryTrie = new Trie(trieData);
-            console.log("Pre-built dictionary loaded. Game is playable.");
+        // --- Task 2: Load the dictionary (and enable buttons on success) ---
+        // This is the "blocking" task for gameplay readiness.
+        const loadDictionaryAndEnableButtons = async () => {
+            // Set initial loading state for buttons
+            if (playGameModeButton) {
+                playGameModeButton.disabled = true;
+                playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
+            }
+            if (playPracticeButton) {
+                playPracticeButton.disabled = true;
+                playPracticeButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
+            }
             
-            if (playGameModeButton) { playGameModeButton.disabled = false; playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg><span>Play</span></div>`; }
-            if (playPracticeButton) { playPracticeButton.disabled = false; playPracticeButton.innerHTML = `<div class="flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg><span>Practice</span></div>`; }
-
-        } catch (e) {
-            console.error("Critical Asset loading failed (Dictionary):", e);
-            if (loadingErrorEl) loadingErrorEl.textContent = "Error: Could not load game dictionary.";
-            if (playGameModeButton) { playGameModeButton.innerHTML = `<span>Error</span>`; playGameModeButton.classList.add('bg-red-500'); }
-            if (playPracticeButton) { playPracticeButton.innerHTML = `<span>Error</span>`; playPracticeButton.classList.add('bg-red-500'); }
-            return;
-        }
-
-        try {
-            const firebaseConfig = { apiKey: "AIzaSyBa2DPRjwaI-G5mz-OmHVXEDJ4_MzBAZgA", authDomain: "word-rush-game-9010a.firebaseapp.com", projectId: "word-rush-game-9010a", storageBucket: "word-rush-game-9010a.appspot.com", messagingSenderId: "551838491871", appId: "1:551838491871:web:757325be04daab9289b56a" };
-            const app = initializeApp(firebaseConfig);
-            auth = getAuth(app);
-            db = getFirestore(app);
-
-            onAuthStateChanged(auth, (user) => {
-                if (user) {
-                    userId = user.uid;
-                    console.log("Firebase connected. User ID:", userId);
-                    fetchGlobalStats();
-                    fetchPlayerStats(userId);
-                    document.getElementById('show-leaderboard-button').disabled = false;
-                } else {
-                    signInAnonymously(auth).catch(err => console.error("Anonymous sign-in failed:", err));
+            try {
+                const res = await fetch('https://raw.githubusercontent.com/tputerio/word-rush-game/main/dictionary.json');
+                if (!res.ok) throw new Error(`Dictionary download failed: ${res.statusText}`);
+                const trieData = await res.json();
+                dictionaryTrie = new Trie(trieData);
+                console.log("Pre-built dictionary loaded. Game is playable.");
+                // Enable buttons now that dictionary is ready
+                if (playGameModeButton) {
+                    playGameModeButton.disabled = false;
+                    playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg><span>Play</span></div>`;
                 }
-            });
+                if (playPracticeButton) {
+                    playPracticeButton.disabled = false;
+                    playPracticeButton.innerHTML = `<div class="flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg><span>Practice</span></div>`;
+                }
+            } catch (e) {
+                console.error("Critical Asset loading failed (Dictionary):", e);
+                if (loadingErrorEl) loadingErrorEl.textContent = "Error: Could not load game dictionary.";
+                if (playGameModeButton) { playGameModeButton.innerHTML = `<span>Error</span>`; playGameModeButton.classList.add('bg-red-500'); }
+                if (playPracticeButton) { playPracticeButton.innerHTML = `<span>Error</span>`; playPracticeButton.classList.add('bg-red-500'); }
+            }
+        };
 
-        } catch (firebaseError) {
-            console.warn("Firebase features failed to load, continuing in offline mode:", firebaseError);
-            const globalPlayCountSpan = document.getElementById('global-play-count');
-            if (globalPlayCountSpan) globalPlayCountSpan.textContent = "N/A";
-        }
+        // --- Start both tasks in parallel ---
+        initializeFirebase();
+        loadDictionaryAndEnableButtons();
     }
 
     async function fetchGlobalStats() {
@@ -904,8 +923,8 @@ async function submitLeaderboardScore(name, scoreToSave) {
                 <div id="submission-container" class="h-12 flex items-center justify-center"></div>
                 <div class="text-left w-full mt-4">
                     <div class="flex justify-between items-baseline mb-2 border-b pb-2">
-                         <h3 class="text-xl font-bold text-slate-700">Your Words (${foundWords.length})</h3>
-                         <button id="endgame-stats-button" class="flex items-center text-base font-bold text-blue-500 hover:text-blue-600"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg><span class="ml-1">Your Stats</span></button>
+                        <h3 class="text-xl font-bold text-slate-700">Your Words (${foundWords.length})</h3>
+                        <button id="endgame-stats-button" class="flex items-center text-base font-bold text-blue-500 hover:text-blue-600"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg><span class="ml-1">Your Stats</span></button>
                     </div>
                     <div class="space-y-1 max-h-48 overflow-y-auto pr-2">${foundWordsHTML}</div>
                 </div>
