@@ -1121,7 +1121,7 @@ const processSubmission = async (name, currentScore) => {
         }
         const leaderboardDisplayLimit = 10;
         if (rank && rank <= leaderboardDisplayLimit) {
-            message = `You placed&nbsp;<strong>#${rank}</strong>&nbsp;on today's leaderboard!`;            didPlaceOnLeaderboard = true;
+            message = `You placed <strong>#${rank}</strong> on today's leaderboard!`;            didPlaceOnLeaderboard = true;
         }
     } else {
         // If not a new daily high, still submit for record-keeping
