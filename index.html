@@ -203,6 +203,7 @@
     let tilePositions = [];
     let isPracticeMode = false; 
     let practiceTimeElapsed = 0;
+    let animationInterval;
 
     // --- Trie Data Structure ---
     class Trie {
@@ -218,7 +219,25 @@
             return isPrefix ? true : node.isEndOfWord === true;
         }
     }
+// Checks if the daily leaderboard needs to be reset
+async function checkAndResetDailyLeaderboard() {
+    if (!db) return;
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const leaderboardRef = doc(db, "leaderboards", "daily");
 
+    try {
+        const docSnap = await getDoc(leaderboardRef);
+        if (!docSnap.exists() || docSnap.data().lastReset !== todayStr) {
+            console.log(`Resetting daily leaderboard for ${todayStr}...`);
+            await setDoc(leaderboardRef, {
+                lastReset: todayStr,
+                topScores: []
+            });
+        }
+    } catch (e) {
+        console.error("Could not check or reset daily leaderboard:", e);
+    }
+}
     // --- Init ---
     function main() {
         setupEventListeners();
@@ -241,18 +260,16 @@
                 auth = getAuth(app);
                 db = getFirestore(app);
 
-                onAuthStateChanged(auth, (user) => {
+                onAuthStateChanged(auth, async (user) => {
                     if (user) {
                         userId = user.uid;
                         console.log("Firebase connected. User ID:", userId);
-                        // Fetch stats in the background. Don't need to wait for them.
-                        Promise.all([fetchGlobalStats(), fetchPlayerStats(userId)]).then(() => {
-                           document.getElementById('show-leaderboard-button').disabled = false;
-                        });
+                        await checkAndResetDailyLeaderboard(); // Reset leaderboard if needed
+                        fetchGlobalStats();
+                        fetchPlayerStats(userId);
+                        document.getElementById('show-leaderboard-button').disabled = false;
                     } else {
-                        signInAnonymously(auth).catch(err => {
-                            console.error("Anonymous sign-in failed:", err);
-                        });
+                        signInAnonymously(auth).catch(err => console.error("Anonymous sign-in failed:", err));
                     }
                 });
             } catch (firebaseError) {
@@ -414,6 +431,7 @@
 
         gameContentEl.classList.remove('blurred');
         messageModal.classList.add('hidden');
+        clearInterval(animationInterval); // Fix for memory leak
         createGrid();
         grid.style.pointerEvents = 'auto'; 
     }
@@ -568,21 +586,57 @@
 }
 
 async function submitLeaderboardScore(name, scoreToSave) {
-    if (!name || !db || !userId || isPracticeMode) return; 
+    if (!name || scoreToSave === 0 || !db || !userId || isPracticeMode) return;
     localStorage.setItem('wordRushPlayerName', name);
-    // Update the player's profile with their name and set the flag to true
+
+    // First, make sure the player's name is up-to-date in their main profile.
     await setDoc(doc(db, "players", userId), { name: name, hasSubmittedName: true }, { merge: true });
 
-    const gameBestWord = foundWords.length > 0 ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { score: 0 }) : null;
+    // Now, run a transaction to update the shared daily leaderboard.
+    const leaderboardRef = doc(db, "leaderboards", "daily");
 
-    if (scoreToSave > 0) {
-        const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-        const dailyEntriesRef = collection(db, `dailyScores/${today}/entries`);
-        const dailyData = { name, score: scoreToSave, userId, timestamp: serverTimestamp() };
-        if (gameBestWord) {
-            dailyData.bestWord = { word: gameBestWord.word, score: gameBestWord.score };
-        }
-        try { await addDoc(dailyEntriesRef, dailyData); } catch (e) { console.error("Failed to submit daily score:", e); }
+    try {
+        await runTransaction(db, async (transaction) => {
+            const leaderboardDoc = await transaction.get(leaderboardRef);
+
+            if (!leaderboardDoc.exists()) {
+                console.error("Daily leaderboard document does not exist!");
+                return;
+            }
+
+            const currentScores = leaderboardDoc.data().topScores || [];
+
+            // Find the user's previous entry on the leaderboard
+            const oldEntry = currentScores.find(s => s.userId === userId);
+
+            // Calculate new daily stats
+            const newDailyHighScore = Math.max(oldEntry?.dailyHighScore || 0, scoreToSave);
+            const newDailyTotalScore = (oldEntry?.dailyTotalScore || 0) + scoreToSave;
+            const gameBestWord = foundWords.length > 0 ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: ''};
+            const newDailyBestWord = (gameBestWord.score > (oldEntry?.dailyBestWord?.score || 0)) ? gameBestWord : oldEntry?.dailyBestWord || gameBestWord;
+
+            const updatedEntry = {
+                userId,
+                name,
+                dailyHighScore: newDailyHighScore,
+                dailyTotalScore: newDailyTotalScore,
+                dailyBestWord: newDailyBestWord
+            };
+
+            // Remove any previous score from the same user and add the new one
+            const scoresWithoutUser = currentScores.filter(s => s.userId !== userId);
+            const potentialNewScores = [...scoresWithoutUser, updatedEntry];
+
+            // Sort the list by high score and keep only the top 10
+            potentialNewScores.sort((a, b) => b.dailyHighScore - a.dailyHighScore);
+            const newTopScores = potentialNewScores.slice(0, 10);
+
+            // Commit the new top 10 list to the database
+            transaction.update(leaderboardRef, { topScores: newTopScores });
+        });
+        console.log("Leaderboard updated successfully.");
+    } catch (e) {
+        console.error("Failed to update leaderboard:", e);
     }
 }
     
@@ -646,8 +700,28 @@ async function submitLeaderboardScore(name, scoreToSave) {
             setTimeout(() => p.remove(), 1200);
         }
     }
-    function createFlyingScore(points, startTile) { const el = document.createElement('div'); el.className = 'flying-score'; el.style.animation = 'none'; el.style.position = 'absolute'; el.textContent = `+${points}`; const rect = startTile.getBoundingClientRect(); el.style.left = `${rect.left}px`; el.style.top = `${rect.top}px`; document.body.appendChild(el); setTimeout(() => { el.style.animation = 'fly-to-score 1.5s ease-in-out forwards'; }, 10); setTimeout(() => el.remove(), 1500); }
-    function updateCurrentWord() { currentWordLettersEl.innerHTML = selectedTiles.map(t => `<span class="current-letter bg-white text-blue-500 font-bold text-xl p-1 rounded-md shadow-sm">${t.dataset.letter}</span>`).join(''); }
+function createFlyingScore(points, startTile) {
+    const el = document.createElement('div');
+    el.className = 'flying-score';
+    el.style.animation = 'none';
+    el.style.position = 'absolute';
+    el.textContent = `+${points}`;
+    const rect = startTile.getBoundingClientRect();
+    el.style.left = `${rect.left}px`;
+    el.style.top = `${rect.top}px`;
+    document.body.appendChild(el);
+
+    // This is the updated part for smoother animation
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => { // Double request for browser compatibility
+             el.style.animation = 'fly-to-score 1.5s ease-in-out forwards';
+        });
+    });
+
+    setTimeout(() => el.remove(), 1500);
+}    
+
+function updateCurrentWord() { currentWordLettersEl.innerHTML = selectedTiles.map(t => `<span class="current-letter bg-white text-blue-500 font-bold text-xl p-1 rounded-md shadow-sm">${t.dataset.letter}</span>`).join(''); }
 
     function showWelcomeScreen() {
         modalContent.innerHTML = `
@@ -769,96 +843,101 @@ async function submitLeaderboardScore(name, scoreToSave) {
         return { totalGamesPlayed: querySnapshot.size, totalWordsFound: allWords.length, totalScore, top10Scores, top10LongestWords };
     }
     
-    async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
-        if (!listElement) return;
-        if (loadingElement) loadingElement.style.display = 'block';
-        listElement.innerHTML = '';
-        if (!db) { listElement.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard is offline.</p>`; if (loadingElement) loadingElement.style.display = 'none'; return; }
+ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
+    if (!listElement) return;
+    if (loadingElement) loadingElement.style.display = 'block';
+    listElement.innerHTML = '';
+    if (!db) {
+        listElement.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard is offline.</p>`;
+        if (loadingElement) loadingElement.style.display = 'none';
+        return;
+    }
 
-        try {
-            let html = '';
-            if (type === 'all-time') {
+    try {
+        let html = '';
+        if (type === 'all-time') {
+            const categories = [
+                { field: 'highScore', title: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg> High Score' },
+                { field: 'totalPoints', title: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg> Total Points' },
+                { field: 'bestWord.score', title: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg> Best Word' }
+            ];
+            for (const cat of categories) {
+                const q = query(collection(db, 'players'), where("hasSubmittedName", "==", true), orderBy(cat.field, 'desc'), limit(10));
+                const snapshot = await getDocs(q);
+                html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center gap-2">${cat.title}</h3>`;
+                
+                if (snapshot.empty) {
+                    html += `<p class="text-slate-500 text-center text-sm p-2">No players in this category yet.</p>`;
+                } else {
+                    const scores = snapshot.docs.map((doc, i) => {
+                        const data = doc.data();
+                        let value;
+                        if (cat.field === 'bestWord.score') {
+                            value = data.bestWord && data.bestWord.word ? `${data.bestWord.word} (${data.bestWord.score})` : 'N/A';
+                        } else {
+                            value = data[cat.field]?.toLocaleString() || 0;
+                        }
+                        return `<li class="flex items-center p-2 rounded-lg ${i % 2 === 0 ? 'bg-slate-50' : ''}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${data.name}</span><span class="font-bold text-green-500">${value}</span></li>`;
+                    });
+                    html += `<ol class="space-y-1">${scores.join('')}</ol>`;
+                }
+            }
+        } else { // NEW, EFFICIENT DAILY LOGIC
+            const leaderboardRef = doc(db, "leaderboards", "daily");
+            const docSnap = await getDoc(leaderboardRef);
+
+            if (!docSnap.exists() || !docSnap.data().topScores || docSnap.data().topScores.length === 0) {
+                html += `<p class="text-slate-500 text-center text-sm p-2">No scores yet today. Be the first!</p>`;
+            } else {
+                const dailyPlayers = docSnap.data().topScores;
+
                 const categories = [
-                    { field: 'highScore', title: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg> High Score' },
-                    { field: 'totalPoints', title: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg> Total Points' },
-                    { field: 'bestWord.score', title: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg> Best Word' }
+                    { 
+                        key: 'dailyHighScore', 
+                        title: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg> High Score' 
+                    },
+                    { 
+                        key: 'dailyTotalScore', 
+                        title: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg> Total Points' 
+                    },
+                    { 
+                        key: 'dailyBestWord', 
+                        title: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg> Best Word' 
+                    }
                 ];
+
                 for (const cat of categories) {
-                    // This query now filters for players who have submitted a name
-                    const q = query(collection(db, 'players'), where("hasSubmittedName", "==", true), orderBy(cat.field, 'desc'), limit(10));
-                    const snapshot = await getDocs(q);
                     html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center gap-2">${cat.title}</h3>`;
                     
-                    if (snapshot.empty) { // Changed this to check snapshot.empty instead of docsWithNames
-                        html += `<p class="text-slate-500 text-center text-sm p-2">No players in this category yet.</p>`;
-                    } else {
-                        const scores = snapshot.docs.map((doc, i) => { // Map directly from snapshot.docs
-                            const data = doc.data();
-                            let value;
-                            if (cat.field === 'bestWord.score') {
-                                value = data.bestWord && data.bestWord.word ? `${data.bestWord.word} (${data.bestWord.score})` : 'N/A';
-                            } else {
-                                value = data[cat.field]?.toLocaleString() || 0;
-                            }
-                            return `<li class="flex items-center p-2 rounded-lg ${i % 2 === 0 ? 'bg-slate-50' : ''}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${data.name}</span><span class="font-bold text-green-500">${value}</span></li>`;
-                        });
-                        html += `<ol class="space-y-1">${scores.join('')}</ol>`;
-                    }
-                }
-                listElement.innerHTML = html;
-
-            } else { // Daily
-                const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-                const dailyRef = collection(db, `dailyScores/${today}/entries`);
-                const q = query(dailyRef, orderBy("timestamp", "desc"));
-                const snapshot = await getDocs(q);
-
-                const dailyHighScores = new Map();
-                const dailyTotalScores = new Map();
-                const dailyBestWords = new Map();
-
-                snapshot.forEach(doc => {
-                    const { userId, name, score, bestWord } = doc.data();
-                    if(!userId || !name || typeof score !== 'number') return;
-                    
-                    if (!dailyHighScores.has(userId) || score > dailyHighScores.get(userId).score) {
-                        dailyHighScores.set(userId, { name, score });
-                    }
-                    dailyTotalScores.set(userId, { name, score: (dailyTotalScores.get(userId)?.score || 0) + score });
-                    if (bestWord && typeof bestWord.score === 'number') {
-                        if (!dailyBestWords.has(userId) || bestWord.score > (dailyBestWords.get(userId)?.bestWord.score || 0)) {
-                            dailyBestWords.set(userId, { name, bestWord });
+                    const sortedPlayers = [...dailyPlayers].sort((a, b) => {
+                        if (cat.key === 'dailyBestWord') {
+                            return (b.dailyBestWord?.score || 0) - (a.dailyBestWord?.score || 0);
                         }
-                    }
-                });
+                        return (b[cat.key] || 0) - (a[cat.key] || 0);
+                    });
 
-                const highScoresList = [...dailyHighScores.values()].sort((a,b) => b.score - a.score);
-                const totalScoresList = [...dailyTotalScores.values()].sort((a,b) => b.score - a.score);
-                const bestWordsList = [...dailyBestWords.values()].sort((a,b) => b.bestWord.score - a.bestWord.score);
-                
-                const createCategoryHTML = (title, emoji, scores, formatter) => {
-                    let html = `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center">${emoji} <span class="ml-2">${title}</span></h3>`;
-                    if(scores.length === 0) {
-                        html += `<p class="text-slate-500 text-center text-sm p-2">No scores yet today.</p>`;
-                    } else {
-                        html += `<ol class="space-y-1">${scores.slice(0, 10).map((s, i) => `<li class="flex items-center p-2 rounded-lg ${i % 2 === 0 ? 'bg-slate-50' : ''}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${s.name}</span><span class="font-bold text-green-500">${formatter(s)}</span></li>`).join('')}</ol>`;
-                    }
-                    return html;
+                    const scores = sortedPlayers.map((player, i) => {
+                        let value;
+                        if (cat.key === 'dailyBestWord') {
+                            value = player.dailyBestWord && player.dailyBestWord.word ? `${player.dailyBestWord.word} (${player.dailyBestWord.score})` : 'N/A';
+                        } else {
+                            value = player[cat.key]?.toLocaleString() || 0;
+                        }
+                        return `<li class="flex items-center p-2 rounded-lg ${i % 2 === 0 ? 'bg-slate-50' : ''}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${player.name}</span><span class="font-bold text-green-500">${value}</span></li>`;
+                    }).join('');
+                    html += `<ol class="space-y-1">${scores}</ol>`;
                 }
-
-                html += createCategoryHTML('High Score', '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg>', highScoresList, (s) => s.score);
-                html += createCategoryHTML('Total Points', '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg>', totalScoresList, (s) => s.score.toLocaleString());
-                html += createCategoryHTML('Best Word', '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg>', bestWordsList, (s) => `${s.bestWord.word} (${s.bestWord.score})`);
-
-                listElement.innerHTML = html;
             }
-        } catch (e) {
-            console.error(`Could not fetch ${type} leaderboard`, e);
-            listElement.innerHTML = `<p class="text-red-500 text-center p-4">Could not load leaderboard.</p>`;
-        } finally {
-            if (loadingElement) loadingElement.style.display = 'none';
         }
+        listElement.innerHTML = html;
+    } catch (e) {
+        console.error(`Could not fetch ${type} leaderboard`, e);
+        listElement.innerHTML = `<p class="text-red-500 text-center p-4">Could not load leaderboard.</p>`;
+    } finally {
+        if (loadingElement) loadingElement.style.display = 'none';
     }
+}
+    
     
     function setupEventListeners() {
         const getTileFromEvent = (e) => { const touch = e.touches ? e.touches[0] : e; const point = { x: touch.clientX, y: touch.clientY }; let closestTile = null; let minDistance = Infinity; tilePositions.forEach(tilePos => { const distance = Math.sqrt((point.x - tilePos.center.x)**2 + (point.y - tilePos.center.y)**2); if (distance < minDistance && distance < tilePos.hitRadius) { minDistance = distance; closestTile = tilePos.el; } }); return closestTile; };
@@ -885,28 +964,7 @@ async function submitLeaderboardScore(name, scoreToSave) {
     function getNeighbors(t,e){const o=[];const[l,n]=[t%GRID_COLS,Math.floor(t/GRID_COLS)];for(let s=-1;s<=1;s++)for(let a=-1;a<=1;a++){if(0===s&&0===a)continue;const[r,i]=[l+s,n+a];r>=0&&r<GRID_COLS&&i>=0&&i<GRID_COLS&&o.push(e[i*GRID_COLS+r])}return o}
     function solveBoard(t){const e=new Set;for(let o=0;o<GRID_SIZE;o++)findWordsRecursive(o,"",[o],e,t);return e}
     function findWordsRecursive(t,e,o,l,n){if(e+=n[t],!dictionaryTrie||!dictionaryTrie.search(e,!0))return;e.length>=3&&dictionaryTrie.search(e)&&l.add(e);const[s,a]=[t%GRID_COLS,Math.floor(t/GRID_COLS)];for(let r=-1;r<=1;r++)for(let i=-1;i<=1;i++){if(0===r&&0===i)continue;const[c,d]=[s+r,a+i];const h=d*GRID_COLS+c;c>=0&&c<GRID_COLS&&d>=0&&d<GRID_COLS&&!o.includes(h)&&findWordsRecursive(h,e,[...o,h],l,n)}}
-    
-    async function getDailyRankForScore(finalScore) {
-        if (!db || !userId) return null;
 
-        const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-        const dailyRef = collection(db, `dailyScores/${today}/entries`);
-        
-        const allScoresSnapshot = await getDocs(query(dailyRef));
-        const dailyHighScores = new Map();
-        allScoresSnapshot.forEach(doc => {
-            const { userId: entryUserId, score } = doc.data();
-            if (entryUserId && typeof score === 'number') {
-                if (!dailyHighScores.has(entryUserId) || score > dailyHighScores.get(entryUserId)) {
-                    dailyHighScores.set(entryUserId, score);
-                }
-            }
-        });
-        
-        const leaderboardScores = Array.from(dailyHighScores.values());
-        const higherScoresCount = leaderboardScores.filter(s => s > finalScore).length;
-        return higherScoresCount + 1;
-    }
 
     async function showEndGameScreen() {
         gameContentEl.classList.add('blurred');
@@ -953,29 +1011,10 @@ async function submitLeaderboardScore(name, scoreToSave) {
         }
         
         const processSubmission = async (name, currentScore) => {
-            const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-            const dailyRef = collection(db, `dailyScores/${today}/entries`);
-            const userScoresQuery = query(dailyRef, where("userId", "==", userId));
-            const userScoresSnapshot = await getDocs(userScoresQuery);
-            let previousDailyHigh = 0;
-            userScoresSnapshot.forEach(doc => {
-                if (doc.data().score > previousDailyHigh) {
-                    previousDailyHigh = doc.data().score;
-                }
-            });
-
-            await submitLeaderboardScore(name, currentScore);
-
-            let message = `Score submitted as <strong>${name}</strong>!`;
-            if (currentScore > previousDailyHigh) {
-                const rank = await getDailyRankForScore(currentScore);
-                const leaderboardDisplayLimit = 10;
-                 if (rank && rank <= leaderboardDisplayLimit) {
-                    message = `You placed <strong>#${rank}</strong> on today's leaderboard!`;
-                }
-            }
-            submissionContainer.innerHTML = `<div class="flex items-center justify-center text-green-600 font-bold pop-in"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span>${message}</span></div>`;
-        };
+    await submitLeaderboardScore(name, currentScore);
+    const message = `Score submitted as <strong>${name}</strong>!`;
+    submissionContainer.innerHTML = `<div class="flex items-center justify-center text-green-600 font-bold pop-in"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span>${message}</span></div>`;
+};
 
         if (!showSubmitForm) {
             processSubmission(playerName, score);
@@ -1060,7 +1099,7 @@ async function submitLeaderboardScore(name, scoreToSave) {
             }
         };
 
-        const tutorialGridContainer = container.querySelector('#tutorial-grid-container'); const tutorialCanvas = container.querySelector('#tutorial-line-canvas'); const tutorialCtx = tutorialCanvas.getContext('2d'); const tutorialTiles = Array.from(tutorialGridContainer.querySelectorAll('.tutorial-tile')); const wordBuilder = container.querySelector('#tutorial-word-builder'); const animationSequence = [0, 4, 5, 10]; const word = 'WORM'; let animationInterval;
+        const tutorialGridContainer = container.querySelector('#tutorial-grid-container'); const tutorialCanvas = container.querySelector('#tutorial-line-canvas'); const tutorialCtx = tutorialCanvas.getContext('2d'); const tutorialTiles = Array.from(tutorialGridContainer.querySelectorAll('.tutorial-tile')); const wordBuilder = container.querySelector('#tutorial-word-builder'); const animationSequence = [0, 4, 5, 10]; const word = 'WORM';
         const runAnimation = () => { const gridRect = tutorialGridContainer.getBoundingClientRect(); tutorialCanvas.width = gridRect.width; tutorialCanvas.height = gridRect.height; const tileCenters = tutorialTiles.map(tile => { const tileRect = tile.getBoundingClientRect(); return { x: tileRect.left + tileRect.width / 2 - gridRect.left, y: tileRect.top + tileRect.height / 2 - gridRect.top }; }); wordBuilder.innerHTML = '<span class="opacity-0">W</span>'; tutorialTiles.forEach(t => t.classList.remove('highlight')); tutorialCtx.clearRect(0, 0, tutorialCanvas.width, tutorialCanvas.height); let scoreEl = tutorialGridContainer.querySelector('.flying-score-tutorial'); if(scoreEl) scoreEl.remove(); const pathPoints = []; animationSequence.forEach((tileIndex, step) => { setTimeout(() => { tutorialTiles[tileIndex].classList.add('highlight'); const newLetterHTML = `<span class="current-letter bg-white text-blue-500 font-bold text-sm px-1 py-0.5 rounded-md shadow-sm">${word[step]}</span>`; if (step === 0) { wordBuilder.innerHTML = newLetterHTML; } else { wordBuilder.innerHTML += newLetterHTML; } pathPoints.push(tileCenters[tileIndex]); tutorialCtx.clearRect(0, 0, tutorialCanvas.width, tutorialCanvas.height); if(pathPoints.length > 1) { tutorialCtx.beginPath(); tutorialCtx.strokeStyle = 'rgba(59, 130, 246, 0.8)'; tutorialCtx.lineWidth = 8; tutorialCtx.lineCap = 'round'; tutorialCtx.lineJoin = 'round'; tutorialCtx.moveTo(pathPoints[0].x, pathPoints[0].y); for(let i = 1; i < pathPoints.length; i++) { tutorialCtx.lineTo(pathPoints[i].x, pathPoints[i].y); } tutorialCtx.stroke(); } }, 1000 + (step + 1) * 750); }); setTimeout(() => { const el = document.createElement('div'); el.className = 'flying-score'; el.style.fontSize = '1rem'; el.style.padding = '4px 8px'; el.style.animation = 'fly-up-tutorial 1.5s ease-in-out forwards'; el.style.position = 'absolute'; el.style.top = '50%'; el.style.left = '50%'; el.textContent = `+9`; el.classList.add('flying-score-tutorial'); tutorialGridContainer.appendChild(el); }, 1000 + (animationSequence.length + 1) * 750); };
         if(animationInterval) clearInterval(animationInterval); setTimeout(() => { runAnimation(); animationInterval = setInterval(runAnimation, 6000); }, 350);
     };
