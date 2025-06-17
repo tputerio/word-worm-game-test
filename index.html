@@ -589,12 +589,11 @@ async function submitLeaderboardScore(name, scoreToSave) {
     if (!name || scoreToSave === 0 || !db || !userId || isPracticeMode) return;
     localStorage.setItem('wordRushPlayerName', name);
 
-    // First, make sure the player's name is up-to-date in their main profile.
+    // Update player's name in profile
     await setDoc(doc(db, "players", userId), { name: name, hasSubmittedName: true }, { merge: true });
 
-    // Now, run a transaction to update the shared daily leaderboard.
+    // --- DAILY LEADERBOARD UPDATE ---
     const leaderboardRef = doc(db, "leaderboards", "daily");
-
     try {
         await runTransaction(db, async (transaction) => {
             const leaderboardDoc = await transaction.get(leaderboardRef);
@@ -605,15 +604,16 @@ async function submitLeaderboardScore(name, scoreToSave) {
             }
 
             const currentScores = leaderboardDoc.data().topScores || [];
-
-            // Find the user's previous entry on the leaderboard
             const oldEntry = currentScores.find(s => s.userId === userId);
 
-            // Calculate new daily stats
             const newDailyHighScore = Math.max(oldEntry?.dailyHighScore || 0, scoreToSave);
             const newDailyTotalScore = (oldEntry?.dailyTotalScore || 0) + scoreToSave;
-            const gameBestWord = foundWords.length > 0 ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: ''};
-            const newDailyBestWord = (gameBestWord.score > (oldEntry?.dailyBestWord?.score || 0)) ? gameBestWord : oldEntry?.dailyBestWord || gameBestWord;
+            const gameBestWord = foundWords.length > 0
+                ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' })
+                : { score: 0, word: '' };
+            const newDailyBestWord = (gameBestWord.score > (oldEntry?.dailyBestWord?.score || 0))
+                ? gameBestWord
+                : oldEntry?.dailyBestWord || gameBestWord;
 
             const updatedEntry = {
                 userId,
@@ -631,12 +631,84 @@ async function submitLeaderboardScore(name, scoreToSave) {
             potentialNewScores.sort((a, b) => b.dailyHighScore - a.dailyHighScore);
             const newTopScores = potentialNewScores.slice(0, 10);
 
-            // Commit the new top 10 list to the database
             transaction.update(leaderboardRef, { topScores: newTopScores });
         });
-        console.log("Leaderboard updated successfully.");
+        console.log("Daily leaderboard updated successfully.");
     } catch (e) {
-        console.error("Failed to update leaderboard:", e);
+        console.error("Failed to update daily leaderboard:", e);
+    }
+
+    // --- ALL-TIME LEADERBOARD UPDATE ---
+    const allTimeRef = doc(db, "leaderboards", "allTime");
+    try {
+        await runTransaction(db, async (transaction) => {
+            const allTimeDoc = await transaction.get(allTimeRef);
+            let data = allTimeDoc.exists() ? allTimeDoc.data() : {
+                topByHighScore: [],
+                topByTotalPoints: [],
+                topByBestWord: []
+            };
+
+            // Find previous entries (if any)
+            let prevHighScore = 0, prevTotalPoints = 0, prevBestWord = { word: '', score: 0 };
+            let entryHigh = data.topByHighScore.find(u => u.userID === userId);
+            let entryTotal = data.topByTotalPoints.find(u => u.userID === userId);
+            let entryBest = data.topByBestWord.find(u => u.userID === userId);
+
+            if (entryHigh) prevHighScore = entryHigh.score || 0;
+            if (entryTotal) prevTotalPoints = entryTotal.totalPoints || 0;
+            if (entryBest) prevBestWord = entryBest.bestWord || { word: '', score: 0 };
+
+            // Calculate this game's best word
+            const gameBestWord = foundWords.length > 0
+                ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' })
+                : { score: 0, word: '' };
+            const newBestWord = (gameBestWord.score > (prevBestWord?.score || 0)) ? gameBestWord : prevBestWord;
+
+            // Prepare new values
+            const newHighScore = Math.max(prevHighScore, scoreToSave);
+            const newTotalPoints = prevTotalPoints + scoreToSave;
+
+            // Remove old entries
+            data.topByHighScore = data.topByHighScore.filter(u => u.userID !== userId);
+            data.topByTotalPoints = data.topByTotalPoints.filter(u => u.userID !== userId);
+            data.topByBestWord = data.topByBestWord.filter(u => u.userID !== userId);
+
+            // Add updated entries
+            data.topByHighScore.push({
+                userID: userId,
+                name: name,
+                score: newHighScore
+            });
+            data.topByTotalPoints.push({
+                userID: userId,
+                name: name,
+                totalPoints: newTotalPoints
+            });
+            data.topByBestWord.push({
+                userID: userId,
+                name: name,
+                bestWord: {
+                    word: newBestWord.word,
+                    score: newBestWord.score
+                }
+            });
+
+            // Sort and keep top 10 for each category
+            data.topByHighScore.sort((a, b) => b.score - a.score);
+            data.topByHighScore = data.topByHighScore.slice(0, 10);
+
+            data.topByTotalPoints.sort((a, b) => b.totalPoints - a.totalPoints);
+            data.topByTotalPoints = data.topByTotalPoints.slice(0, 10);
+
+            data.topByBestWord.sort((a, b) => (b.bestWord?.score || 0) - (a.bestWord?.score || 0));
+            data.topByBestWord = data.topByBestWord.slice(0, 10);
+
+            transaction.set(allTimeRef, data, { merge: true });
+        });
+        console.log("All-Time leaderboard updated successfully.");
+    } catch (e) {
+        console.error("Failed to update all-time leaderboard:", e);
     }
 }
     
@@ -1016,10 +1088,48 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
             }
         }
         
-        const processSubmission = async (name, currentScore) => {
-    await submitLeaderboardScore(name, currentScore);
-    const message = `Score submitted as <strong>${name}</strong>!`;
-    submissionContainer.innerHTML = `<div class="flex items-center justify-center text-green-600 font-bold pop-in"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span>${message}</span></div>`;
+const processSubmission = async (name, currentScore) => {
+    // Get the user's previous daily high score
+    let previousDailyHigh = 0;
+    if (db && userId) {
+        const leaderboardRef = doc(db, "leaderboards", "daily");
+        const leaderboardDoc = await getDoc(leaderboardRef);
+        if (leaderboardDoc.exists()) {
+            const topScores = leaderboardDoc.data().topScores || [];
+            const entry = topScores.find(s => s.userId === userId);
+            if (entry) previousDailyHigh = entry.dailyHighScore || 0;
+        }
+    }
+
+    let message = `Score submitted as <strong>${name}</strong>!`;
+    let didPlaceOnLeaderboard = false;
+
+    // Only submit if it's their best score today
+    if (currentScore > previousDailyHigh) {
+        await submitLeaderboardScore(name, currentScore);
+
+        // Fetch updated leaderboard to find their rank
+        const leaderboardRef = doc(db, "leaderboards", "daily");
+        const leaderboardDoc = await getDoc(leaderboardRef);
+        let rank = null;
+        if (leaderboardDoc.exists()) {
+            const topScores = leaderboardDoc.data().topScores || [];
+            // Sort by dailyHighScore descending
+            const sorted = [...topScores].sort((a, b) => (b.dailyHighScore || 0) - (a.dailyHighScore || 0));
+            // Find rank (1-based)
+            rank = sorted.findIndex(entry => entry.userId === userId) + 1;
+        }
+        const leaderboardDisplayLimit = 10;
+        if (rank && rank <= leaderboardDisplayLimit) {
+            message = `You placed <strong>#${rank}</strong> on today's leaderboard!`;
+            didPlaceOnLeaderboard = true;
+        }
+    } else {
+        // If not a new daily high, still submit for record-keeping
+        await submitLeaderboardScore(name, currentScore);
+    }
+
+    submissionContainer.innerHTML = `<div class="flex items-center justify-center text-green-600 font-bold pop-in"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4"/></svg> ${message}</div>`;
 };
 
         if (!showSubmitForm) {
