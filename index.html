@@ -756,7 +756,7 @@ async function submitLeaderboardScore(name, scoreToSave) {
         if (!modalContent) return;
         const rect = modalContent.getBoundingClientRect();
         const originX = rect.left + rect.width / 2;
-        const originY = rect.top + 40;
+        const originY = rect.top + 10;
 
         for (let i = 0; i < 60; i++) {
             const p = document.createElement('div');
