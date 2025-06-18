@@ -537,42 +537,70 @@ async function checkAndResetDailyLeaderboard() {
     
     function clearSelection() { selectedTiles.forEach(t => t.classList.remove('selected')); selectedTiles = []; updateCurrentWord(); drawLines(); }
     
-    async function saveGameHistoryAndStats(finalScore) {
+  async function saveGameHistoryAndStats(finalScore) {
     if (!db || !userId || isPracticeMode) {
         if (!isPracticeMode) showEndGameScreen();
         return;
     }
 
     const playerDocRef = doc(db, "players", userId);
-    const gameData = { score: finalScore, timestamp: serverTimestamp(), words: foundWords.map(w => ({ word: w.word, score: w.score, length: w.length })) };
-    
+    const gameData = {
+        score: finalScore,
+        timestamp: serverTimestamp(),
+        words: foundWords.map(w => ({ word: w.word, score: w.score, length: w.length }))
+    };
+
     try {
+        // This remains the same: it saves the detailed game log for your records.
         await addDoc(collection(db, `players/${userId}/games`), gameData);
-        
+
+        // This transaction updates the main player document with the new, efficient stats.
         await runTransaction(db, async (transaction) => {
             const playerDoc = await transaction.get(playerDocRef);
             const oldData = playerDoc.exists() ? playerDoc.data() : {};
-            
+
+            // Unchanged Logic for high score and best word
             const newHighScore = Math.max(finalScore, oldData.highScore || 0);
-            
-            const currentBestWord = oldData.bestWord || { score: 0, word: ''};
+            const currentBestWord = oldData.bestWord || { score: 0, word: '' };
             const gameBestWord = foundWords.length > 0 ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { score: 0 }) : { score: 0, word: ''};
             const newBestWord = gameBestWord.score > currentBestWord.score ? { word: gameBestWord.word, score: gameBestWord.score } : currentBestWord;
 
+            // Top 5 Scores Logic
+            const existingTopScores = oldData.top5Scores || [];
+            const thisGameScore = { score: finalScore, date: new Date().toLocaleDateString('en-CA') };
+            const combinedScores = [...existingTopScores, thisGameScore];
+            combinedScores.sort((a, b) => b.score - a.score);
+            const newTop5Scores = combinedScores.slice(0, 5); // Keep only Top 5
+
+            // Top 5 Longest Words Logic
+            const existingLongestWords = oldData.top5LongestWords || [];
+            const newWordsFromGame = foundWords.map(w => ({ word: w.word, length: w.length }));
+            const combinedWords = [...existingLongestWords, ...newWordsFromGame];
+            const uniqueWords = [...new Map(combinedWords.map(item => [item.word, item])).values()];
+            uniqueWords.sort((a, b) => b.length - a.length);
+            const newTop5LongestWords = uniqueWords.slice(0, 5); // Keep only Top 5
+
+            // Logic for Average Word Length
+            const lettersThisGame = foundWords.reduce((sum, w) => sum + w.length, 0);
+
+            // Construct the complete update object
             const updateData = {
                 totalGamesPlayed: increment(1),
                 totalPoints: increment(finalScore),
                 lastPlayed: serverTimestamp(),
                 highScore: newHighScore,
-                bestWord: newBestWord
+                bestWord: newBestWord,
+                totalWordsFound: increment(foundWords.length),
+                totalLettersFound: increment(lettersThisGame),
+                top5Scores: newTop5Scores,
+                top5LongestWords: newTop5LongestWords
             };
-            
+
             if (playerDoc.exists()) {
                 transaction.update(playerDocRef, updateData);
             } else {
-                // This is a new player, set their name and hasSubmittedName flag
                 updateData.name = localStorage.getItem('wordRushPlayerName') || 'Anonymous';
-                updateData.hasSubmittedName = false; // <-- Add this line
+                updateData.hasSubmittedName = false;
                 transaction.set(playerDocRef, updateData);
             }
         });
@@ -580,7 +608,7 @@ async function checkAndResetDailyLeaderboard() {
         showEndGameScreen();
 
     } catch (e) {
-        console.error("Error saving game history:", e);
+        console.error("Error saving game history and stats:", e);
         showEndGameScreen();
     }
 }
@@ -864,56 +892,121 @@ function updateCurrentWord() { currentWordLettersEl.innerHTML = selectedTiles.ma
     }
 
     async function showStatsModal() {
-        statsModal.classList.remove('hidden');
-        gameContentEl.classList.add('blurred');
-        statsModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center modal-enter">
-            <h2 class="text-2xl font-bold text-slate-800 mb-4">Loading Your Stats...</h2>
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mx-auto"></div>
-        </div>`;
-        
-        const stats = await fetchAndCalculateStats();
+    statsModal.classList.remove('hidden');
+    gameContentEl.classList.add('blurred');
+    statsModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center modal-enter">
+        <h2 class="text-2xl font-bold text-slate-800 mb-4">Loading Your Stats...</h2>
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mx-auto"></div>
+    </div>`;
+    
+    const stats = await fetchAndCalculateStats();
 
-        let statsHTML;
-        if (!stats) {
-            statsHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 modal-enter">
-                <div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold text-slate-800 flex items-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg><span class="ml-2">Your Stats</span></h2><button id="close-stats-button" class="text-3xl leading-none text-slate-500 hover:text-slate-800">&times;</button></div>
+    let statsHTML;
+
+    if (stats) {
+        // Calculate averages, checking to prevent division by zero.
+        const avgScore = stats.totalGamesPlayed > 0 ? Math.round(stats.totalPoints / stats.totalGamesPlayed) : 0;
+        const avgWordLength = stats.totalWordsFound > 0 ? (stats.totalLettersFound / stats.totalWordsFound).toFixed(1) : 0;
+
+        // Generate the HTML for the Top 5 lists
+        const topScoresHTML = stats.top5Scores.map((s, i) => 
+            `<li class="flex justify-between p-1 ${i % 2 === 0 ? 'bg-slate-50' : ''} rounded">
+                <span><strong>${s.score}</strong></span>
+                <span class="text-slate-500">${s.date}</span>
+            </li>`
+        ).join('') || '<p class="text-xs text-slate-400 text-center">No scores yet.</p>';
+
+        const topWordsHTML = stats.top5LongestWords.map((w, i) => 
+            `<li class="p-1 ${i % 2 === 0 ? 'bg-slate-50' : ''} rounded">
+                <strong>${w.word.toUpperCase()}</strong> (${w.length})
+            </li>`
+        ).join('') || '<p class="text-xs text-slate-400 text-center">No words found.</p>';
+        
+        // Assemble the final HTML for the modal
+        statsHTML = `
+            <div class="bg-white rounded-2xl shadow-2xl p-6 modal-enter w-full max-w-sm mx-auto">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold text-slate-800 flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg>
+                        <span class="ml-2">Your Stats</span>
+                    </h2>
+                    <button id="close-stats-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 text-center bg-slate-100 p-3 rounded-lg mb-4">
+                    <div>
+                        <div class="text-xs font-bold text-slate-500 uppercase">Games</div>
+                        <div class="text-2xl font-black text-slate-800">${stats.totalGamesPlayed}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs font-bold text-slate-500 uppercase">Avg Score</div>
+                        <div class="text-2xl font-black text-slate-800">${avgScore}</div>
+                    </div>
+                    <div>
+                        <div class="text-xs font-bold text-slate-500 uppercase">Avg Length</div>
+                        <div class="text-2xl font-black text-slate-800">${avgWordLength}</div>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <h3 class="text-base font-bold text-slate-700 mb-2 border-b pb-1">Best Scores</h3>
+                        <ol class="space-y-1">${topScoresHTML}</ol>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-slate-700 mb-2 border-b pb-1">Longest Words</h3>
+                        <ol class="space-y-1">${topWordsHTML}</ol>
+                    </div>
+                </div>
+            </div>`;
+
+    } else {
+        // This is the message for new players with no stats yet
+        statsHTML = `
+            <div class="bg-white rounded-2xl shadow-2xl p-6 modal-enter w-full max-w-sm mx-auto">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold text-slate-800">Your Stats</h2>
+                    <button id="close-stats-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
+                </div>
                 <p class="text-slate-500 text-center py-8">Play a game to see your stats here!</p>
             </div>`;
-        } else {
-            statsHTML = `
-                <div class="bg-white rounded-2xl shadow-2xl p-6 modal-enter">
-                    <div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold text-slate-800 flex items-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg><span class="ml-2">Your Stats</span></h2><button id="close-stats-button" class="text-3xl leading-none text-slate-500 hover:text-slate-800">&times;</button></div>
-                    <div class="grid grid-cols-3 gap-4 text-center mb-6 bg-slate-100 p-3 rounded-lg">
-                        <div><div class="text-xs font-bold text-slate-500 uppercase">Total Games</div><div class="text-2xl font-black text-slate-800">${stats.totalGamesPlayed}</div></div>
-                        <div><div class="text-xs font-bold text-slate-500 uppercase">Total Words</div><div class="text-2xl font-black text-slate-800">${stats.totalWordsFound}</div></div>
-                        <div><div class="text-xs font-bold text-slate-500 uppercase">Total Score</div><div class="text-2xl font-black text-slate-800">${stats.totalScore.toLocaleString()}</div></div>
-                    </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div><h3 class="text-base font-bold text-slate-700 mb-2 border-b pb-1">Best Scores</h3><ol class="space-y-1 text-sm">${stats.top10Scores.map((s, i) => `<li class="flex justify-between p-1 ${i%2 === 0 ? 'bg-slate-50' : ''} rounded"><span><strong>${s.score}</strong></span><span class="text-slate-500">${s.date}</span></li>`).join('')}</ol></div>
-                        <div><h3 class="text-base font-bold text-slate-700 mb-2 border-b pb-1">Longest Words</h3><ol class="space-y-1 text-sm">${stats.top10LongestWords.map((w, i) => `<li class="p-1 ${i%2 === 0 ? 'bg-slate-50' : ''} rounded"><strong>${w.word}</strong> (${w.length})</li>`).join('')}</ol></div>
-                    </div>
-                </div>`;
-        }
-        
-        statsModalContent.innerHTML = statsHTML;
-        document.getElementById('close-stats-button').onclick = () => { statsModal.classList.add('hidden'); gameContentEl.classList.remove('blurred'); };
+    }
+    
+    // Update the modal content and attach the close event
+    statsModalContent.innerHTML = statsHTML;
+    const closeButton = document.getElementById('close-stats-button');
+    if (closeButton) {
+        closeButton.onclick = () => { 
+            statsModal.classList.add('hidden'); 
+            gameContentEl.classList.remove('blurred'); 
+        };
+    }
+}
+
+  
+   async function fetchAndCalculateStats() {
+    if (!db || !userId) return null;
+
+    const playerDocRef = doc(db, "players", userId);
+    const docSnap = await getDoc(playerDocRef); 
+
+    if (!docSnap.exists() || !docSnap.data().totalGamesPlayed) {
+        return null;
     }
 
-    async function fetchAndCalculateStats() {
-        if (!db || !userId) return null;
-        const gamesRef = collection(db, `players/${userId}/games`);
-        const querySnapshot = await getDocs(query(gamesRef, orderBy('timestamp', 'desc')));
-        if (querySnapshot.empty) return null;
-        let totalScore = 0; let allWords = []; let allGames = [];
-        querySnapshot.forEach(doc => {
-            const game = doc.data(); totalScore += game.score; allWords.push(...(game.words || []));
-            allGames.push({ score: game.score, date: game.timestamp ? game.timestamp.toDate().toLocaleDateString() : 'N/A' });
-        });
-        const top10Scores = allGames.sort((a, b) => b.score - a.score).slice(0, 10);
-        const uniqueLongestWords = [...new Map(allWords.map(item => [item.word, item])).values()];
-        const top10LongestWords = uniqueLongestWords.sort((a,b) => b.length - a.length).slice(0, 10);
-        return { totalGamesPlayed: querySnapshot.size, totalWordsFound: allWords.length, totalScore, top10Scores, top10LongestWords };
-    }
+    const stats = docSnap.data();
+    
+    return {
+        totalGamesPlayed: stats.totalGamesPlayed,
+        totalPoints: stats.totalPoints,
+        totalWordsFound: stats.totalWordsFound || 0,
+        totalLettersFound: stats.totalLettersFound || 0,
+        top5Scores: stats.top5Scores || [],
+        top5LongestWords: stats.top5LongestWords || [],
+        highScore: stats.highScore || 0,
+        bestWord: stats.bestWord || { word: '', score: 0 }
+    };
+}
     
 async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
     if (!listElement) return;
