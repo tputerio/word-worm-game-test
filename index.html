@@ -536,8 +536,8 @@ async function checkAndResetDailyLeaderboard() {
     }
     
     function clearSelection() { selectedTiles.forEach(t => t.classList.remove('selected')); selectedTiles = []; updateCurrentWord(); drawLines(); }
-    
-  async function saveGameHistoryAndStats(finalScore) {
+    // Replace your existing saveGameHistoryAndStats function with this one
+async function saveGameHistoryAndStats(finalScore) {
     if (!db || !userId || isPracticeMode) {
         if (!isPracticeMode) showEndGameScreen(false);
         return;
@@ -559,7 +559,6 @@ async function checkAndResetDailyLeaderboard() {
             const playerDoc = await transaction.get(playerDocRef);
             const oldData = playerDoc.exists() ? playerDoc.data() : {};
 
-            // --- NEW: Play Streak Logic ---
             const today = new Date();
             const todayStr = today.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
             
@@ -567,16 +566,13 @@ async function checkAndResetDailyLeaderboard() {
             yesterday.setDate(yesterday.getDate() - 1);
             const yesterdayStr = yesterday.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
             
-            let newPlayStreak = 1; // Default to 1 for a new streak
+            let newPlayStreak = 1;
             if (oldData.lastPlayDate === yesterdayStr) {
-                // Continued a streak
                 newPlayStreak = (oldData.playStreak || 0) + 1;
             } else if (oldData.lastPlayDate === todayStr) {
-                // Already played today, streak doesn't change
                 newPlayStreak = oldData.playStreak || 1;
             }
             
-            // --- Daily High Score Logic (Unchanged but uses todayStr) ---
             let newDailyHighScore = 0;
             if (oldData.dailyHighScoreLastUpdated !== todayStr) {
                 newDailyHighScore = finalScore;
@@ -592,30 +588,28 @@ async function checkAndResetDailyLeaderboard() {
                 }
             }
 
-            // --- Other Stat Calculations (Unchanged) ---
             const newHighScore = Math.max(finalScore, oldData.highScore || 0);
             const currentBestWord = oldData.bestWord || { score: 0, word: '' };
             const gameBestWord = foundWords.length > 0 ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { score: 0 }) : { score: 0, word: ''};
-            const newBestWord = gameBestWord.score > currentBestWord.score ? { word: gameBestWord.word, score: gameBestWord.score } : currentBestWord;
+            const newBestWordForProfile = gameBestWord.score > currentBestWord.score ? { word: gameBestWord.word, score: gameBestWord.score } : currentBestWord;
             const lettersThisGame = foundWords.reduce((sum, w) => sum + w.length, 0);
             const newTop5Scores = [...(oldData.top5Scores || []), { score: finalScore, date: todayStr }].sort((a,b)=>b.score-a.score).slice(0,5);
             const newTop5LongestWords = [...new Map([...(oldData.top5LongestWords || []), ...foundWords.map(w=>({word:w.word,length:w.length}))].map(item=>[item.word,item])).values()].sort((a,b)=>b.length-a.length).slice(0,5);
 
-            // Construct the final update object with all new fields
             const updateData = {
                 totalGamesPlayed: increment(1),
                 totalPoints: increment(finalScore),
                 lastPlayed: serverTimestamp(),
                 highScore: newHighScore,
-                bestWord: newBestWord,
+                bestWord: newBestWordForProfile,
                 totalWordsFound: increment(foundWords.length),
                 totalLettersFound: increment(lettersThisGame),
                 top5Scores: newTop5Scores,
                 top5LongestWords: newTop5LongestWords,
                 dailyHighScore: newDailyHighScore,
                 dailyHighScoreLastUpdated: todayStr,
-                playStreak: newPlayStreak,      // NEW
-                lastPlayDate: todayStr          // NEW
+                playStreak: newPlayStreak,
+                lastPlayDate: todayStr
             };
 
             if (playerDoc.exists()) {
@@ -627,6 +621,7 @@ async function checkAndResetDailyLeaderboard() {
             }
         });
         
+        // The call is now simpler, with no extra parameters
         showEndGameScreen(didBeatDailyHighScore);
 
     } catch (e) {
@@ -635,131 +630,83 @@ async function checkAndResetDailyLeaderboard() {
     }
 }
 
+// Replace your entire existing submitLeaderboardScore function with this one
 async function submitLeaderboardScore(name, scoreToSave) {
-    if (!name || scoreToSave === 0 || !db || !userId || isPracticeMode) return;
+    if (!name || !db || !userId || isPracticeMode) return;
     localStorage.setItem('wordRushPlayerName', name);
 
-    // Update player's name in profile
-    await setDoc(doc(db, "players", userId), { name: name, hasSubmittedName: true }, { merge: true });
+    // Get a reference to the player's document
+    const playerDocRef = doc(db, "players", userId);
+    await setDoc(playerDocRef, { name: name, hasSubmittedName: true }, { merge: true });
 
+    // NEW: Fetch the player's single, authoritative stats document one time.
+    const playerDocSnap = await getDoc(playerDocRef);
+    if (!playerDocSnap.exists()) {
+        console.error("Player document not found for leaderboard submission.");
+        return;
+    }
+    const playerStats = playerDocSnap.data();
+    
     // --- DAILY LEADERBOARD UPDATE ---
-    const leaderboardRef = doc(db, "leaderboards", "daily");
+    const dailyRef = doc(db, "leaderboards", "daily");
     try {
         await runTransaction(db, async (transaction) => {
-            const leaderboardDoc = await transaction.get(leaderboardRef);
-
-            if (!leaderboardDoc.exists()) {
-                console.error("Daily leaderboard document does not exist!");
-                return;
-            }
+            const leaderboardDoc = await transaction.get(dailyRef);
+            if (!leaderboardDoc.exists()) return;
 
             const currentScores = leaderboardDoc.data().topScores || [];
             const oldEntry = currentScores.find(s => s.userId === userId);
-
-            const newDailyHighScore = Math.max(oldEntry?.dailyHighScore || 0, scoreToSave);
-            const newDailyTotalScore = (oldEntry?.dailyTotalScore || 0) + scoreToSave;
-            const gameBestWord = foundWords.length > 0
-                ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' })
-                : { score: 0, word: '' };
-            const newDailyBestWord = (gameBestWord.score > (oldEntry?.dailyBestWord?.score || 0))
-                ? gameBestWord
-                : oldEntry?.dailyBestWord || gameBestWord;
-
+            const gameBestWord = foundWords.length > 0 ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: '' };
+            
             const updatedEntry = {
                 userId,
                 name,
-                dailyHighScore: newDailyHighScore,
-                dailyTotalScore: newDailyTotalScore,
-                dailyBestWord: newDailyBestWord
+                dailyHighScore: Math.max(oldEntry?.dailyHighScore || 0, scoreToSave),
+                dailyTotalScore: (oldEntry?.dailyTotalScore || 0) + scoreToSave,
+                dailyBestWord: (gameBestWord.score > (oldEntry?.dailyBestWord?.score || 0)) ? gameBestWord : (oldEntry?.dailyBestWord || gameBestWord)
             };
 
-            // Remove any previous score from the same user and add the new one
-            const scoresWithoutUser = currentScores.filter(s => s.userId !== userId);
-            const potentialNewScores = [...scoresWithoutUser, updatedEntry];
-
-            // Sort the list by high score and keep only the top 10
-            potentialNewScores.sort((a, b) => b.dailyHighScore - a.dailyHighScore);
-            const newTopScores = potentialNewScores.slice(0, 10);
-
-            transaction.update(leaderboardRef, { topScores: newTopScores });
+            const newTopScores = [...currentScores.filter(s => s.userId !== userId), updatedEntry]
+                .sort((a,b) => b.dailyHighScore - a.dailyHighScore)
+                .slice(0,10);
+            transaction.update(dailyRef, { topScores: newTopScores });
         });
-        console.log("Daily leaderboard updated successfully.");
-    } catch (e) {
-        console.error("Failed to update daily leaderboard:", e);
-    }
+    } catch (e) { console.error("Failed to update daily leaderboard:", e); }
 
-    // --- ALL-TIME LEADERBOARD UPDATE ---
+    // --- ALL-TIME LEADERBOARD UPDATE (Now uses the authoritative player stats) ---
     const allTimeRef = doc(db, "leaderboards", "allTime");
     try {
         await runTransaction(db, async (transaction) => {
             const allTimeDoc = await transaction.get(allTimeRef);
-            let data = allTimeDoc.exists() ? allTimeDoc.data() : {
-                topByHighScore: [],
-                topByTotalPoints: [],
-                topByBestWord: []
-            };
+            let data = allTimeDoc.exists() ? allTimeDoc.data() : { topByHighScore: [], topByTotalPoints: [], topByBestWord: [] };
 
-            // Find previous entries (if any)
-            let prevHighScore = 0, prevTotalPoints = 0, prevBestWord = { word: '', score: 0 };
-            let entryHigh = data.topByHighScore.find(u => u.userID === userId);
-            let entryTotal = data.topByTotalPoints.find(u => u.userID === userId);
-            let entryBest = data.topByBestWord.find(u => u.userID === userId);
+            // Helper function to update a list if the new score qualifies
+            const updateCategory = (list, newEntry, sortKey, nestedKey = null) => {
+                const lastPlaceScore = list.length < 10 ? 0 : (nestedKey ? list[9][sortKey][nestedKey] : list[9][sortKey] || 0);
+                const playerBestScore = nestedKey ? newEntry[sortKey][nestedKey] : newEntry[sortKey];
 
-            if (entryHigh) prevHighScore = entryHigh.score || 0;
-            if (entryTotal) prevTotalPoints = entryTotal.totalPoints || 0;
-            if (entryBest) prevBestWord = entryBest.bestWord || { word: '', score: 0 };
-
-            // Calculate this game's best word
-            const gameBestWord = foundWords.length > 0
-                ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' })
-                : { score: 0, word: '' };
-            const newBestWord = (gameBestWord.score > (prevBestWord?.score || 0)) ? gameBestWord : prevBestWord;
-
-            // Prepare new values
-            const newHighScore = Math.max(prevHighScore, scoreToSave);
-            const newTotalPoints = prevTotalPoints + scoreToSave;
-
-            // Remove old entries
-            data.topByHighScore = data.topByHighScore.filter(u => u.userID !== userId);
-            data.topByTotalPoints = data.topByTotalPoints.filter(u => u.userID !== userId);
-            data.topByBestWord = data.topByBestWord.filter(u => u.userID !== userId);
-
-            // Add updated entries
-            data.topByHighScore.push({
-                userID: userId,
-                name: name,
-                score: newHighScore
-            });
-            data.topByTotalPoints.push({
-                userID: userId,
-                name: name,
-                totalPoints: newTotalPoints
-            });
-            data.topByBestWord.push({
-                userID: userId,
-                name: name,
-                bestWord: {
-                    word: newBestWord.word,
-                    score: newBestWord.score
+                // Only update if player's score is better than last place, or if they are not on the list yet
+                if (playerBestScore > lastPlaceScore || !list.some(e => e.userID === userId)) {
+                    let updatedList = list.filter(u => u.userID !== userId);
+                    updatedList.push(newEntry);
+                    updatedList.sort((a, b) => {
+                        const valA = nestedKey ? (a[sortKey] || {})[nestedKey] || 0 : a[sortKey] || 0;
+                        const valB = nestedKey ? (b[sortKey] || {})[nestedKey] || 0 : b[sortKey] || 0;
+                        return valB - valA;
+                    });
+                    return updatedList.slice(0, 10);
                 }
-            });
-
-            // Sort and keep top 10 for each category
-            data.topByHighScore.sort((a, b) => b.score - a.score);
-            data.topByHighScore = data.topByHighScore.slice(0, 10);
-
-            data.topByTotalPoints.sort((a, b) => b.totalPoints - a.totalPoints);
-            data.topByTotalPoints = data.topByTotalPoints.slice(0, 10);
-
-            data.topByBestWord.sort((a, b) => (b.bestWord?.score || 0) - (a.bestWord?.score || 0));
-            data.topByBestWord = data.topByBestWord.slice(0, 10);
-
-            transaction.set(allTimeRef, data, { merge: true });
+                return list; // Return original list if no update is needed
+            };
+            
+            // Update each category using the correct data from the player's own document
+            data.topByHighScore = updateCategory(data.topByHighScore, { userID: userId, name, score: playerStats.highScore }, 'score');
+            data.topByTotalPoints = updateCategory(data.topByTotalPoints, { userID: userId, name, totalPoints: playerStats.totalPoints }, 'totalPoints');
+            data.topByBestWord = updateCategory(data.topByBestWord, { userID: userId, name, bestWord: playerStats.bestWord }, 'bestWord', 'score');
+            
+            transaction.set(allTimeRef, data);
         });
-        console.log("All-Time leaderboard updated successfully.");
-    } catch (e) {
-        console.error("Failed to update all-time leaderboard:", e);
-    }
+    } catch (e) { console.error("Failed to update all-time leaderboard:", e); }
 }
     
     function updateScoreDisplay() {
@@ -1189,6 +1136,7 @@ async function shareScore() {
     }
 }
     
+// Replace your existing showEndGameScreen function with this one
 async function showEndGameScreen(didBeatDailyHighScore) {
     gameContentEl.classList.add('blurred');
     endGameModal.classList.remove('hidden');
@@ -1197,24 +1145,16 @@ async function showEndGameScreen(didBeatDailyHighScore) {
     const sortedWords = [...foundWords].sort((a,b)=>b.score-a.score);
     const foundWordsHTML = sortedWords.length ? sortedWords.map(fw => `<div class="flex justify-between text-sm p-1 ${sortedWords.indexOf(fw) % 2 === 0 ? 'bg-slate-50' : ''} rounded"><span class="font-semibold">${fw.word.toUpperCase()}</span><span>+${fw.score}</span></div>`).join('') : '<p class="text-sm text-slate-500 text-center py-4">No words found.</p>';
 
-    // --- NEW: Updated HTML layout with the Share button ---
     endGameModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
             <h2 class="text-3xl font-black text-green-500">Great Game!</h2>
             <p class="text-slate-600 mb-2">Your final score is:</p>
             <p class="text-6xl font-black text-slate-800 mb-4">${score}</p>
-
             <div id="submission-container" class="h-12 flex items-center justify-center"></div>
-            
-            <button id="share-score-button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-lg shadow-lg transition-all hover:scale-105 flex items-center justify-center mt-4">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.19.025.383.05.578.077l.113.011a2.25 2.25 0 0 1 2.134 2.348l-.004.017a2.25 2.25 0 0 1-.844 1.583m-1.29-3.952a2.25 2.25 0 1 1-2.186 0M12 21a2.25 2.25 0 0 0 2.186-2.25m0-2.186c-.19.025-.383.05-.578.077l-.113.011a2.25 2.25 0 0 0-2.134 2.348l.004.017a2.25 2.25 0 0 0 .844 1.583m1.29-3.952a2.25 2.25 0 1 0-2.186 0m-2.186 0A2.25 2.25 0 0 0 5.625 12a2.25 2.25 0 0 0-2.25 2.25m0-2.25c.19.025.383.05.578.077l.113.011a2.25 2.25 0 0 1 2.134 2.348l-.004.017a2.25 2.25 0 0 1-.844 1.583m1.29-3.952a2.25 2.25 0 1 1 2.186 0M12 2.25c-.19.025-.383.05-.578.077l-.113.011a2.25 2.25 0 0 0-2.134 2.348l.004.017a2.25 2.25 0 0 0 .844 1.583m1.29-3.952a2.25 2.25 0 1 0-2.186 0m-2.186 0A2.25 2.25 0 0 0 5.625 4.5a2.25 2.25 0 0 0-2.25 2.25m18 0c-.19.025-.383.05-.578.077l-.113.011a2.25 2.25 0 0 1-2.134 2.348l.004.017a2.25 2.25 0 0 1 .844 1.583m-1.29-3.952a2.25 2.25 0 1 0 2.186 0m-2.186 0A2.25 2.25 0 0 1 18.375 12a2.25 2.25 0 0 1 2.25 2.25m0-2.25c.19.025.383.05.578.077l.113.011a2.25 2.25 0 0 0 2.134 2.348l-.004.017a2.25 2.25 0 0 0-.844 1.583m-1.29-3.952a2.25 2.25 0 1 1 2.186 0m-2.186 0A2.25 2.25 0 0 0 18.375 9.75a2.25 2.25 0 0 0-2.25-2.25m-18 0c.19.025.383.05.578.077l.113.011a2.25 2.25 0 0 0 2.134 2.348l-.004.017a2.25 2.25 0 0 0 .844 1.583m-1.29-3.952a2.25 2.25 0 1 0-2.186 0m2.186 0A2.25 2.25 0 0 1 5.625 12a2.25 2.25 0 0 1-2.25 2.25m0-2.25c-.19.025-.383.05-.578.077l-.113.011a2.25 2.25 0 0 1-2.134 2.348l.004.017a2.25 2.25 0 0 1 .844 1.583m1.29-3.952a2.25 2.25 0 1 1 2.186 0M12 21.75c-.19.025-.383.05-.578.077l-.113.011a2.25 2.25 0 0 1-2.134-2.348l.004-.017a2.25 2.25 0 0 1 .844-1.583m1.29 3.952a2.25 2.25 0 1 0-2.186 0m2.186 0A2.25 2.25 0 0 0 18.375 12a2.25 2.25 0 0 0-2.25-2.25m-13.5 0c.19.025.383.05.578.077l.113.011a2.25 2.25 0 0 1 2.134-2.348l-.004-.017a2.25 2.25 0 0 1-.844-1.583m1.29 3.952a2.25 2.25 0 1 0 2.186 0m-2.186 0A2.25 2.25 0 0 1 5.625 9.75a2.25 2.25 0 0 1-2.25-2.25m0 2.25c-.19.025-.383.05-.578.077l-.113.011a2.25 2.25 0 0 0-2.134-2.348l.004-.017a2.25 2.25 0 0 0 .844-1.583m1.29 3.952a2.25 2.25 0 1 1 2.186 0" /></svg>
-                <span>Share Your Score</span>
-            </button>
-
+            <div id="share-button-container"></div>
             <div class="flex space-x-2 mt-2">
                 <button id="endgame-leaderboard-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-base flex-1">Leaderboard</button>
                 <button id="play-again-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex-1">Play Again</button>
             </div>
-
             <div class="text-left w-full mt-4">
                 <div class="flex justify-between items-baseline mb-2 border-b pb-2">
                     <h3 class="text-xl font-bold text-slate-700">Your Words (${foundWords.length})</h3>
@@ -1223,14 +1163,17 @@ async function showEndGameScreen(didBeatDailyHighScore) {
                 <div class="space-y-1 max-h-48 overflow-y-auto pr-2">${foundWordsHTML}</div>
             </div>
         </div>`;
-            
-    // --- Attach event listeners ---
-    document.getElementById('share-score-button').onclick = shareScore; // NEW
+
+    const shareButtonContainer = document.getElementById('share-button-container');
+    if (navigator.share || navigator.clipboard) {
+        shareButtonContainer.innerHTML = `<button id="share-score-button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-lg shadow-lg transition-all hover:scale-105 flex items-center justify-center mt-4 mb-2"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.19.025.383.05.578.077l.113.011a2.25 2.25 0 0 1 2.134 2.348l-.004.017a2.25 2.25 0 0 1-.844 1.583m-1.29-3.952a2.25 2.25 0 1 1-2.186 0M12 21a2.25 2.25 0 0 0 2.186-2.25m0-2.186c-.19.025-.383.05-.578.077l-.113.011a2.25 2.25 0 0 0-2.134 2.348l.004.017a2.25 2.25 0 0 0 .844 1.583m1.29-3.952a2.25 2.25 0 1 0-2.186 0m-2.186 0A2.25 2.25 0 0 0 5.625 12a2.25 2.25 0 0 0-2.25 2.25m0-2.25c.19.025.383.05.578.077l.113.011a2.25 2.25 0 0 1 2.134 2.348l-.004.017a2.25 2.25 0 0 1-.844 1.583m1.29-3.952a2.25 2.25 0 1 1 2.186 0M12 2.25c-.19.025-.383.05-.578.077l-.113.011a2.25 2.25 0 0 0-2.134 2.348l.004.017a2.25 2.25 0 0 0 .844 1.583m1.29-3.952a2.25 2.25 0 1 0-2.186 0m-2.186 0A2.25 2.25 0 0 0 5.625 4.5a2.25 2.25 0 0 0-2.25 2.25m18 0c-.19.025-.383.05-.578.077l-.113.011a2.25 2.25 0 0 1-2.134 2.348l.004.017a2.25 2.25 0 0 1 .844 1.583m-1.29-3.952a2.25 2.25 0 1 0 2.186 0m-2.186 0A2.25 2.25 0 0 1 18.375 12a2.25 2.25 0 0 1 2.25 2.25m0-2.25c.19.025.383.05.578.077l-.113.011a2.25 2.25 0 0 0 2.134 2.348l-.004.017a2.25 2.25 0 0 0-.844 1.583m-1.29-3.952a2.25 2.25 0 1 1 2.186 0m-2.186 0A2.25 2.25 0 0 0 18.375 9.75a2.25 2.25 0 0 0-2.25-2.25m-18 0c.19.025.383.05.578.077l.113.011a2.25 2.25 0 0 0 2.134 2.348l-.004.017a2.25 2.25 0 0 0 .844 1.583m-1.29-3.952a2.25 2.25 0 1 0-2.186 0m2.186 0A2.25 2.25 0 0 1 5.625 12a2.25 2.25 0 0 1-2.25 2.25m0-2.25c-.19.025-.383.05-.578.077l-.113.011a2.25 2.25 0 0 1-2.134 2.348l.004.017a2.25 2.25 0 0 1-.844 1.583m1.29 3.952a2.25 2.25 0 1 1 2.186 0M12 21.75c-.19.025-.383.05-.578.077l-.113.011a2.25 2.25 0 0 1-2.134-2.348l.004-.017a2.25 2.25 0 0 1 .844-1.583m1.29 3.952a2.25 2.25 0 1 0-2.186 0m2.186 0A2.25 2.25 0 0 0 18.375 12a2.25 2.25 0 0 0-2.25-2.25m-13.5 0c.19.025.383.05.578.077l.113.011a2.25 2.25 0 0 1 2.134-2.348l-.004-.017a2.25 2.25 0 0 1-.844-1.583m1.29 3.952a2.25 2.25 0 1 0 2.186 0m-2.186 0A2.25 2.25 0 0 1 5.625 9.75a2.25 2.25 0 0 1-2.25-2.25m0 2.25c-.19.025-.383.05-.578.077l-.113.011a2.25 2.25 0 0 0-2.134-2.348l.004-.017a2.25 2.25 0 0 0 .844-1.583m1.29 3.952a2.25 2.25 0 1 1 2.186 0" /></svg><span>Share Your Score</span></button>`;
+        document.getElementById('share-score-button').onclick = shareScore;
+    }
+    
     document.getElementById('play-again-button').onclick = resetGame;
     document.getElementById('endgame-leaderboard-button').onclick = showLeaderboardModal;
     document.getElementById('endgame-stats-button').onclick = showStatsModal;
 
-    // --- The rest of the function is the same, handling notifications ---
     const submissionContainer = document.getElementById('submission-container');
     submissionContainer.innerHTML = `<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>`;
 
@@ -1247,8 +1190,8 @@ async function showEndGameScreen(didBeatDailyHighScore) {
     
     const processSubmission = async (name, currentScore) => {
         let finalMessageHtml = '';
-
         if (didBeatDailyHighScore) {
+            // The call is now simpler
             await submitLeaderboardScore(name, currentScore);
             const leaderboardRef = doc(db, "leaderboards", "daily");
             const leaderboardDoc = await getDoc(leaderboardRef);
@@ -1272,7 +1215,6 @@ async function showEndGameScreen(didBeatDailyHighScore) {
             const standardMessage = `Score submitted as&nbsp;<strong>${name}</strong>!`;
             finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${checkIcon} ${standardMessage}</div>`;
         }
-
         submissionContainer.innerHTML = finalMessageHtml;
     };
 
