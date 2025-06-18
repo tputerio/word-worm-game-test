@@ -1141,8 +1141,55 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
     function solveBoard(t){const e=new Set;for(let o=0;o<GRID_SIZE;o++)findWordsRecursive(o,"",[o],e,t);return e}
     function findWordsRecursive(t,e,o,l,n){if(e+=n[t],!dictionaryTrie||!dictionaryTrie.search(e,!0))return;e.length>=3&&dictionaryTrie.search(e)&&l.add(e);const[s,a]=[t%GRID_COLS,Math.floor(t/GRID_COLS)];for(let r=-1;r<=1;r++)for(let i=-1;i<=1;i++){if(0===r&&0===i)continue;const[c,d]=[s+r,a+i];const h=d*GRID_COLS+c;c>=0&&c<GRID_COLS&&d>=0&&d<GRID_COLS&&!o.includes(h)&&findWordsRecursive(h,e,[...o,h],l,n)}}
 
+async function shareScore() {
+    // Find the best word from the game that just ended for the share message
+    const bestWordFound = foundWords.length > 0 
+        ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { word: '', score: 0 })
+        : null;
 
- async function showEndGameScreen(didBeatDailyHighScore) {
+    let shareText = `I just scored ${score} on Word Worm! 🐛\n`;
+    if (bestWordFound && bestWordFound.word) {
+        shareText += `My best word was ${bestWordFound.word.toUpperCase()} for ${bestWordFound.score} points!\n\n`;
+    }
+
+    const gameUrl = 'https://tputerio.github.io/word-rush-game/';
+    shareText += `Think you can beat me? Play now:\n${gameUrl}`;
+
+    const shareData = {
+        title: 'Word Worm',
+        text: shareText,
+    };
+
+    // Use the modern Web Share API if available (on mobile)
+    if (navigator.share) {
+        try {
+            await navigator.share(shareData);
+            console.log('Score shared successfully!');
+        } catch (err) {
+            console.error('Share failed:', err);
+        }
+    } else {
+        // Fallback for desktop: Copy to clipboard and update the button text
+        try {
+            await navigator.clipboard.writeText(shareText);
+            const shareButton = document.getElementById('share-score-button');
+            if (shareButton) {
+                const originalText = shareButton.innerHTML;
+                shareButton.innerHTML = 'Copied! ✓';
+                shareButton.classList.add('bg-green-500', 'text-white');
+                setTimeout(() => {
+                    shareButton.innerHTML = originalText;
+                    shareButton.classList.remove('bg-green-500', 'text-white');
+                }, 2000); // Revert back after 2 seconds
+            }
+        } catch (err) {
+            console.error('Failed to copy: ', err);
+            alert('Could not copy score to clipboard.');
+        }
+    }
+}
+    
+async function showEndGameScreen(didBeatDailyHighScore) {
     gameContentEl.classList.add('blurred');
     endGameModal.classList.remove('hidden');
     triggerEndGameConfetti();
@@ -1150,11 +1197,24 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
     const sortedWords = [...foundWords].sort((a,b)=>b.score-a.score);
     const foundWordsHTML = sortedWords.length ? sortedWords.map(fw => `<div class="flex justify-between text-sm p-1 ${sortedWords.indexOf(fw) % 2 === 0 ? 'bg-slate-50' : ''} rounded"><span class="font-semibold">${fw.word.toUpperCase()}</span><span>+${fw.score}</span></div>`).join('') : '<p class="text-sm text-slate-500 text-center py-4">No words found.</p>';
 
+    // --- NEW: Updated HTML layout with the Share button ---
     endGameModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
             <h2 class="text-3xl font-black text-green-500">Great Game!</h2>
             <p class="text-slate-600 mb-2">Your final score is:</p>
             <p class="text-6xl font-black text-slate-800 mb-4">${score}</p>
+
             <div id="submission-container" class="h-12 flex items-center justify-center"></div>
+            
+            <button id="share-score-button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-lg shadow-lg transition-all hover:scale-105 flex items-center justify-center mt-4">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.19.025.383.05.578.077l.113.011a2.25 2.25 0 0 1 2.134 2.348l-.004.017a2.25 2.25 0 0 1-.844 1.583m-1.29-3.952a2.25 2.25 0 1 1-2.186 0M12 21a2.25 2.25 0 0 0 2.186-2.25m0-2.186c-.19.025-.383.05-.578.077l-.113.011a2.25 2.25 0 0 0-2.134 2.348l.004.017a2.25 2.25 0 0 0 .844 1.583m1.29-3.952a2.25 2.25 0 1 0-2.186 0m-2.186 0A2.25 2.25 0 0 0 5.625 12a2.25 2.25 0 0 0-2.25 2.25m0-2.25c.19.025.383.05.578.077l.113.011a2.25 2.25 0 0 1 2.134 2.348l-.004.017a2.25 2.25 0 0 1-.844 1.583m1.29-3.952a2.25 2.25 0 1 1 2.186 0M12 2.25c-.19.025-.383.05-.578.077l-.113.011a2.25 2.25 0 0 0-2.134 2.348l.004.017a2.25 2.25 0 0 0 .844 1.583m1.29-3.952a2.25 2.25 0 1 0-2.186 0m-2.186 0A2.25 2.25 0 0 0 5.625 4.5a2.25 2.25 0 0 0-2.25 2.25m18 0c-.19.025-.383.05-.578.077l-.113.011a2.25 2.25 0 0 1-2.134 2.348l.004.017a2.25 2.25 0 0 1 .844 1.583m-1.29-3.952a2.25 2.25 0 1 0 2.186 0m-2.186 0A2.25 2.25 0 0 1 18.375 12a2.25 2.25 0 0 1 2.25 2.25m0-2.25c.19.025.383.05.578.077l.113.011a2.25 2.25 0 0 0 2.134 2.348l-.004.017a2.25 2.25 0 0 0-.844 1.583m-1.29-3.952a2.25 2.25 0 1 1 2.186 0m-2.186 0A2.25 2.25 0 0 0 18.375 9.75a2.25 2.25 0 0 0-2.25-2.25m-18 0c.19.025.383.05.578.077l.113.011a2.25 2.25 0 0 0 2.134 2.348l-.004.017a2.25 2.25 0 0 0 .844 1.583m-1.29-3.952a2.25 2.25 0 1 0-2.186 0m2.186 0A2.25 2.25 0 0 1 5.625 12a2.25 2.25 0 0 1-2.25 2.25m0-2.25c-.19.025-.383.05-.578.077l-.113.011a2.25 2.25 0 0 1-2.134 2.348l.004.017a2.25 2.25 0 0 1 .844 1.583m1.29-3.952a2.25 2.25 0 1 1 2.186 0M12 21.75c-.19.025-.383.05-.578.077l-.113.011a2.25 2.25 0 0 1-2.134-2.348l.004-.017a2.25 2.25 0 0 1 .844-1.583m1.29 3.952a2.25 2.25 0 1 0-2.186 0m2.186 0A2.25 2.25 0 0 0 18.375 12a2.25 2.25 0 0 0-2.25-2.25m-13.5 0c.19.025.383.05.578.077l.113.011a2.25 2.25 0 0 1 2.134-2.348l-.004-.017a2.25 2.25 0 0 1-.844-1.583m1.29 3.952a2.25 2.25 0 1 0 2.186 0m-2.186 0A2.25 2.25 0 0 1 5.625 9.75a2.25 2.25 0 0 1-2.25-2.25m0 2.25c-.19.025-.383.05-.578.077l-.113.011a2.25 2.25 0 0 0-2.134-2.348l.004-.017a2.25 2.25 0 0 0 .844-1.583m1.29 3.952a2.25 2.25 0 1 1 2.186 0" /></svg>
+                <span>Share Your Score</span>
+            </button>
+
+            <div class="flex space-x-2 mt-2">
+                <button id="endgame-leaderboard-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-base flex-1">Leaderboard</button>
+                <button id="play-again-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex-1">Play Again</button>
+            </div>
+
             <div class="text-left w-full mt-4">
                 <div class="flex justify-between items-baseline mb-2 border-b pb-2">
                     <h3 class="text-xl font-bold text-slate-700">Your Words (${foundWords.length})</h3>
@@ -1162,16 +1222,15 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
                 </div>
                 <div class="space-y-1 max-h-48 overflow-y-auto pr-2">${foundWordsHTML}</div>
             </div>
-            <div class="flex space-x-2 mt-6">
-                <button id="endgame-leaderboard-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-lg flex-1">Leaderboard</button>
-                <button id="play-again-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-lg shadow-lg transition-transform hover:scale-105 flex-1">Play Again</button>
-            </div>
         </div>`;
-
+            
+    // --- Attach event listeners ---
+    document.getElementById('share-score-button').onclick = shareScore; // NEW
     document.getElementById('play-again-button').onclick = resetGame;
     document.getElementById('endgame-leaderboard-button').onclick = showLeaderboardModal;
     document.getElementById('endgame-stats-button').onclick = showStatsModal;
 
+    // --- The rest of the function is the same, handling notifications ---
     const submissionContainer = document.getElementById('submission-container');
     submissionContainer.innerHTML = `<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>`;
 
@@ -1186,7 +1245,6 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
         }
     }
     
-    // This is the updated helper function with the new icons and messages
     const processSubmission = async (name, currentScore) => {
         let finalMessageHtml = '';
 
@@ -1201,17 +1259,15 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
                 rank = sorted.findIndex(entry => entry.userId === userId) + 1;
             }
             
-            // --- NEW: Icon and message for making the leaderboard ---
             const trophyIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg>`;
-            let leaderboardMessage = `New daily high: <strong>${currentScore}</strong>!`; // Default message
+            let leaderboardMessage = `New daily high: <strong>${currentScore}</strong>!`; 
             
             if (rank && rank <= 10) {
-                leaderboardMessage = `You placed&nbsp;<strong>#${rank}</strong>&nbsp;on today's leaderboard!`;
+                leaderboardMessage = `You placed&nbsp;<strong>#${rank}</strong> on today's leaderboard!`;
             }
             finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${trophyIcon} ${leaderboardMessage}</div>`;
 
         } else {
-            // --- NEW: Icon and message for a standard score submission ---
             const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>`;
             const standardMessage = `Score submitted as&nbsp;<strong>${name}</strong>!`;
             finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${checkIcon} ${standardMessage}</div>`;
@@ -1238,6 +1294,7 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
         };
     }
 }
+    
     function setupTutorial() {
         const container = document.getElementById('how-to-play-container'); if (!container) return;
         container.innerHTML = `<div class="relative w-full h-full flex flex-col">
