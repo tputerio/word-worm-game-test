@@ -1157,7 +1157,7 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
     function findWordsRecursive(t,e,o,l,n){if(e+=n[t],!dictionaryTrie||!dictionaryTrie.search(e,!0))return;e.length>=3&&dictionaryTrie.search(e)&&l.add(e);const[s,a]=[t%GRID_COLS,Math.floor(t/GRID_COLS)];for(let r=-1;r<=1;r++)for(let i=-1;i<=1;i++){if(0===r&&0===i)continue;const[c,d]=[s+r,a+i];const h=d*GRID_COLS+c;c>=0&&c<GRID_COLS&&d>=0&&d<GRID_COLS&&!o.includes(h)&&findWordsRecursive(h,e,[...o,h],l,n)}}
 
 
-   async function showEndGameScreen(didBeatDailyHighScore) {
+ async function showEndGameScreen(didBeatDailyHighScore) {
     gameContentEl.classList.add('blurred');
     endGameModal.classList.remove('hidden');
     triggerEndGameConfetti();
@@ -1182,7 +1182,7 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
                 <button id="play-again-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-lg shadow-lg transition-transform hover:scale-105 flex-1">Play Again</button>
             </div>
         </div>`;
-            
+
     document.getElementById('play-again-button').onclick = resetGame;
     document.getElementById('endgame-leaderboard-button').onclick = showLeaderboardModal;
     document.getElementById('endgame-stats-button').onclick = showStatsModal;
@@ -1201,8 +1201,9 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
         }
     }
     
+    // This is the updated helper function with the new icons and messages
     const processSubmission = async (name, currentScore) => {
-        let message = `Score of <strong>${currentScore}</strong> saved!`;
+        let finalMessageHtml = '';
 
         if (didBeatDailyHighScore) {
             await submitLeaderboardScore(name, currentScore);
@@ -1214,32 +1215,41 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
                 const sorted = [...topScores].sort((a, b) => (b.dailyHighScore || 0) - (a.dailyHighScore || 0));
                 rank = sorted.findIndex(entry => entry.userId === userId) + 1;
             }
+            
+            // --- NEW: Icon and message for making the leaderboard ---
+            const trophyIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg>`;
+            let leaderboardMessage = `New daily high: <strong>${currentScore}</strong>!`; // Default message
+            
             if (rank && rank <= 10) {
-                message = `You placed <strong>#${rank}</strong> on today's leaderboard!`;         
-            } else {
-                message = `New daily high: <strong>${currentScore}</strong>!`;
+                leaderboardMessage = `You placed <strong>#${rank}</strong> on today's leaderboard!`;
             }
+            finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${trophyIcon} ${leaderboardMessage}</div>`;
+
+        } else {
+            // --- NEW: Icon and message for a standard score submission ---
+            const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>`;
+            const standardMessage = `Score submitted as <strong>${name}</strong>!`;
+            finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${checkIcon} ${standardMessage}</div>`;
         }
 
-        // --- MODIFIED: Added 'whitespace-nowrap' to the class list ---
-        submissionContainer.innerHTML = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4"/></svg> ${message}</div>`;
+        submissionContainer.innerHTML = finalMessageHtml;
     };
 
     if (!showSubmitForm) {
         processSubmission(playerName, score);
     } else {
         submissionContainer.innerHTML = `<div id="submit-score-form" class="w-full"><div class="flex space-x-2"><input type="text" id="player-name" placeholder="Enter your name" class="w-full px-3 py-2 border border-slate-300 rounded-lg" maxlength="10"><button id="submit-global-score" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Submit</button></div></div>`;
-        const nameInput = document.getElementById('player-name'); 
+        const nameInput = document.getElementById('player-name');
         nameInput.value = localStorage.getItem('wordRushPlayerName') || '';
-        document.getElementById('submit-global-score').onclick = async (e) => { 
-            const button = e.target; 
-            button.disabled = true; button.textContent = '...'; 
-            const newPlayerName = nameInput.value.trim(); 
-            if (newPlayerName) { 
+        document.getElementById('submit-global-score').onclick = async (e) => {
+            const button = e.target;
+            button.disabled = true; button.textContent = '...';
+            const newPlayerName = nameInput.value.trim();
+            if (newPlayerName) {
                 await processSubmission(newPlayerName, score);
-            } else { 
-                button.disabled = false; button.textContent = 'Submit'; 
-            } 
+            } else {
+                button.disabled = false; button.textContent = 'Submit';
+            }
         };
     }
 }
