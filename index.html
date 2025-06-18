@@ -436,7 +436,7 @@ async function checkAndResetDailyLeaderboard() {
         grid.style.pointerEvents = 'auto'; 
     }
     
-  function endGame() {
+ function endGame() {
     clearInterval(timerInterval);
     grid.style.pointerEvents = 'none';
     menuContainer.classList.add('hidden');
@@ -539,7 +539,8 @@ async function checkAndResetDailyLeaderboard() {
     
   async function saveGameHistoryAndStats(finalScore) {
     if (!db || !userId || isPracticeMode) {
-        if (!isPracticeMode) showEndGameScreen();
+        // We now need to pass a "false" value for the new parameter in practice mode
+        if (!isPracticeMode) showEndGameScreen(false);
         return;
     }
 
@@ -551,37 +552,53 @@ async function checkAndResetDailyLeaderboard() {
     };
 
     try {
-        // This remains the same: it saves the detailed game log for your records.
         await addDoc(collection(db, `players/${userId}/games`), gameData);
 
-        // This transaction updates the main player document with the new, efficient stats.
+        // This boolean will track if we need to update the global leaderboard.
+        let didBeatDailyHighScore = false;
+
         await runTransaction(db, async (transaction) => {
             const playerDoc = await transaction.get(playerDocRef);
             const oldData = playerDoc.exists() ? playerDoc.data() : {};
 
-            // Unchanged Logic for high score and best word
+            // --- NEW: Daily High Score Logic ---
+            const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            let newDailyHighScore = 0;
+
+            // Check if the player's last daily high was from a previous day.
+            if (oldData.dailyHighScoreLastUpdated !== todayStr) {
+                // First game of the day. The new score IS the daily high.
+                newDailyHighScore = finalScore;
+                didBeatDailyHighScore = true; // Qualifies for a leaderboard update.
+            } else {
+                // It's the same day. Check if the new score is better.
+                const oldDailyHighScore = oldData.dailyHighScore || 0;
+                if (finalScore > oldDailyHighScore) {
+                    newDailyHighScore = finalScore;
+                    didBeatDailyHighScore = true; // Qualifies for a leaderboard update.
+                } else {
+                    newDailyHighScore = oldDailyHighScore; // Keep the old high score.
+                    didBeatDailyHighScore = false; // Does NOT need a leaderboard update.
+                }
+            }
+
+            // --- Previous logic remains the same ---
             const newHighScore = Math.max(finalScore, oldData.highScore || 0);
             const currentBestWord = oldData.bestWord || { score: 0, word: '' };
             const gameBestWord = foundWords.length > 0 ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { score: 0 }) : { score: 0, word: ''};
             const newBestWord = gameBestWord.score > currentBestWord.score ? { word: gameBestWord.word, score: gameBestWord.score } : currentBestWord;
-
-            // Top 5 Scores Logic
+            const lettersThisGame = foundWords.reduce((sum, w) => sum + w.length, 0);
             const existingTopScores = oldData.top5Scores || [];
-            const thisGameScore = { score: finalScore, date: new Date().toLocaleDateString('en-CA') };
+            const thisGameScore = { score: finalScore, date: todayStr };
             const combinedScores = [...existingTopScores, thisGameScore];
             combinedScores.sort((a, b) => b.score - a.score);
-            const newTop5Scores = combinedScores.slice(0, 5); // Keep only Top 5
-
-            // Top 5 Longest Words Logic
+            const newTop5Scores = combinedScores.slice(0, 5);
             const existingLongestWords = oldData.top5LongestWords || [];
             const newWordsFromGame = foundWords.map(w => ({ word: w.word, length: w.length }));
             const combinedWords = [...existingLongestWords, ...newWordsFromGame];
             const uniqueWords = [...new Map(combinedWords.map(item => [item.word, item])).values()];
             uniqueWords.sort((a, b) => b.length - a.length);
-            const newTop5LongestWords = uniqueWords.slice(0, 5); // Keep only Top 5
-
-            // Logic for Average Word Length
-            const lettersThisGame = foundWords.reduce((sum, w) => sum + w.length, 0);
+            const newTop5LongestWords = uniqueWords.slice(0, 5);
 
             // Construct the complete update object
             const updateData = {
@@ -593,7 +610,10 @@ async function checkAndResetDailyLeaderboard() {
                 totalWordsFound: increment(foundWords.length),
                 totalLettersFound: increment(lettersThisGame),
                 top5Scores: newTop5Scores,
-                top5LongestWords: newTop5LongestWords
+                top5LongestWords: newTop5LongestWords,
+                // --- NEW FIELDS TO STORE THE PLAYER'S PERSONAL DAILY HIGH ---
+                dailyHighScore: newDailyHighScore,
+                dailyHighScoreLastUpdated: todayStr
             };
 
             if (playerDoc.exists()) {
@@ -605,11 +625,13 @@ async function checkAndResetDailyLeaderboard() {
             }
         });
         
-        showEndGameScreen();
+        // --- MODIFIED: Pass the result to the next function ---
+        showEndGameScreen(didBeatDailyHighScore);
 
     } catch (e) {
         console.error("Error saving game history and stats:", e);
-        showEndGameScreen();
+        // If there's an error, assume no leaderboard update.
+        showEndGameScreen(false);
     }
 }
 
@@ -1137,112 +1159,95 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
     function findWordsRecursive(t,e,o,l,n){if(e+=n[t],!dictionaryTrie||!dictionaryTrie.search(e,!0))return;e.length>=3&&dictionaryTrie.search(e)&&l.add(e);const[s,a]=[t%GRID_COLS,Math.floor(t/GRID_COLS)];for(let r=-1;r<=1;r++)for(let i=-1;i<=1;i++){if(0===r&&0===i)continue;const[c,d]=[s+r,a+i];const h=d*GRID_COLS+c;c>=0&&c<GRID_COLS&&d>=0&&d<GRID_COLS&&!o.includes(h)&&findWordsRecursive(h,e,[...o,h],l,n)}}
 
 
-    async function showEndGameScreen() {
-        gameContentEl.classList.add('blurred');
-        endGameModal.classList.remove('hidden');
-        triggerEndGameConfetti();
+    async function showEndGameScreen(didBeatDailyHighScore) { // MODIFIED: Accepts the new boolean
+    gameContentEl.classList.add('blurred');
+    endGameModal.classList.remove('hidden');
+    triggerEndGameConfetti();
 
-        const sortedWords = [...foundWords].sort((a,b)=>b.score-a.score);
-        const foundWordsHTML = sortedWords.length ? sortedWords.map(fw => `<div class="flex justify-between text-sm p-1 ${sortedWords.indexOf(fw) % 2 === 0 ? 'bg-slate-50' : ''} rounded"><span class="font-semibold">${fw.word.toUpperCase()}</span><span>+${fw.score}</span></div>`).join('') : '<p class="text-sm text-slate-500 text-center py-4">No words found.</p>';
+    const sortedWords = [...foundWords].sort((a,b)=>b.score-a.score);
+    const foundWordsHTML = sortedWords.length ? sortedWords.map(fw => `<div class="flex justify-between text-sm p-1 ${sortedWords.indexOf(fw) % 2 === 0 ? 'bg-slate-50' : ''} rounded"><span class="font-semibold">${fw.word.toUpperCase()}</span><span>+${fw.score}</span></div>`).join('') : '<p class="text-sm text-slate-500 text-center py-4">No words found.</p>';
 
-        endGameModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
-                <h2 class="text-3xl font-black text-green-500">Great Game!</h2>
-                <p class="text-slate-600 mb-2">Your final score is:</p>
-                <p class="text-6xl font-black text-slate-800 mb-4">${score}</p>
-                <div id="submission-container" class="h-12 flex items-center justify-center"></div>
-                <div class="text-left w-full mt-4">
-                    <div class="flex justify-between items-baseline mb-2 border-b pb-2">
-                        <h3 class="text-xl font-bold text-slate-700">Your Words (${foundWords.length})</h3>
-                        <button id="endgame-stats-button" class="flex items-center text-base font-bold text-blue-500 hover:text-blue-600"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg><span class="ml-1">Your Stats</span></button>
-                    </div>
-                    <div class="space-y-1 max-h-48 overflow-y-auto pr-2">${foundWordsHTML}</div>
+    endGameModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
+            <h2 class="text-3xl font-black text-green-500">Great Game!</h2>
+            <p class="text-slate-600 mb-2">Your final score is:</p>
+            <p class="text-6xl font-black text-slate-800 mb-4">${score}</p>
+            <div id="submission-container" class="h-12 flex items-center justify-center"></div>
+            <div class="text-left w-full mt-4">
+                <div class="flex justify-between items-baseline mb-2 border-b pb-2">
+                    <h3 class="text-xl font-bold text-slate-700">Your Words (${foundWords.length})</h3>
+                    <button id="endgame-stats-button" class="flex items-center text-base font-bold text-blue-500 hover:text-blue-600"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg><span class="ml-1">Your Stats</span></button>
                 </div>
-                <div class="flex space-x-2 mt-6">
-                    <button id="endgame-leaderboard-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-lg flex-1">Leaderboard</button>
-                    <button id="play-again-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-lg shadow-lg transition-transform hover:scale-105 flex-1">Play Again</button>
-                </div>
-            </div>`;
+                <div class="space-y-1 max-h-48 overflow-y-auto pr-2">${foundWordsHTML}</div>
+            </div>
+            <div class="flex space-x-2 mt-6">
+                <button id="endgame-leaderboard-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-lg flex-1">Leaderboard</button>
+                <button id="play-again-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-lg shadow-lg transition-transform hover:scale-105 flex-1">Play Again</button>
+            </div>
+        </div>`;
             
-        document.getElementById('play-again-button').onclick = resetGame;
-        document.getElementById('endgame-leaderboard-button').onclick = showLeaderboardModal;
-        document.getElementById('endgame-stats-button').onclick = showStatsModal;
+    document.getElementById('play-again-button').onclick = resetGame;
+    document.getElementById('endgame-leaderboard-button').onclick = showLeaderboardModal;
+    document.getElementById('endgame-stats-button').onclick = showStatsModal;
 
-        const submissionContainer = document.getElementById('submission-container');
-        submissionContainer.innerHTML = `<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>`;
+    const submissionContainer = document.getElementById('submission-container');
+    submissionContainer.innerHTML = `<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>`;
 
-        let playerName = null;
-        let showSubmitForm = true;
+    let playerName = null;
+    let showSubmitForm = true;
 
-        if (db && userId) {
-            const playerDoc = await getDoc(doc(db, "players", userId));
-            if (playerDoc.exists() && playerDoc.data().name && playerDoc.data().name !== 'Anonymous') {
-                playerName = playerDoc.data().name;
-                showSubmitForm = false;
+    if (db && userId) {
+        const playerDoc = await getDoc(doc(db, "players", userId));
+        if (playerDoc.exists() && playerDoc.data().name && playerDoc.data().name !== 'Anonymous') {
+            playerName = playerDoc.data().name;
+            showSubmitForm = false;
+        }
+    }
+    
+    // This helper function is now simpler
+    const processSubmission = async (name, currentScore) => {
+        let message = `Score of <strong>${currentScore}</strong> saved!`;
+
+        // --- OPTIMIZED: Only touch the global leaderboard if it's a new daily high ---
+        if (didBeatDailyHighScore) {
+            await submitLeaderboardScore(name, currentScore);
+
+            // Fetch updated leaderboard to find their rank
+            const leaderboardRef = doc(db, "leaderboards", "daily");
+            const leaderboardDoc = await getDoc(leaderboardRef);
+            let rank = null;
+            if (leaderboardDoc.exists()) {
+                const topScores = leaderboardDoc.data().topScores || [];
+                const sorted = [...topScores].sort((a, b) => (b.dailyHighScore || 0) - (a.dailyHighScore || 0));
+                rank = sorted.findIndex(entry => entry.userId === userId) + 1;
+            }
+            if (rank && rank <= 10) {
+                message = `You placed <strong>#${rank}</strong> on today's leaderboard!`;         
+            } else {
+                message = `New daily high: <strong>${currentScore}</strong>!`;
             }
         }
-        
-const processSubmission = async (name, currentScore) => {
-    // Get the user's previous daily high score
-    let previousDailyHigh = 0;
-    if (db && userId) {
-        const leaderboardRef = doc(db, "leaderboards", "daily");
-        const leaderboardDoc = await getDoc(leaderboardRef);
-        if (leaderboardDoc.exists()) {
-            const topScores = leaderboardDoc.data().topScores || [];
-            const entry = topScores.find(s => s.userId === userId);
-            if (entry) previousDailyHigh = entry.dailyHighScore || 0;
-        }
-    }
 
-    let message = `Score submitted as <strong>${name}</strong>!`;
-    let didPlaceOnLeaderboard = false;
+        submissionContainer.innerHTML = `<div class="flex items-center justify-center text-green-600 font-bold pop-in"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4"/></svg> ${message}</div>`;
+    };
 
-    // Only submit if it's their best score today
-    if (currentScore > previousDailyHigh) {
-        await submitLeaderboardScore(name, currentScore);
-
-        // Fetch updated leaderboard to find their rank
-        const leaderboardRef = doc(db, "leaderboards", "daily");
-        const leaderboardDoc = await getDoc(leaderboardRef);
-        let rank = null;
-        if (leaderboardDoc.exists()) {
-            const topScores = leaderboardDoc.data().topScores || [];
-            // Sort by dailyHighScore descending
-            const sorted = [...topScores].sort((a, b) => (b.dailyHighScore || 0) - (a.dailyHighScore || 0));
-            // Find rank (1-based)
-            rank = sorted.findIndex(entry => entry.userId === userId) + 1;
-        }
-        const leaderboardDisplayLimit = 10;
-        if (rank && rank <= leaderboardDisplayLimit) {
-            message = `You placed <strong>#${rank}</strong> on today's leaderboard!`;            
-            didPlaceOnLeaderboard = true;
-        }
+    if (!showSubmitForm) {
+        processSubmission(playerName, score);
     } else {
-        // If not a new daily high, still submit for record-keeping
-        await submitLeaderboardScore(name, currentScore);
+        submissionContainer.innerHTML = `<div id="submit-score-form" class="w-full"><div class="flex space-x-2"><input type="text" id="player-name" placeholder="Enter your name" class="w-full px-3 py-2 border border-slate-300 rounded-lg" maxlength="10"><button id="submit-global-score" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Submit</button></div></div>`;
+        const nameInput = document.getElementById('player-name'); 
+        nameInput.value = localStorage.getItem('wordRushPlayerName') || '';
+        document.getElementById('submit-global-score').onclick = async (e) => { 
+            const button = e.target; 
+            button.disabled = true; button.textContent = '...'; 
+            const newPlayerName = nameInput.value.trim(); 
+            if (newPlayerName) { 
+                await processSubmission(newPlayerName, score);
+            } else { 
+                button.disabled = false; button.textContent = 'Submit'; 
+            } 
+        };
     }
-
-    submissionContainer.innerHTML = `<div class="flex items-center justify-center text-green-600 font-bold pop-in"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4"/></svg> ${message}</div>`;
-};
-
-        if (!showSubmitForm) {
-            processSubmission(playerName, score);
-        } else {
-            submissionContainer.innerHTML = `<div id="submit-score-form" class="w-full"><div class="flex space-x-2"><input type="text" id="player-name" placeholder="Enter your name" class="w-full px-3 py-2 border border-slate-300 rounded-lg" maxlength="10"><button id="submit-global-score" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Submit</button></div></div>`;
-            const nameInput = document.getElementById('player-name'); 
-            nameInput.value = localStorage.getItem('wordRushPlayerName') || '';
-            document.getElementById('submit-global-score').onclick = async (e) => { 
-                const button = e.target; 
-                button.disabled = true; button.textContent = '...'; 
-                const newPlayerName = nameInput.value.trim(); 
-                if (newPlayerName) { 
-                    await processSubmission(newPlayerName, score);
-                } else { 
-                    button.disabled = false; button.textContent = 'Submit'; 
-                } 
-            };
-        }
-    }
+}
 
     function setupTutorial() {
         const container = document.getElementById('how-to-play-container'); if (!container) return;
