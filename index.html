@@ -1221,14 +1221,14 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
             let leaderboardMessage = `New daily high: <strong>${currentScore}</strong>!`; // Default message
             
             if (rank && rank <= 10) {
-                leaderboardMessage = `You placed <strong>#${rank}</strong> on today's leaderboard!`;
+                leaderboardMessage = `You placed&nbsp;<strong>#${rank}</strong>&nbsp;on today's leaderboard!`;
             }
             finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${trophyIcon} ${leaderboardMessage}</div>`;
 
         } else {
             // --- NEW: Icon and message for a standard score submission ---
             const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>`;
-            const standardMessage = `Score submitted as <strong>${name}</strong>!`;
+            const standardMessage = `Score submitted as&nbsp;<strong>${name}</strong>!`;
             finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${checkIcon} ${standardMessage}</div>`;
         }
 
