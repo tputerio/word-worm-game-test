@@ -634,11 +634,9 @@ async function submitLeaderboardScore(name, scoreToSave) {
     if (!name || !db || !userId || isPracticeMode) return;
     localStorage.setItem('wordRushPlayerName', name);
 
-    // Get a reference to the player's document and update their name
     const playerDocRef = doc(db, "players", userId);
     await setDoc(playerDocRef, { name: name, hasSubmittedName: true }, { merge: true });
 
-    // Fetch the player's single, authoritative stats document one time.
     const playerDocSnap = await getDoc(playerDocRef);
     if (!playerDocSnap.exists()) {
         console.error("Player document not found for leaderboard submission.");
@@ -647,18 +645,14 @@ async function submitLeaderboardScore(name, scoreToSave) {
     const playerStats = playerDocSnap.data();
     const gameBestWord = foundWords.length > 0 ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: '' };
 
-    // --- (FIXED) DAILY LEADERBOARD UPDATE ---
+    // --- DAILY LEADERBOARD UPDATE (Re-written for reliability) ---
     const dailyRef = doc(db, "leaderboards", "daily");
     try {
         await runTransaction(db, async (transaction) => {
             const dailyDoc = await transaction.get(dailyRef);
-            if (!dailyDoc.exists()) {
-                // If the daily doc doesn't exist, create it.
-                transaction.set(dailyRef, { players: [] });
-                return;
-            };
-
-            const currentPlayers = dailyDoc.data().players || [];
+            // Safely get the current list of players, or an empty array if it doesn't exist
+            const currentPlayers = (dailyDoc.exists() && dailyDoc.data().players) ? dailyDoc.data().players : [];
+            
             const oldEntry = currentPlayers.find(p => p.userId === userId);
 
             const updatedEntry = {
@@ -671,40 +665,38 @@ async function submitLeaderboardScore(name, scoreToSave) {
 
             const newPlayerList = [...currentPlayers.filter(p => p.userId !== userId), updatedEntry];
             
-            // Re-sort and save the full list of players. The client will handle displaying categories.
-            transaction.set(dailyRef, { players: newPlayerList }, { merge: true });
+            // Set the new list back to the document. This fixes the "first player of the day" bug.
+            transaction.set(dailyRef, { players: newPlayerList });
         });
     } catch (e) { console.error("Failed to update daily leaderboard:", e); }
 
-
-    // --- (FIXED) ALL-TIME LEADERBOARD UPDATE ---
+    // --- ALL-TIME LEADERBOARD UPDATE (Re-written for reliability) ---
     const allTimeRef = doc(db, "leaderboards", "allTime");
     try {
         await runTransaction(db, async (transaction) => {
             const allTimeDoc = await transaction.get(allTimeRef);
-            let data = allTimeDoc.exists() ? allTimeDoc.data() : { topByHighScore: [], topByTotalPoints: [], topByBestWord: [] };
+            const data = allTimeDoc.exists() ? allTimeDoc.data() : { topByHighScore: [], topByTotalPoints: [], topByBestWord: [] };
 
-            // This is a simpler, more robust helper function. It ALWAYS re-sorts.
-            const updateCategory = (list, playerEntry, sortKey, nestedKey = null) => {
-                // Add the current player and remove their old entry (if any)
-                let updatedList = list.filter(p => p.userID !== playerEntry.userID);
-                updatedList.push(playerEntry);
-                
-                // Sort the list correctly
-                updatedList.sort((a, b) => {
-                    const valA = nestedKey ? (a[sortKey] || {})[nestedKey] || 0 : a[sortKey] || 0;
-                    const valB = nestedKey ? (b[sortKey] || {})[nestedKey] || 0 : b[sortKey] || 0;
-                    return valB - valA;
-                });
-                
-                // Return the top 10
-                return updatedList.slice(0, 10);
-            };
-            
-            data.topByHighScore = updateCategory(data.topByHighScore, { userID: userId, name, score: playerStats.highScore }, 'score');
-            data.topByTotalPoints = updateCategory(data.topByTotalPoints, { userID: userId, name, totalPoints: playerStats.totalPoints }, 'totalPoints');
-            data.topByBestWord = updateCategory(data.topByBestWord, { userID: userId, name, bestWord: playerStats.bestWord }, 'bestWord', 'score');
-            
+            // Explicitly update each category. This logic is simpler and safer.
+
+            // 1. High Score
+            let highScores = data.topByHighScore.filter(p => p.userId !== userId);
+            highScores.push({ userId, name, score: playerStats.highScore });
+            highScores.sort((a, b) => b.score - a.score);
+            data.topByHighScore = highScores.slice(0, 10);
+
+            // 2. Total Points
+            let totalPoints = data.topByTotalPoints.filter(p => p.userId !== userId);
+            totalPoints.push({ userId, name, totalPoints: playerStats.totalPoints });
+            totalPoints.sort((a, b) => b.totalPoints - a.totalPoints);
+            data.topByTotalPoints = totalPoints.slice(0, 10);
+
+            // 3. Best Word
+            let bestWords = data.topByBestWord.filter(p => p.userId !== userId);
+            bestWords.push({ userId, name, bestWord: playerStats.bestWord });
+            bestWords.sort((a, b) => (b.bestWord?.score || 0) - (a.bestWord?.score || 0));
+            data.topByBestWord = bestWords.slice(0, 10);
+
             transaction.set(allTimeRef, data);
         });
     } catch (e) { console.error("Failed to update all-time leaderboard:", e); }
@@ -975,47 +967,35 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
 
     try {
         let html = '';
-        let docRef;
-        let categories;
+        const docRef = doc(db, "leaderboards", type); // Simplified to use 'type' directly
         
-        // Define categories for each leaderboard type, including the full SVG icons
-        if (type === 'all-time') {
-            docRef = doc(db, "leaderboards", "allTime");
-            categories = [
-                { key: 'topByHighScore',   title: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg> High Score` },
-                { key: 'topByTotalPoints', title: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg> Total Points` },
-                { key: 'topByBestWord',    title: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg> Best Word` }
-            ];
-        } else { // Daily
-            docRef = doc(db, "leaderboards", "daily");
-            categories = [
-                { key: 'dailyHighScore',   title: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg> High Score` },
-                { key: 'dailyTotalScore',  title: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg> Total Points` },
-                { key: 'dailyBestWord',    title: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg> Best Word` }
-            ];
-        }
-
         const docSnap = await getDoc(docRef);
         if (!docSnap.exists()) {
              html = `<p class="text-slate-500 text-center text-sm p-2">No scores yet. Be the first!</p>`;
         } else {
             const data = docSnap.data();
+            let categories;
+
+            // Define categories for each leaderboard type, including the full SVG icons
+            if (type === 'all-time') {
+                categories = [
+                    { key: 'topByHighScore',   list: data.topByHighScore,   title: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg> High Score` },
+                    { key: 'topByTotalPoints', list: data.topByTotalPoints, title: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg> Total Points` },
+                    { key: 'topByBestWord',    list: data.topByBestWord,    title: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg> Best Word` }
+                ];
+            } else { // Daily
+                const masterList = data.players || [];
+                categories = [
+                    { key: 'dailyHighScore',   list: [...masterList].sort((a,b) => (b.dailyHighScore || 0) - (a.dailyHighScore || 0)).slice(0, 10),   title: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg> High Score` },
+                    { key: 'dailyTotalScore',  list: [...masterList].sort((a,b) => (b.dailyTotalScore || 0) - (a.dailyTotalScore || 0)).slice(0, 10),  title: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg> Total Points` },
+                    { key: 'dailyBestWord',    list: [...masterList].sort((a,b) => (b.dailyBestWord?.score || 0) - (a.dailyBestWord?.score || 0)).slice(0, 10),    title: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg> Best Word` }
+                ];
+            }
 
             for (const cat of categories) {
                 html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center gap-2">${cat.title}</h3>`;
                 
-                let players;
-                if (type === 'daily') {
-                    // For daily, we sort the single player list for each category
-                    players = [...(data.players || [])].sort((a,b) => {
-                        const valA = cat.key.includes('BestWord') ? a.dailyBestWord?.score : a[cat.key];
-                        const valB = cat.key.includes('BestWord') ? b.dailyBestWord?.score : b[cat.key];
-                        return (valB || 0) - (valA || 0);
-                    }).slice(0,10);
-                } else {
-                    // For all-time, the lists are already sorted and separate
-                    players = data[cat.key] || [];
-                }
+                const players = cat.list || [];
 
                 if (players.length === 0) {
                     html += `<p class="text-slate-500 text-center text-sm p-2">No players in this category yet.</p>`;
@@ -1023,8 +1003,8 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
                     const scores = players.map((player, i) => {
                         let value;
                         let name = player.name || 'Anonymous';
-                        let userID = player.userID || player.userId;
-
+                        
+                        // Determine value based on category key
                         if (cat.key.includes('BestWord')) {
                             const wordData = player.bestWord || player.dailyBestWord;
                             value = wordData && wordData.word ? `${wordData.word.toUpperCase()} (${wordData.score})` : 'N/A';
