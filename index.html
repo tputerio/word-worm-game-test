@@ -630,76 +630,77 @@ async function saveGameHistoryAndStats(finalScore) {
     }
 }
 
-// Replace your entire existing submitLeaderboardScore function with this one
 async function submitLeaderboardScore(name, scoreToSave) {
     if (!name || !db || !userId || isPracticeMode) return;
     localStorage.setItem('wordRushPlayerName', name);
 
-    // Get a reference to the player's document
+    // Get a reference to the player's document and update their name
     const playerDocRef = doc(db, "players", userId);
     await setDoc(playerDocRef, { name: name, hasSubmittedName: true }, { merge: true });
 
-    // NEW: Fetch the player's single, authoritative stats document one time.
+    // Fetch the player's single, authoritative stats document one time.
     const playerDocSnap = await getDoc(playerDocRef);
     if (!playerDocSnap.exists()) {
         console.error("Player document not found for leaderboard submission.");
         return;
     }
     const playerStats = playerDocSnap.data();
-    
-    // --- DAILY LEADERBOARD UPDATE ---
+    const gameBestWord = foundWords.length > 0 ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: '' };
+
+    // --- (FIXED) DAILY LEADERBOARD UPDATE ---
     const dailyRef = doc(db, "leaderboards", "daily");
     try {
         await runTransaction(db, async (transaction) => {
-            const leaderboardDoc = await transaction.get(dailyRef);
-            if (!leaderboardDoc.exists()) return;
+            const dailyDoc = await transaction.get(dailyRef);
+            if (!dailyDoc.exists()) {
+                // If the daily doc doesn't exist, create it.
+                transaction.set(dailyRef, { players: [] });
+                return;
+            };
 
-            const currentScores = leaderboardDoc.data().topScores || [];
-            const oldEntry = currentScores.find(s => s.userId === userId);
-            const gameBestWord = foundWords.length > 0 ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: '' };
-            
+            const currentPlayers = dailyDoc.data().players || [];
+            const oldEntry = currentPlayers.find(p => p.userId === userId);
+
             const updatedEntry = {
                 userId,
                 name,
                 dailyHighScore: Math.max(oldEntry?.dailyHighScore || 0, scoreToSave),
                 dailyTotalScore: (oldEntry?.dailyTotalScore || 0) + scoreToSave,
-                dailyBestWord: (gameBestWord.score > (oldEntry?.dailyBestWord?.score || 0)) ? gameBestWord : (oldEntry?.dailyBestWord || gameBestWord)
+                dailyBestWord: (gameBestWord.score > (oldEntry?.dailyBestWord?.score || 0)) ? gameBestWord : (oldEntry?.dailyBestWord || gameBestWord),
             };
 
-            const newTopScores = [...currentScores.filter(s => s.userId !== userId), updatedEntry]
-                .sort((a,b) => b.dailyHighScore - a.dailyHighScore)
-                .slice(0,10);
-            transaction.update(dailyRef, { topScores: newTopScores });
+            const newPlayerList = [...currentPlayers.filter(p => p.userId !== userId), updatedEntry];
+            
+            // Re-sort and save the full list of players. The client will handle displaying categories.
+            transaction.set(dailyRef, { players: newPlayerList }, { merge: true });
         });
     } catch (e) { console.error("Failed to update daily leaderboard:", e); }
 
-    // --- ALL-TIME LEADERBOARD UPDATE (Now uses the authoritative player stats) ---
+
+    // --- (FIXED) ALL-TIME LEADERBOARD UPDATE ---
     const allTimeRef = doc(db, "leaderboards", "allTime");
     try {
         await runTransaction(db, async (transaction) => {
             const allTimeDoc = await transaction.get(allTimeRef);
             let data = allTimeDoc.exists() ? allTimeDoc.data() : { topByHighScore: [], topByTotalPoints: [], topByBestWord: [] };
 
-            // Helper function to update a list if the new score qualifies
-            const updateCategory = (list, newEntry, sortKey, nestedKey = null) => {
-                const lastPlaceScore = list.length < 10 ? 0 : (nestedKey ? list[9][sortKey][nestedKey] : list[9][sortKey] || 0);
-                const playerBestScore = nestedKey ? newEntry[sortKey][nestedKey] : newEntry[sortKey];
-
-                // Only update if player's score is better than last place, or if they are not on the list yet
-                if (playerBestScore > lastPlaceScore || !list.some(e => e.userID === userId)) {
-                    let updatedList = list.filter(u => u.userID !== userId);
-                    updatedList.push(newEntry);
-                    updatedList.sort((a, b) => {
-                        const valA = nestedKey ? (a[sortKey] || {})[nestedKey] || 0 : a[sortKey] || 0;
-                        const valB = nestedKey ? (b[sortKey] || {})[nestedKey] || 0 : b[sortKey] || 0;
-                        return valB - valA;
-                    });
-                    return updatedList.slice(0, 10);
-                }
-                return list; // Return original list if no update is needed
+            // This is a simpler, more robust helper function. It ALWAYS re-sorts.
+            const updateCategory = (list, playerEntry, sortKey, nestedKey = null) => {
+                // Add the current player and remove their old entry (if any)
+                let updatedList = list.filter(p => p.userID !== playerEntry.userID);
+                updatedList.push(playerEntry);
+                
+                // Sort the list correctly
+                updatedList.sort((a, b) => {
+                    const valA = nestedKey ? (a[sortKey] || {})[nestedKey] || 0 : a[sortKey] || 0;
+                    const valB = nestedKey ? (b[sortKey] || {})[nestedKey] || 0 : b[sortKey] || 0;
+                    return valB - valA;
+                });
+                
+                // Return the top 10
+                return updatedList.slice(0, 10);
             };
             
-            // Update each category using the correct data from the player's own document
             data.topByHighScore = updateCategory(data.topByHighScore, { userID: userId, name, score: playerStats.highScore }, 'score');
             data.topByTotalPoints = updateCategory(data.topByTotalPoints, { userID: userId, name, totalPoints: playerStats.totalPoints }, 'totalPoints');
             data.topByBestWord = updateCategory(data.topByBestWord, { userID: userId, name, bestWord: playerStats.bestWord }, 'bestWord', 'score');
@@ -708,6 +709,7 @@ async function submitLeaderboardScore(name, scoreToSave) {
         });
     } catch (e) { console.error("Failed to update all-time leaderboard:", e); }
 }
+
     
     function updateScoreDisplay() {
         scoreEl.textContent = score;
@@ -964,6 +966,7 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
     if (!listElement) return;
     if (loadingElement) loadingElement.style.display = 'block';
     listElement.innerHTML = '';
+    
     if (!db) {
         listElement.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard is offline.</p>`;
         if (loadingElement) loadingElement.style.display = 'none';
@@ -972,81 +975,65 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
 
     try {
         let html = '';
-
+        let docRef;
+        let categories;
+        
+        // Define categories for each leaderboard type, including the full SVG icons
         if (type === 'all-time') {
-            const leaderboardRef = doc(db, "leaderboards", "allTime");
-            const docSnap = await getDoc(leaderboardRef);
+            docRef = doc(db, "leaderboards", "allTime");
+            categories = [
+                { key: 'topByHighScore',   title: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg> High Score` },
+                { key: 'topByTotalPoints', title: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg> Total Points` },
+                { key: 'topByBestWord',    title: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg> Best Word` }
+            ];
+        } else { // Daily
+            docRef = doc(db, "leaderboards", "daily");
+            categories = [
+                { key: 'dailyHighScore',   title: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg> High Score` },
+                { key: 'dailyTotalScore',  title: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg> Total Points` },
+                { key: 'dailyBestWord',    title: `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg> Best Word` }
+            ];
+        }
 
-            if (!docSnap.exists() || !docSnap.data()) {
-                html = `<p class="text-slate-500 text-center text-sm p-2">All-Time leaderboard is not available.</p>`;
-            } else {
-                const data = docSnap.data();
-                const categories = [
-                    { key: 'topByHighScore',   title: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg> High Score' },
-                    { key: 'topByTotalPoints', title: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg> Total Points' },
-                    { key: 'topByBestWord',    title: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg> Best Word' }
-                ];
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) {
+             html = `<p class="text-slate-500 text-center text-sm p-2">No scores yet. Be the first!</p>`;
+        } else {
+            const data = docSnap.data();
 
-                for (const cat of categories) {
-                    html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center gap-2">${cat.title}</h3>`;
-                    
-                    const players = data[cat.key] || [];
-
-                    if (players.length === 0) {
-                        html += `<p class="text-slate-500 text-center text-sm p-2">No players in this category yet.</p>`;
-                    } else {
-                        const scores = players.map((player, i) => {
-                            let value;
-                            
-                            if (cat.key === 'topByBestWord') {
-                                value = player.bestWord && player.bestWord.word ? `${player.bestWord.word} (${player.bestWord.score})` : 'N/A';
-                            } else if (cat.key === 'topByTotalPoints') {
-                                value = player.totalPoints?.toLocaleString() || 0;
-                            } else {
-                                value = player.score?.toLocaleString() || 0;
-                            }
-
-                            return `<li class="flex items-center p-2 rounded-lg ${i % 2 === 0 ? 'bg-slate-50' : ''}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${player.name}</span><span class="font-bold text-green-500">${value}</span></li>`;
-                        }).join('');
-                        html += `<ol class="space-y-1">${scores}</ol>`;
-                    }
-                }
-            }
-        } else { // This is the 'daily' logic
-            const leaderboardRef = doc(db, "leaderboards", "daily");
-            const docSnap = await getDoc(leaderboardRef);
-
-            if (!docSnap.exists() || !docSnap.data().topScores || docSnap.data().topScores.length === 0) {
-                html += `<p class="text-slate-500 text-center text-sm p-2">No scores yet today. Be the first!</p>`;
-            } else {
-                const dailyPlayers = docSnap.data().topScores;
+            for (const cat of categories) {
+                html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center gap-2">${cat.title}</h3>`;
                 
-                // --- THIS IS THE CORRECTED PART ---
-                const categories = [
-                    { key: 'dailyHighScore',  title: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg> High Score' },
-                    { key: 'dailyTotalScore', title: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg> Total Points' },
-                    { key: 'dailyBestWord',   title: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg> Best Word' }
-                ];
-                // --- END OF CORRECTION ---
+                let players;
+                if (type === 'daily') {
+                    // For daily, we sort the single player list for each category
+                    players = [...(data.players || [])].sort((a,b) => {
+                        const valA = cat.key.includes('BestWord') ? a.dailyBestWord?.score : a[cat.key];
+                        const valB = cat.key.includes('BestWord') ? b.dailyBestWord?.score : b[cat.key];
+                        return (valB || 0) - (valA || 0);
+                    }).slice(0,10);
+                } else {
+                    // For all-time, the lists are already sorted and separate
+                    players = data[cat.key] || [];
+                }
 
-                for (const cat of categories) {
-                    html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center gap-2">${cat.title}</h3>`;
-                    
-                    const sortedPlayers = [...dailyPlayers].sort((a, b) => {
-                        if (cat.key === 'dailyBestWord') {
-                            return (b.dailyBestWord?.score || 0) - (a.dailyBestWord?.score || 0);
-                        }
-                        return (b[cat.key] || 0) - (a[cat.key] || 0);
-                    });
-
-                    const scores = sortedPlayers.map((player, i) => {
+                if (players.length === 0) {
+                    html += `<p class="text-slate-500 text-center text-sm p-2">No players in this category yet.</p>`;
+                } else {
+                    const scores = players.map((player, i) => {
                         let value;
-                        if (cat.key === 'dailyBestWord') {
-                            value = player.dailyBestWord && player.dailyBestWord.word ? `${player.dailyBestWord.word} (${player.dailyBestWord.score})` : 'N/A';
-                        } else {
-                            value = player[cat.key]?.toLocaleString() || 0;
+                        let name = player.name || 'Anonymous';
+                        let userID = player.userID || player.userId;
+
+                        if (cat.key.includes('BestWord')) {
+                            const wordData = player.bestWord || player.dailyBestWord;
+                            value = wordData && wordData.word ? `${wordData.word.toUpperCase()} (${wordData.score})` : 'N/A';
+                        } else if (cat.key.includes('TotalPoints')) {
+                             value = (player.totalPoints || player.dailyTotalScore || 0).toLocaleString();
+                        } else { // HighScore
+                             value = (player.score || player.dailyHighScore || 0).toLocaleString();
                         }
-                        return `<li class="flex items-center p-2 rounded-lg ${i % 2 === 0 ? 'bg-slate-50' : ''}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${player.name}</span><span class="font-bold text-green-500">${value}</span></li>`;
+                        return `<li class="flex items-center p-2 rounded-lg ${i % 2 === 0 ? 'bg-slate-50' : ''}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${name}</span><span class="font-bold text-green-500">${value}</span></li>`;
                     }).join('');
                     html += `<ol class="space-y-1">${scores}</ol>`;
                 }
