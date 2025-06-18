@@ -913,7 +913,7 @@ function updateCurrentWord() { currentWordLettersEl.innerHTML = selectedTiles.ma
         document.getElementById('close-leaderboard-button').onclick = () => { leaderboardModal.classList.add('hidden'); gameContentEl.classList.remove('blurred'); };
     }
 
-    async function showStatsModal() {
+   async function showStatsModal() {
     statsModal.classList.remove('hidden');
     gameContentEl.classList.add('blurred');
     statsModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center modal-enter">
@@ -926,17 +926,21 @@ function updateCurrentWord() { currentWordLettersEl.innerHTML = selectedTiles.ma
     let statsHTML;
 
     if (stats) {
-        // Calculate averages, checking to prevent division by zero.
         const avgScore = stats.totalGamesPlayed > 0 ? Math.round(stats.totalPoints / stats.totalGamesPlayed) : 0;
         const avgWordLength = stats.totalWordsFound > 0 ? (stats.totalLettersFound / stats.totalWordsFound).toFixed(1) : 0;
 
-        // Generate the HTML for the Top 5 lists
-        const topScoresHTML = stats.top5Scores.map((s, i) => 
-            `<li class="flex justify-between p-1 ${i % 2 === 0 ? 'bg-slate-50' : ''} rounded">
+        // Generate the HTML for the Top 5 lists, now with date formatting
+        const topScoresHTML = stats.top5Scores.map((s, i) => {
+            // --- NEW: Date formatting logic ---
+            const dateParts = s.date.split('-'); // e.g., ['2025', '06', '18']
+            const shortDate = `${Number(dateParts[1])}/${Number(dateParts[2])}/${dateParts[0].slice(-2)}`; // e.g., "6/18/25"
+            // --- End of new logic ---
+
+            return `<li class="flex justify-between p-1 ${i % 2 === 0 ? 'bg-slate-50' : ''} rounded">
                 <span><strong>${s.score}</strong></span>
-                <span class="text-slate-500">${s.date}</span>
-            </li>`
-        ).join('') || '<p class="text-xs text-slate-400 text-center">No scores yet.</p>';
+                <span class="text-slate-500">${shortDate}</span>
+            </li>`;
+        }).join('') || '<p class="text-xs text-slate-400 text-center">No scores yet.</p>';
 
         const topWordsHTML = stats.top5LongestWords.map((w, i) => 
             `<li class="p-1 ${i % 2 === 0 ? 'bg-slate-50' : ''} rounded">
@@ -944,7 +948,6 @@ function updateCurrentWord() { currentWordLettersEl.innerHTML = selectedTiles.ma
             </li>`
         ).join('') || '<p class="text-xs text-slate-400 text-center">No words found.</p>';
         
-        // Assemble the final HTML for the modal
         statsHTML = `
             <div class="bg-white rounded-2xl shadow-2xl p-6 modal-enter w-full max-w-sm mx-auto">
                 <div class="flex justify-between items-center mb-4">
@@ -954,7 +957,6 @@ function updateCurrentWord() { currentWordLettersEl.innerHTML = selectedTiles.ma
                     </h2>
                     <button id="close-stats-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
                 </div>
-
                 <div class="grid grid-cols-3 gap-2 text-center bg-slate-100 p-3 rounded-lg mb-4">
                     <div>
                         <div class="text-xs font-bold text-slate-500 uppercase">Games</div>
@@ -969,7 +971,6 @@ function updateCurrentWord() { currentWordLettersEl.innerHTML = selectedTiles.ma
                         <div class="text-2xl font-black text-slate-800">${avgWordLength}</div>
                     </div>
                 </div>
-                
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <h3 class="text-base font-bold text-slate-700 mb-2 border-b pb-1">Best Scores</h3>
@@ -983,7 +984,6 @@ function updateCurrentWord() { currentWordLettersEl.innerHTML = selectedTiles.ma
             </div>`;
 
     } else {
-        // This is the message for new players with no stats yet
         statsHTML = `
             <div class="bg-white rounded-2xl shadow-2xl p-6 modal-enter w-full max-w-sm mx-auto">
                 <div class="flex justify-between items-center mb-4">
@@ -994,7 +994,6 @@ function updateCurrentWord() { currentWordLettersEl.innerHTML = selectedTiles.ma
             </div>`;
     }
     
-    // Update the modal content and attach the close event
     statsModalContent.innerHTML = statsHTML;
     const closeButton = document.getElementById('close-stats-button');
     if (closeButton) {
@@ -1004,7 +1003,6 @@ function updateCurrentWord() { currentWordLettersEl.innerHTML = selectedTiles.ma
         };
     }
 }
-
   
    async function fetchAndCalculateStats() {
     if (!db || !userId) return null;
@@ -1159,7 +1157,7 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
     function findWordsRecursive(t,e,o,l,n){if(e+=n[t],!dictionaryTrie||!dictionaryTrie.search(e,!0))return;e.length>=3&&dictionaryTrie.search(e)&&l.add(e);const[s,a]=[t%GRID_COLS,Math.floor(t/GRID_COLS)];for(let r=-1;r<=1;r++)for(let i=-1;i<=1;i++){if(0===r&&0===i)continue;const[c,d]=[s+r,a+i];const h=d*GRID_COLS+c;c>=0&&c<GRID_COLS&&d>=0&&d<GRID_COLS&&!o.includes(h)&&findWordsRecursive(h,e,[...o,h],l,n)}}
 
 
-    async function showEndGameScreen(didBeatDailyHighScore) { // MODIFIED: Accepts the new boolean
+   async function showEndGameScreen(didBeatDailyHighScore) {
     gameContentEl.classList.add('blurred');
     endGameModal.classList.remove('hidden');
     triggerEndGameConfetti();
@@ -1203,15 +1201,11 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
         }
     }
     
-    // This helper function is now simpler
     const processSubmission = async (name, currentScore) => {
         let message = `Score of <strong>${currentScore}</strong> saved!`;
 
-        // --- OPTIMIZED: Only touch the global leaderboard if it's a new daily high ---
         if (didBeatDailyHighScore) {
             await submitLeaderboardScore(name, currentScore);
-
-            // Fetch updated leaderboard to find their rank
             const leaderboardRef = doc(db, "leaderboards", "daily");
             const leaderboardDoc = await getDoc(leaderboardRef);
             let rank = null;
@@ -1227,7 +1221,8 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
             }
         }
 
-        submissionContainer.innerHTML = `<div class="flex items-center justify-center text-green-600 font-bold pop-in"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4"/></svg> ${message}</div>`;
+        // --- MODIFIED: Added 'whitespace-nowrap' to the class list ---
+        submissionContainer.innerHTML = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4"/></svg> ${message}</div>`;
     };
 
     if (!showSubmitForm) {
@@ -1248,7 +1243,6 @@ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
         };
     }
 }
-
     function setupTutorial() {
         const container = document.getElementById('how-to-play-container'); if (!container) return;
         container.innerHTML = `<div class="relative w-full h-full flex flex-col">
