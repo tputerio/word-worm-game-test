@@ -59,7 +59,7 @@
             <div id="grid" class="grid grid-cols-4 gap-2 select-none"></div>
         </div>
     </div>
-    
+
     <div id="message-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-20 p-4">
         <div id="modal-content" class="w-full max-w-sm mx-auto"></div>
     </div>
@@ -73,6 +73,60 @@
         <div id="stats-modal-content" class="w-full max-w-xs mx-auto"></div>
     </div>
 </div>
+
+
+<template id="welcome-screen-template">
+    <div class="bg-white rounded-2xl shadow-2xl p-6 text-center modal-enter">
+        <h1 class="text-4xl font-black text-slate-800 tracking-tighter mb-1 flex items-center justify-center">
+            <img src="https://raw.githubusercontent.com/tputerio/word-rush-game/main/word-worm-logo.png" alt="Word Worm Logo" class="w-12 h-12 mr-2">
+            <span>Word Worm</span>
+        </h1>
+        <p class="text-slate-500 text-sm mb-4">The fast-paced word finding game!</p>
+        <div id="how-to-play-container" class="relative bg-slate-100 p-3 rounded-lg mb-4 h-[17rem] overflow-hidden"></div>
+        <div class="flex flex-col sm:flex-row sm:space-x-4 mb-3">
+            <button id="play-practice-button" class="bg-blue-500 hover:bg-blue-600 flex-1 text-white font-bold py-2 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 mb-3 sm:mb-0 disabled:bg-slate-400 disabled:cursor-wait">...</button>
+            <button id="play-game-mode-button" class="bg-green-500 hover:bg-green-600 flex-1 text-white font-bold py-2 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-wait">...</button>
+        </div>
+        <div class="flex justify-between items-center border-t border-slate-200 pt-3">
+            <div class="font-bold text-slate-600 text-base flex items-center">
+                <span class="inline-block w-6 h-6 mr-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg></span>Your High: <span id="welcome-high-score">0</span>
+            </div>
+            <button id="show-leaderboard-button" class="font-bold text-green-500 hover:text-green-600 text-base flex items-center" disabled>
+                Leaderboard <span class="inline-block w-6 h-6 ml-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="m6.115 5.19.319 1.913A6 6 0 0 0 8.11 10.36L9.75 12l-.387.775c-.217.433-.132.956.21 1.298l1.348 1.348c.21.21.329.497.329.795v1.089c0 .426.24.815.622 1.006l.153.076c.433.217.956.132 1.298-.21l.723-.723a8.7 8.7 0 0 0 2.288-4.042 1.087 1.087 0 0 0-.358-1.099l-1.33-1.108c-.251-.21-.582-.299-.905-.245l-1.17.195a1.125 1.125 0 0 1-.98-.314l-.295-.295a1.125 1.125 0 0 1 0-1.591l.13-.132a1.125 1.125 0 0 1 1.3-.21l.603.302a.809.809 0 0 0 1.086-1.086L14.25 7.5l1.256-.837a4.5 4.5 0 0 0 1.528-1.732l.146-.292M6.115 5.19A9 9 0 1 0 17.18 4.64M6.115 5.19A8.965 8.965 0 0 1 12 3c1.929 0 3.716.607 5.18 1.64" /></svg></span>
+            </button>
+        </div>
+        <p id="player-stats-display" class="text-xs text-slate-400 mt-3"></p>
+        <p class="text-xs text-slate-400 mt-1"><span id="global-play-count">...</span> games played globally</p>
+        <p id="loading-error" class="text-red-500 mt-2 font-semibold"></p>
+    </div>
+</template>
+
+<template id="end-game-template">
+    <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
+        <h2 class="text-3xl font-black text-green-500">Great Game!</h2>
+        <p class="text-slate-600 mb-2">Your final score is:</p>
+        <p class="final-score text-6xl font-black text-slate-800 mb-3">0</p>
+        <div class="submission-container h-8 flex items-center justify-center">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
+        </div>
+        <hr class="my-4">
+        <div class="text-left w-full">
+            <div class="flex justify-between items-baseline mb-2">
+                <h3 class="words-title text-xl font-bold text-slate-700">Your Words (0)</h3>
+                <button class="endgame-stats-button flex items-center text-base font-bold text-blue-500 hover:text-blue-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg>
+                    <span class="ml-1">Your Stats</span>
+                </button>
+            </div>
+            <div class="found-words-list space-y-1 max-h-48 overflow-y-auto pr-2"></div>
+        </div>
+        <div class="share-link-container h-10 flex items-center justify-center"></div>
+        <div class="flex space-x-2 mt-3">
+            <button class="endgame-leaderboard-button bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-base flex-1">Leaderboard</button>
+            <button class="play-again-button bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex-1">Play Again</button>
+        </div>
+    </div>
+</template>
 
 </body>
 </html>
