@@ -1144,7 +1144,7 @@ async function shareScore() {
     }
 }
 
-// Replace your existing showEndGameScreen function with this corrected one
+// Replace your existing showEndGameScreen function with this one
 async function showEndGameScreen(didBeatDailyHighScore) {
     gameContentEl.classList.add('blurred');
     endGameModal.classList.remove('hidden');
@@ -1153,13 +1153,16 @@ async function showEndGameScreen(didBeatDailyHighScore) {
     const sortedWords = [...foundWords].sort((a,b)=>b.score-a.score);
     const foundWordsHTML = sortedWords.length ? sortedWords.map(fw => `<div class="flex justify-between text-sm p-1 ${sortedWords.indexOf(fw) % 2 === 0 ? 'bg-slate-50' : ''} rounded"><span class="font-semibold">${fw.word.toUpperCase()}</span><span>+${fw.score}</span></div>`).join('') : '<p class="text-sm text-slate-500 text-center py-4">No words found.</p>';
 
+    // --- HTML layout is the only thing changed here ---
     endGameModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
             <h2 class="text-3xl font-black text-green-500">Great Game!</h2>
             <p class="text-slate-600 mb-2">Your final score is:</p>
             <p class="text-6xl font-black text-slate-800 mb-3">${score}</p>
+
             <div id="submission-container" class="h-8 flex items-center justify-center"></div>
-            <div id="share-link-container" class="h-8 flex items-center justify-center"></div>
+            
             <hr class="my-4">
+
             <div class="text-left w-full">
                 <div class="flex justify-between items-baseline mb-2">
                     <h3 class="text-xl font-bold text-slate-700">Your Words (${foundWords.length})</h3>
@@ -1170,7 +1173,10 @@ async function showEndGameScreen(didBeatDailyHighScore) {
                 </div>
                 <div class="space-y-1 max-h-48 overflow-y-auto pr-2">${foundWordsHTML}</div>
             </div>
-            <div class="flex space-x-2 mt-6">
+
+            <div id="share-link-container" class="h-8 flex items-center justify-center mt-5"></div>
+            
+            <div class="flex space-x-2 mt-3">
                 <button id="endgame-leaderboard-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-base flex-1">Leaderboard</button>
                 <button id="play-again-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex-1">Play Again</button>
             </div>
@@ -1205,15 +1211,13 @@ async function showEndGameScreen(didBeatDailyHighScore) {
     }
     
     const processSubmission = async (name, currentScore) => {
-        // --- FIX: Submit the score unconditionally before determining the message ---
-        // This ensures the leaderboard is updated after every game.
-        try {
-            await submitLeaderboardScore(name, currentScore);
-        } catch (e) {
-            console.error("Submission failed:", e);
-            submissionContainer.innerHTML = `<div class="text-red-500 font-bold">Error saving score!</div>`;
-            return;
-        }
+        try {
+            await submitLeaderboardScore(name, currentScore);
+        } catch (e) {
+            console.error("Submission failed:", e);
+            submissionContainer.innerHTML = `<div class="text-red-500 font-bold">Error saving score!</div>`;
+            return;
+        }
 
         let finalMessageHtml = '';
         if (didBeatDailyHighScore) {
