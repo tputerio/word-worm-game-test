@@ -1,0 +1,1202 @@
+// --- Firebase SDKs ---
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
+import { getFirestore, collection, addDoc, getDocs, query, where, orderBy, limit, doc, getDoc, setDoc, updateDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
+
+// --- Config ---
+const [GRID_SIZE, GRID_COLS, GAME_TIME] = [16, 4, 60];
+const letterConfig={'A':{p:1},'B':{p:3},'C':{p:3},'D':{p:2},'E':{p:1},'F':{p:4},'G':{p:2},'H':{p:4},'I':{p:1},'J':{p:8},'K':{p:5},'L':{p:1},'M':{p:3},'N':{p:1},'O':{p:1},'P':{p:3},'Q':{p:10},'R':{p:1},'S':{p:1},'T':{p:1},'U':{p:1},'V':{p:4},'W':{p:4},'X':{p:8},'Y':{p:4},'Z':{p:10}};
+const VOWELS = ['A', 'E', 'I', 'O', 'U'];
+const HARD_CONSONANTS = ['J', 'K', 'Q', 'X', 'Z'];
+const LETTER_BAG_STRING = "EEEEEEEEEEEEAAAAAAAAAARRRRRRRRRRIIIIIIIIIOOOOOOOOTTTTTTTTNNNNNNNNSSSSSSSLLLLLLUUUUDDDDGGGBBCCMMPPFFHHVVWWYYKJXQZ";
+
+// --- DOM Elements ---
+const gameContainer = document.getElementById('game-container');
+const gameContentEl = document.getElementById('game-content');
+const gridContainer = document.getElementById('grid-container');
+const grid = document.getElementById('grid'), lineCanvas = document.getElementById('line-canvas'), ctx = lineCanvas.getContext('2d');
+const scoreEl = document.getElementById('score'), timerEl = document.getElementById('timer');
+const topLeftDisplayEl = document.getElementById('top-left-display');
+const menuContainer = document.getElementById('menu-container');
+const menuButton = document.getElementById('menu-button');
+const dropdownMenu = document.getElementById('dropdown-menu');
+const currentWordLettersEl = document.getElementById('current-word-letters');
+const messageModal = document.getElementById('message-modal'), modalContent = document.getElementById('modal-content');
+const endGameModal = document.getElementById('end-game-modal'), endGameModalContent = document.getElementById('end-game-modal-content');
+const leaderboardModal = document.getElementById('leaderboard-modal'), leaderboardModalContent = document.getElementById('leaderboard-modal-content');
+const statsModal = document.getElementById('stats-modal'), statsModalContent = document.getElementById('stats-modal-content');
+
+// --- Firebase State ---
+let auth, db, userId;
+
+// --- Game State ---
+let score = 0, timer = GAME_TIME, timerInterval, dictionaryTrie, foundWords = [], selectedTiles = [], isMouseDown = false;
+let tilePositions = [];
+let isPracticeMode = false; 
+let practiceTimeElapsed = 0;
+let animationInterval;
+
+// --- Trie Data Structure ---
+class Trie {
+    constructor(data = null) {
+        this.root = data || {}; 
+    }
+    search(word, isPrefix = false) {
+        let node = this.root;
+        for (const char of word) {
+            if (!node[char]) return false;
+            node = node[char];
+        }
+        return isPrefix ? true : node.isEndOfWord === true;
+    }
+}
+
+async function checkAndResetDailyLeaderboard() {
+    if (!db) return;
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const leaderboardRef = doc(db, "leaderboards", "daily");
+
+    try {
+        const docSnap = await getDoc(leaderboardRef);
+        if (!docSnap.exists() || docSnap.data().lastReset !== todayStr) {
+            console.log(`Resetting daily leaderboard for ${todayStr}...`);
+            await setDoc(leaderboardRef, {
+                lastReset: todayStr,
+                topScores: []
+            });
+        }
+    } catch (e) {
+        console.error("Could not check or reset daily leaderboard:", e);
+    }
+}
+
+// --- Init ---
+function main() {
+    setupEventListeners();
+    topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">0</div>`;
+    showWelcomeScreen();
+    loadAssets(); 
+}
+
+async function loadAssets() {
+    const playGameModeButton = document.getElementById('play-game-mode-button');
+    const playPracticeButton = document.getElementById('play-practice-button');
+    const loadingErrorEl = document.getElementById('loading-error');
+    const globalPlayCountSpan = document.getElementById('global-play-count');
+
+    const initializeFirebase = async () => {
+        try {
+            const firebaseConfig = { apiKey: "AIzaSyBa2DPRjwaI-G5mz-OmHVXEDJ4_MzBAZgA", authDomain: "word-rush-game-9010a.firebaseapp.com", projectId: "word-rush-game-9010a", storageBucket: "word-rush-game-9010a.appspot.com", messagingSenderId: "551838491871", appId: "1:551838491871:web:757325be04daab9289b56a" };
+            const app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    userId = user.uid;
+                    console.log("Firebase connected. User ID:", userId);
+                    await checkAndResetDailyLeaderboard();
+                    fetchGlobalStats();
+                    fetchPlayerStats(userId);
+                    document.getElementById('show-leaderboard-button').disabled = false;
+                } else {
+                    signInAnonymously(auth).catch(err => console.error("Anonymous sign-in failed:", err));
+                }
+            });
+        } catch (firebaseError) {
+            console.warn("Firebase features failed to load, continuing in offline mode:", firebaseError);
+            if (globalPlayCountSpan) globalPlayCountSpan.textContent = "N/A";
+        }
+    };
+    
+    const loadDictionaryAndEnableButtons = async () => {
+        if (playGameModeButton) {
+            playGameModeButton.disabled = true;
+            playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
+        }
+        if (playPracticeButton) {
+            playPracticeButton.disabled = true;
+            playPracticeButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
+        }
+        
+        try {
+            const res = await fetch('https://raw.githubusercontent.com/tputerio/word-rush-game/main/dictionary.json');
+            if (!res.ok) throw new Error(`Dictionary download failed: ${res.statusText}`);
+            const trieData = await res.json();
+            dictionaryTrie = new Trie(trieData);
+            console.log("Pre-built dictionary loaded. Game is playable.");
+
+            if (playGameModeButton) {
+                playGameModeButton.disabled = false;
+                playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg><span>Play</span></div>`;
+            }
+            if (playPracticeButton) {
+                playPracticeButton.disabled = false;
+                playPracticeButton.innerHTML = `<div class="flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg><span>Practice</span></div>`;
+            }
+        } catch (e) {
+            console.error("Critical Asset loading failed (Dictionary):", e);
+            if (loadingErrorEl) loadingErrorEl.textContent = "Error: Could not load game dictionary.";
+            if (playGameModeButton) { playGameModeButton.innerHTML = `<span>Error</span>`; playGameModeButton.classList.add('bg-red-500'); }
+            if (playPracticeButton) { playPracticeButton.innerHTML = `<span>Error</span>`; playPracticeButton.classList.add('bg-red-500'); }
+        }
+    };
+
+    initializeFirebase();
+    loadDictionaryAndEnableButtons();
+}
+
+async function fetchGlobalStats() {
+    const globalPlayCountSpan = document.getElementById('global-play-count');
+    if (!db || !globalPlayCountSpan) return;
+    try {
+        const statsRef = doc(db, "gameStats", "stats");
+        const docSnap = await getDoc(statsRef);
+        if (docSnap.exists()) {
+            globalPlayCountSpan.textContent = docSnap.data().playCount.toLocaleString();
+        } else {
+            globalPlayCountSpan.textContent = "0";
+        }
+    } catch(e) {
+        console.warn("Could not fetch global stats:", e);
+        if (globalPlayCountSpan) globalPlayCountSpan.textContent = "N/A";
+    }
+}
+
+async function fetchPlayerStats(uid) {
+    if (!db) return;
+    const playerDocRef = doc(db, "players", uid);
+    try {
+        const docSnap = await getDoc(playerDocRef);
+        let highScore = 0;
+        let gamesPlayed = 0;
+        let playerName = 'Anonymous';
+
+        if (docSnap.exists()) {
+            const playerData = docSnap.data();
+            highScore = playerData.highScore || 0;
+            gamesPlayed = playerData.totalGamesPlayed || 0;
+            playerName = playerData.name && playerData.name !== 'Anonymous' ? playerData.name : 'Anonymous';
+        }
+
+        const highScoreEl = document.getElementById('high-score');
+        if (highScoreEl) highScoreEl.textContent = highScore;
+
+        const welcomeHighScoreEl = document.getElementById('welcome-high-score');
+        if (welcomeHighScoreEl) welcomeHighScoreEl.textContent = highScore;
+        
+        const playerStatsDisplayEl = document.getElementById('player-stats-display');
+        if (playerStatsDisplayEl) {
+            playerStatsDisplayEl.innerHTML = `Playing as <strong class="text-slate-500">${playerName}</strong> | You’ve played <strong class="text-slate-500">${gamesPlayed}</strong> games!`;
+        }
+
+    } catch (e) {
+        console.error("Could not fetch player stats:", e);
+    }
+}
+
+function createGrid() {
+    const board = generateAndValidateBoard();
+    grid.innerHTML = '';
+    for (let i = 0; i < GRID_SIZE; i++) {
+        const letter = board[i];
+        const points = letterConfig[letter].p;
+        const tile = document.createElement('div');
+        tile.className = 'tile w-full aspect-square border-2 border-slate-300 bg-white rounded-lg flex items-center justify-center text-3xl font-bold text-slate-800 cursor-pointer';
+        tile.dataset.letter = letter; tile.dataset.points = points; tile.dataset.id = i;
+        tile.innerHTML = `<span>${letter}<sub class="text-xs font-semibold ml-1">${points}</sub></span>`;
+        const bonusType = getBonusType();
+        if (bonusType) {
+            tile.dataset.bonus = bonusType.type;
+            tile.classList.add(bonusType.class);
+            tile.innerHTML += `<div class="bonus-label">${bonusType.label}</div>`;
+        }
+        grid.appendChild(tile);
+    }
+    setTimeout(resizeCanvas, 0);
+}
+
+function getRandomLetter() { return LETTER_BAG_STRING[Math.floor(Math.random() * LETTER_BAG_STRING.length)]; }
+function getBonusType() {
+    const rand = Math.random();
+    if (rand < 0.08) return { type: 'Time', label: '+5s', class: 'bonus-Time' };
+    if (rand < 0.18) return { type: 'DW', label: 'DW', class: 'bonus-DW' };
+    if (rand < 0.28) return { type: 'TL', label: 'TL', class: 'bonus-TL' };
+    if (rand < 0.40) return { type: 'DL', label: 'DL', class: 'bonus-DL' };
+    return null;
+}
+
+function startGame(practiceMode = false) {
+    isPracticeMode = practiceMode; 
+    clearInterval(timerInterval); 
+    score = 0; 
+    foundWords = []; 
+    updateScoreDisplay(); 
+    
+    gameContainer.appendChild(menuContainer);
+    menuContainer.className = 'absolute top-4 right-4 z-30';
+    document.getElementById('menu-home').style.display = 'flex';
+    menuContainer.classList.remove('hidden');
+
+    if (isPracticeMode) {
+        practiceTimeElapsed = 0;
+        topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-blue-500 uppercase tracking-wider">Pace</div><div id="pace-score" class="text-3xl font-black text-blue-400">0</div>`;
+        updatePracticeUI(); 
+        timerInterval = setInterval(() => {
+            practiceTimeElapsed++;
+            updatePracticeUI();
+        }, 1000);
+    } else {
+        const highScoreEl = document.getElementById('high-score');
+        const currentHighScore = highScoreEl ? highScoreEl.textContent : '0';
+        topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${currentHighScore}</div>`;
+        timer = GAME_TIME; 
+        updateTimerUI(); 
+        if (db) { const statsRef = doc(db, "gameStats", "stats"); updateDoc(statsRef, { playCount: increment(1) }).catch(console.warn); }
+        timerInterval = setInterval(() => { timer--; updateTimerUI(); if (timer <= 0) endGame(); }, 1000);
+    }
+
+    gameContentEl.classList.remove('blurred');
+    messageModal.classList.add('hidden');
+    clearInterval(animationInterval);
+    createGrid();
+    grid.style.pointerEvents = 'auto'; 
+}
+
+function endGame() {
+    clearInterval(timerInterval);
+    grid.style.pointerEvents = 'none';
+    menuContainer.classList.add('hidden');
+    
+    showEndGameScreen();
+
+    if (!isPracticeMode && db && userId) {
+        processEndOfGame(score, foundWords, userId);
+    } else if (isPracticeMode) {
+        const submissionContainer = document.getElementById('submission-container');
+        if(submissionContainer) submissionContainer.innerHTML = `<div class="text-slate-500 font-bold">Practice complete!</div>`;
+    }
+}
+
+function resetGame() {
+    clearInterval(timerInterval);
+    endGameModal.classList.add('hidden');
+    statsModal.classList.add('hidden');
+    score = 0;
+    foundWords = [];
+    updateScoreDisplay();
+
+    const highScoreEl = document.getElementById('high-score');
+    const currentHighScore = highScoreEl ? highScoreEl.textContent : '0';
+
+    topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${currentHighScore}</div>`;
+    showWelcomeScreen();
+    loadAssets();
+}
+
+function handleInteraction(tile) {
+    if (!tile || !isMouseDown) return;
+    const lastSelected = selectedTiles[selectedTiles.length - 1];
+    if (selectedTiles.length > 1 && tile === selectedTiles[selectedTiles.length - 2]) {
+        const lastTile = selectedTiles.pop();
+        lastTile.classList.remove('selected');
+    } else if (!selectedTiles.includes(tile) && (!lastSelected || isAdjacent(tile, lastSelected))) {
+        selectedTiles.push(tile);
+        tile.classList.add('selected');
+    }
+    updateCurrentWord();
+    drawLines();
+}
+
+function isAdjacent(t1, t2) {
+    if (!t1 || !t2) return false;
+    const id1 = parseInt(t1.dataset.id), id2 = parseInt(t2.dataset.id);
+    const [c1, r1] = [id1 % GRID_COLS, Math.floor(id1 / GRID_COLS)];
+    const [c2, r2] = [id2 % GRID_COLS, Math.floor(id2 / GRID_COLS)];
+    return Math.abs(c1 - c2) <= 1 && Math.abs(r1 - r2) <= 1;
+}
+
+function submitWord() {
+    const word = selectedTiles.map(t => t.dataset.letter).join('');
+    if (word.length >= 3 && dictionaryTrie.search(word) && !foundWords.some(fw => fw.word === word)) {
+        let baseScore = 0; let wordMultiplier = 1; let timeBonus = 0;
+        selectedTiles.forEach(tile => {
+            let letterScore = parseInt(tile.dataset.points);
+            switch(tile.dataset.bonus) {
+                case 'DL': letterScore *= 2; break; case 'TL': letterScore *= 3; break;
+                case 'DW': wordMultiplier *= 2; break; case 'Time': timeBonus += 5; break;
+            }
+            baseScore += letterScore;
+        });
+        
+        let finalScore = baseScore * wordMultiplier;
+        if (word.length >= 7) finalScore += 20;
+        else if (word.length === 6) finalScore += 10;
+        else if (word.length === 5) finalScore += 5;
+        else if (word.length === 4) finalScore += 2;
+        
+        if (timeBonus > 0 && !isPracticeMode) {
+            timer += timeBonus; 
+            updateTimerUI();
+        }
+        
+        foundWords.push({ word, score: finalScore, length: word.length });
+        createFlyingScore(finalScore, selectedTiles[0]);
+        triggerConfetti(selectedTiles);
+        setTimeout(() => { score += finalScore; updateScoreDisplay(); }, 500);
+        replaceSelectedTiles();
+    }
+    clearSelection();
+}
+
+function replaceSelectedTiles() {
+    let currentBoardLetters = Array.from(grid.children).map(t => t.dataset.letter);
+    selectedTiles.forEach(tile => { const index = parseInt(tile.dataset.id); currentBoardLetters[index] = null; });
+    const newBoard = generateAndValidateBoard(currentBoardLetters);
+    selectedTiles.forEach((tile) => {
+        const index = parseInt(tile.dataset.id); const letter = newBoard[index]; const points = letterConfig[letter].p;
+        tile.dataset.letter = letter; tile.dataset.points = points; tile.style.transform = 'scale(0)'; tile.dataset.bonus = '';
+        tile.classList.remove('bonus-DL', 'bonus-TL', 'bonus-DW', 'bonus-Time');
+        setTimeout(() => {
+            tile.innerHTML = `<span>${letter}<sub class="text-xs font-semibold ml-1">${points}</sub></span>`;
+            const bonusType = getBonusType();
+            if (bonusType) { tile.dataset.bonus = bonusType.type; tile.classList.add(bonusType.class); tile.innerHTML += `<div class="bonus-label">${bonusType.label}</div>`; }
+            tile.style.transform = 'scale(1)';
+        }, 200);
+    });
+}
+
+function clearSelection() { selectedTiles.forEach(t => t.classList.remove('selected')); selectedTiles = []; updateCurrentWord(); drawLines(); }
+
+async function processEndOfGame(finalScore, words, uId) {
+    if (!db || !uId || isPracticeMode) return;
+
+    const playerDocRef = doc(db, "players", uId);
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
+    const gameData = {
+        score: finalScore,
+        timestamp: serverTimestamp(),
+        words: words.map(w => ({ word: w.word, score: w.score, length: w.length }))
+    };
+    try {
+        await addDoc(collection(db, `players/${uId}/games`), gameData);
+    } catch(e) { console.error("Failed to save game history:", e); }
+
+    const { updatedStats, didBeatDailyHighScore } = await runTransaction(db, async (transaction) => {
+        const playerDoc = await transaction.get(playerDocRef);
+        const oldData = playerDoc.exists() ? playerDoc.data() : {};
+
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+        let newPlayStreak = 1;
+        if (oldData.lastPlayDate === yesterdayStr) newPlayStreak = (oldData.playStreak || 0) + 1;
+        else if (oldData.lastPlayDate === todayStr) newPlayStreak = oldData.playStreak || 1;
+
+        let dailyHighScoreBeaten = false;
+        let newDailyHighScore = finalScore;
+        if (oldData.dailyHighScoreLastUpdated === todayStr) {
+            if(finalScore > (oldData.dailyHighScore || 0)) {
+                dailyHighScoreBeaten = true;
+            } else {
+                newDailyHighScore = oldData.dailyHighScore;
+            }
+        } else {
+            dailyHighScoreBeaten = true;
+        }
+
+        const newHighScore = Math.max(finalScore, oldData.highScore || 0);
+        const gameBestWord = words.length > 0 ? words.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: '' };
+        const newBestWordForProfile = gameBestWord.score > (oldData.bestWord?.score || 0) ? { word: gameBestWord.word, score: gameBestWord.score } : (oldData.bestWord || { word: '', score: 0 });
+        const lettersThisGame = words.reduce((sum, w) => sum + w.length, 0);
+        const newTop5Scores = [...(oldData.top5Scores || []), { score: finalScore, date: todayStr }].sort((a,b)=>b.score-a.score).slice(0,5);
+        const newTop5LongestWords = [...new Map([...(oldData.top5LongestWords || []), ...words.map(w=>({word:w.word,length:w.length}))].map(item=>[item.word,item])).values()].sort((a,b)=>b.length-a.length).slice(0,5);
+        
+        const updateData = {
+            totalGamesPlayed: increment(1),
+            totalPoints: increment(finalScore),
+            lastPlayed: serverTimestamp(),
+            highScore: newHighScore,
+            bestWord: newBestWordForProfile,
+            totalWordsFound: increment(words.length),
+            totalLettersFound: increment(lettersThisGame),
+            top5Scores: newTop5Scores,
+            top5LongestWords: newTop5LongestWords,
+            dailyHighScore: newDailyHighScore,
+            dailyHighScoreLastUpdated: todayStr,
+            playStreak: newPlayStreak,
+            lastPlayDate: todayStr,
+            name: oldData.name || localStorage.getItem('wordRushPlayerName') || 'Anonymous',
+            hasSubmittedName: oldData.hasSubmittedName || false
+        };
+        
+        const fullUpdatedData = {
+            ...oldData, 
+            ...updateData,
+            totalGamesPlayed: (oldData.totalGamesPlayed || 0) + 1,
+            totalPoints: (oldData.totalPoints || 0) + finalScore,
+            totalWordsFound: (oldData.totalWordsFound || 0) + words.length,
+            totalLettersFound: (oldData.totalLettersFound || 0) + lettersThisGame,
+        };
+        
+        if (playerDoc.exists()) {
+            transaction.update(playerDocRef, updateData);
+        } else {
+            transaction.set(playerDocRef, updateData);
+        }
+
+        return { updatedStats: fullUpdatedData, didBeatDailyHighScore: dailyHighScoreBeaten };
+    });
+
+    let finalPlayerName = updatedStats.name;
+    if (!updatedStats.hasSubmittedName || updatedStats.name === 'Anonymous') {
+        const submissionContainer = document.getElementById('submission-container');
+        submissionContainer.innerHTML = `<div id="submit-score-form" class="w-full"><div class="flex space-x-2"><input type="text" id="player-name" placeholder="Enter your name" class="w-full px-3 py-2 border border-slate-300 rounded-lg" maxlength="10"><button id="submit-global-score" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Submit</button></div></div>`;
+        
+        const nameInput = document.getElementById('player-name');
+        nameInput.value = localStorage.getItem('wordRushPlayerName') || '';
+
+        await new Promise(resolve => {
+            document.getElementById('submit-global-score').onclick = async (e) => {
+                const button = e.target;
+                button.disabled = true; button.innerHTML = '...';
+                const newPlayerName = nameInput.value.trim();
+                if (newPlayerName) {
+                    finalPlayerName = newPlayerName;
+                    localStorage.setItem('wordRushPlayerName', finalPlayerName);
+                    await setDoc(playerDocRef, { name: finalPlayerName, hasSubmittedName: true }, { merge: true });
+                    updatedStats.name = finalPlayerName;
+                    resolve();
+                } else {
+                    button.disabled = false; button.textContent = 'Submit';
+                }
+            }
+        });
+    }
+    
+    const gameBestWordForDay = words.length > 0 ? words.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: '' };
+    
+    const dailyRankInfo = await runTransaction(db, async (transaction) => {
+        const dailyRef = doc(db, "leaderboards", "daily");
+        const leaderboardDoc = await transaction.get(dailyRef);
+        if (!leaderboardDoc.exists()) return null;
+
+        let currentScores = leaderboardDoc.data().topScores || [];
+        const oldEntry = currentScores.find(s => s.userID === uId);
+        
+        const updatedEntry = {
+            userID: uId,
+            name: finalPlayerName,
+            dailyHighScore: Math.max(oldEntry?.dailyHighScore || 0, finalScore),
+            dailyTotalScore: (oldEntry?.dailyTotalScore || 0) + finalScore,
+            dailyBestWord: (gameBestWordForDay.score > (oldEntry?.dailyBestWord?.score || 0)) ? gameBestWordForDay : (oldEntry?.dailyBestWord || gameBestWordForDay)
+        };
+        
+        let newTopScores = [...currentScores.filter(s => s.userID !== uId), updatedEntry]
+            .sort((a,b) => b.dailyHighScore - a.dailyHighScore)
+            .slice(0,10);
+            
+        transaction.update(dailyRef, { topScores: newTopScores });
+        
+        const rank = newTopScores.findIndex(entry => entry.userID === uId) + 1;
+        return { rank, didBeatDailyHighScore };
+    });
+
+    const allTimeRef = doc(db, "leaderboards", "allTime");
+    try {
+        await runTransaction(db, async (transaction) => {
+            const allTimeDoc = await transaction.get(allTimeRef);
+            let data = allTimeDoc.exists() ? allTimeDoc.data() : { topByHighScore: [], topByTotalPoints: [], topByBestWord: [] };
+
+            const updateCategory = (list, newEntry, sortKey, nestedKey = null) => {
+                const isAlreadyOnList = list.some(e => e.userID === uId);
+                const lastPlaceValue = list.length < 10 ? 0 : (nestedKey ? list[9][sortKey]?.[nestedKey] : list[9][sortKey] || 0);
+                const playerBestValue = nestedKey ? newEntry[sortKey]?.[nestedKey] : newEntry[sortKey];
+
+                if (isAlreadyOnList || playerBestValue >= lastPlaceValue) {
+                    let updatedList = list.filter(u => u.userID !== uId);
+                    updatedList.push(newEntry);
+                    updatedList.sort((a, b) => {
+                        const valA = nestedKey ? (a[sortKey] || {})[nestedKey] || 0 : a[sortKey] || 0;
+                        const valB = nestedKey ? (b[sortKey] || {})[nestedKey] || 0 : b[sortKey] || 0;
+                        return valB - valA;
+                    });
+                    return updatedList.slice(0, 10);
+                }
+                return list;
+            };
+            
+            data.topByHighScore = updateCategory(data.topByHighScore, { userID: uId, name: finalPlayerName, score: updatedStats.highScore }, 'score');
+            data.topByTotalPoints = updateCategory(data.topByTotalPoints, { userID: uId, name: finalPlayerName, totalPoints: updatedStats.totalPoints }, 'totalPoints');
+            data.topByBestWord = updateCategory(data.topByBestWord, { userID: uId, name: finalPlayerName, bestWord: updatedStats.bestWord }, 'bestWord', 'score');
+
+            transaction.set(allTimeRef, data);
+        });
+    } catch(e) { console.error("Failed to update all-time leaderboard:", e); }
+    
+    updateEndGameSubmissionUI(finalPlayerName, dailyRankInfo);
+}
+
+function updateScoreDisplay() {
+    scoreEl.textContent = score;
+    scoreEl.classList.add('animate-pulse');
+    scoreEl.addEventListener('animationend', () => scoreEl.classList.remove('animate-pulse'), { once: true });
+    if (!isPracticeMode) {
+        const highScoreEl = document.getElementById('high-score');
+        const currentHighScore = parseInt(highScoreEl.textContent) || 0;
+        if (score > currentHighScore) { 
+            highScoreEl.textContent = score; 
+            highScoreEl.classList.add('text-yellow-500', 'animate-pulse');
+        }
+    } else {
+        updatePracticeUI();
+    }
+}
+
+function updateTimerUI() {
+    timerEl.textContent = timer;
+    timerEl.classList.remove('text-green-500', 'text-yellow-500', 'text-red-500', 'animate-pulse');
+    if (timer <= 10) { timerEl.classList.add('text-red-500', 'animate-pulse'); } 
+    else if (timer <= 30) { timerEl.classList.add('text-yellow-500'); } 
+    else { timerEl.classList.add('text-green-500'); }
+}
+
+function updatePracticeUI() {
+    const minutes = Math.floor(practiceTimeElapsed / 60);
+    const seconds = practiceTimeElapsed % 60;
+    timerEl.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    timerEl.classList.remove('text-yellow-500', 'text-red-500', 'animate-pulse');
+    timerEl.classList.add('text-green-500');
+    
+    const pace = Math.round((score / Math.max(1, practiceTimeElapsed)) * 60);
+    const paceScoreEl = document.getElementById('pace-score');
+    if (paceScoreEl) {
+        paceScoreEl.textContent = isNaN(pace) ? 0 : pace;
+    }
+}
+
+function triggerConfetti(tiles) { tiles.forEach(tile => { const rect = tile.getBoundingClientRect(); for (let i = 0; i < 10; i++) { const p = document.createElement('div'); p.className = 'particle'; const angle = Math.random() * Math.PI * 2, dist = Math.random() * 40 + 20; p.style.setProperty('--transform-end',`translate(${Math.cos(angle)*dist}px,${Math.sin(angle)*dist}px)`); p.style.left = `${rect.left+rect.width/2-4}px`; p.style.top = `${rect.top+rect.height/2-4}px`; document.body.appendChild(p); setTimeout(() => p.remove(), 1200); } }); }
+function triggerEndGameConfetti() {
+    const modalContent = document.getElementById('end-game-modal-content');
+    if (!modalContent) return;
+    const rect = modalContent.getBoundingClientRect();
+    const originX = rect.left + rect.width / 2;
+    const originY = rect.top + 30;
+
+    for (let i = 0; i < 60; i++) {
+        const p = document.createElement('div');
+        p.className = 'particle';
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * 120 + 50; 
+        p.style.setProperty('--transform-end', `translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px)`);
+        p.style.left = `${originX - 4}px`;
+        p.style.top = `${originY - 4}px`;
+        const colors = ['#facc15', '#f59e0b', '#60a5fa', '#3b82f6', '#22c55e'];
+        p.style.background = colors[Math.floor(Math.random() * colors.length)];
+        document.body.appendChild(p);
+        setTimeout(() => p.remove(), 1200);
+    }
+}
+
+function createFlyingScore(points, startTile) {
+    const el = document.createElement('div');
+    el.className = 'flying-score';
+    el.textContent = `+${points}`;
+    const rect = startTile.getBoundingClientRect();
+    el.style.left = `${rect.left}px`;
+    el.style.top = `${rect.top}px`;
+    document.body.appendChild(el);
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+             el.style.animation = 'fly-to-score 1.5s ease-in-out forwards';
+        });
+    });
+    setTimeout(() => el.remove(), 1500);
+}  
+
+function updateCurrentWord() { currentWordLettersEl.innerHTML = selectedTiles.map(t => `<span class="current-letter bg-white text-blue-500 font-bold text-xl p-1 rounded-md shadow-sm">${t.dataset.letter}</span>`).join(''); }
+
+function showWelcomeScreen() {
+    modalContent.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl p-6 text-center modal-enter">
+            <h1 class="text-4xl font-black text-slate-800 tracking-tighter mb-1 flex items-center justify-center">
+                <img src="https://raw.githubusercontent.com/tputerio/word-rush-game/main/word-worm-logo.png" alt="Word Worm Logo" class="w-12 h-12 mr-2">
+                <span>Word Worm</span>
+            </h1>
+            <p class="text-slate-500 text-sm mb-4">The fast-paced word finding game!</p>
+            <div id="how-to-play-container" class="relative bg-slate-100 p-3 rounded-lg mb-4 h-[17rem] overflow-hidden"></div>
+            <div class="flex flex-col sm:flex-row sm:space-x-4 mb-3">
+                <button id="play-practice-button" class="bg-blue-500 hover:bg-blue-600 flex-1 text-white font-bold py-2 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 mb-3 sm:mb-0 disabled:bg-slate-400 disabled:cursor-wait">...</button>
+                <button id="play-game-mode-button" class="bg-green-500 hover:bg-green-600 flex-1 text-white font-bold py-2 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-wait">...</button>
+            </div>
+            <div class="flex justify-between items-center border-t border-slate-200 pt-3">
+                <div class="font-bold text-slate-600 text-base flex items-center">
+                    <span class="inline-block w-6 h-6 mr-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg></span>Your High: <span id="welcome-high-score">0</span>
+                </div>
+                <button id="show-leaderboard-button" class="font-bold text-green-500 hover:text-green-600 text-base flex items-center" disabled>
+                    Leaderboard <span class="inline-block w-6 h-6 ml-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="m6.115 5.19.319 1.913A6 6 0 0 0 8.11 10.36L9.75 12l-.387.775c-.217.433-.132.956.21 1.298l1.348 1.348c.21.21.329.497.329.795v1.089c0 .426.24.815.622 1.006l.153.076c.433.217.956.132 1.298-.21l.723-.723a8.7 8.7 0 0 0 2.288-4.042 1.087 1.087 0 0 0-.358-1.099l-1.33-1.108c-.251-.21-.582-.299-.905-.245l-1.17.195a1.125 1.125 0 0 1-.98-.314l-.295-.295a1.125 1.125 0 0 1 0-1.591l.13-.132a1.125 1.125 0 0 1 1.3-.21l.603.302a.809.809 0 0 0 1.086-1.086L14.25 7.5l1.256-.837a4.5 4.5 0 0 0 1.528-1.732l.146-.292M6.115 5.19A9 9 0 1 0 17.18 4.64M6.115 5.19A8.965 8.965 0 0 1 12 3c1.929 0 3.716.607 5.18 1.64" /></svg></span>
+                </button>
+            </div>
+            <p id="player-stats-display" class="text-xs text-slate-400 mt-3"></p>
+            <p class="text-xs text-slate-400 mt-1"><span id="global-play-count">...</span> games played globally</p>
+            <p id="loading-error" class="text-red-500 mt-2 font-semibold"></p>
+        </div>
+    `;
+    gameContentEl.classList.remove('blurred');
+    messageModal.classList.remove('hidden');
+    setupTutorial();
+
+    menuContainer.classList.add('hidden');
+    
+    document.getElementById('play-game-mode-button').onclick = () => startGame(false);
+    document.getElementById('play-practice-button').onclick = () => startGame(true);
+    const showLeaderboardButton = document.getElementById('show-leaderboard-button');
+    if(showLeaderboardButton) showLeaderboardButton.onclick = showLeaderboardModal;
+}
+
+async function showLeaderboardModal() {
+    leaderboardModal.classList.remove('hidden');
+    gameContentEl.classList.add('blurred');
+    leaderboardModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-xs mx-auto modal-enter">
+        <h2 class="text-2xl font-bold text-slate-800 mb-4 flex items-center justify-center">Leaderboard <span class="inline-block w-6 h-6 ml-2"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="m6.115 5.19.319 1.913A6 6 0 0 0 8.11 10.36L9.75 12l-.387.775c-.217.433-.132.956.21 1.298l1.348 1.348c.21.21.329.497.329.795v1.089c0 .426.24.815.622 1.006l.153.076c.433.217.956.132 1.298-.21l.723-.723a8.7 8.7 0 0 0 2.288-4.042 1.087 1.087 0 0 0-.358-1.099l-1.33-1.108c-.251-.21-.582-.299-.905-.245l-1.17.195a1.125 1.125 0 0 1-.98-.314l-.295-.295a1.125 1.125 0 0 1 0-1.591l.13-.132a1.125 1.125 0 0 1 1.3-.21l.603.302a.809.809 0 0 0 1.086-1.086L14.25 7.5l1.256-.837a4.5 4.5 0 0 0 1.528-1.732l.146-.292M6.115 5.19A9 9 0 1 0 17.18 4.64M6.115 5.19A8.965 8.965 0 0 1 12 3c1.929 0 3.716.607 5.18 1.64" /></svg></span></h2>
+        <div class="flex p-1 bg-slate-200 rounded-lg mb-4">
+            <button id="daily-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">Daily</button>
+            <button id="all-time-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">All-Time</button>
+        </div>
+        <div id="leaderboard-loading-secondary" class="text-slate-500 p-2">Fetching Scores...</div>
+        <div id="leaderboard-scroll-container" class="relative max-h-[20rem] overflow-y-auto">
+            <div id="leaderboard-list-simple" class="space-y-2 text-left"></div>
+        </div>
+        <button id="close-leaderboard-button" class="mt-4 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 px-4 rounded-lg">Close</button>
+    </div>`;
+    const dailyTab = document.getElementById('daily-tab');
+    const allTimeTab = document.getElementById('all-time-tab');
+    const listEl = document.getElementById('leaderboard-list-simple');
+    const loadingEl = document.getElementById('leaderboard-loading-secondary');
+    const displayTab = (type) => {
+        if (!db) { listEl.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard is offline.</p>`; if (loadingEl) loadingEl.style.display = 'none'; return; }
+        if(type === 'daily') { dailyTab.classList.add('active'); allTimeTab.classList.remove('active'); fetchAndDisplayLeaderboard('daily', listEl, loadingEl); } 
+        else { allTimeTab.classList.add('active'); dailyTab.classList.remove('active'); fetchAndDisplayLeaderboard('all-time', listEl, loadingEl); }
+    };
+    dailyTab.onclick = () => displayTab('daily');
+    allTimeTab.onclick = () => displayTab('all-time');
+    displayTab('daily'); 
+    document.getElementById('close-leaderboard-button').onclick = () => { leaderboardModal.classList.add('hidden'); gameContentEl.classList.remove('blurred'); };
+}
+
+async function showStatsModal() {
+    statsModal.classList.remove('hidden');
+    gameContentEl.classList.add('blurred');
+    statsModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center modal-enter"><h2 class="text-2xl font-bold text-slate-800 mb-4">Loading Your Stats...</h2><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mx-auto"></div></div>`;
+    
+    const stats = await fetchAndCalculateStats();
+    let statsHTML;
+    if (stats) {
+        const avgScore = stats.totalGamesPlayed > 0 ? Math.round(stats.totalPoints / stats.totalGamesPlayed) : 0;
+        const avgWordLength = stats.totalWordsFound > 0 ? (stats.totalLettersFound / stats.totalWordsFound).toFixed(1) : 0;
+        const playStreakIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6"><path stroke-linecap="round" stroke-linejoin="round" d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.867 8.21 8.21 0 0 0 3 2.48Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M12 18a3.75 3.75 0 0 0 .495-7.468 5.99 5.99 0 0 0-1.925 3.547 5.975 5.975 0 0 1-2.133-1.001A3.75 3.75 0 0 0 12 18Z" /></svg>`;
+        const totalPointsIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg>`;
+        const bestWordIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg>`;
+        const bestWordDisplay = stats.bestWord.word ? `${stats.bestWord.word.toUpperCase()} (${stats.bestWord.score})` : 'N/A';
+        const topScoresHTML = stats.top5Scores.map((s, i) => {
+            const dateParts = s.date.split('-');
+            const shortDate = `${Number(dateParts[1])}/${Number(dateParts[2])}/${dateParts[0].slice(-2)}`;
+            return `<li class="flex justify-between p-1 ${i % 2 === 0 ? 'bg-slate-50' : ''} rounded"><span><strong>${s.score}</strong></span><span class="text-slate-500">${shortDate}</span></li>`;
+        }).join('') || '<p class="text-xs text-slate-400 text-center py-1">No scores yet.</p>';
+        const topWordsHTML = stats.top5LongestWords.map((w, i) => `<li class="p-1 ${i % 2 === 0 ? 'bg-slate-50' : ''} rounded"><strong>${w.word.toUpperCase()}</strong> (${w.length})</li>`).join('') || '<p class="text-xs text-slate-400 text-center py-1">No words found.</p>';
+        statsHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 modal-enter w-full max-w-sm mx-auto max-h-[90vh] overflow-y-auto"> <div class="flex justify-between items-center mb-4"> <h2 class="text-2xl font-bold text-slate-800">Your Stats</h2> <button id="close-stats-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button> </div> <div class="space-y-3 text-left mb-4"> <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${playStreakIcon}<span class="ml-2">Play Streak</span></span> <span class="font-black text-xl text-amber-500">${stats.playStreak} Day${stats.playStreak !== 1 ? 's' : ''}</span></div> <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${totalPointsIcon}<span class="ml-2">Total Points</span></span> <span class="font-black text-xl text-slate-700">${stats.totalPoints.toLocaleString()}</span></div> <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${bestWordIcon}<span class="ml-2">Best Word</span></span> <span class="font-black text-xl text-slate-700">${bestWordDisplay}</span></div> </div> <div class="grid grid-cols-3 gap-2 text-center bg-slate-100 p-3 rounded-lg mb-4"> <div><div class="text-xs font-bold text-slate-500 uppercase">Games</div><div class="text-2xl font-black text-slate-800">${stats.totalGamesPlayed}</div></div> <div><div class="text-xs font-bold text-slate-500 uppercase">Avg Score</div><div class="text-2xl font-black text-slate-800">${avgScore}</div></div> <div><div class="text-xs font-bold text-slate-500 uppercase">Avg Length</div><div class="text-2xl font-black text-slate-800">${avgWordLength}</div></div> </div> <div class="grid grid-cols-2 gap-4"> <div><h3 class="text-base font-bold text-slate-700 mb-2 border-b pb-1">Best Scores</h3><ol class="space-y-1">${topScoresHTML}</ol></div> <div><h3 class="text-base font-bold text-slate-700 mb-2 border-b pb-1">Longest Words</h3><ol class="space-y-1">${topWordsHTML}</ol></div> </div> </div>`;
+    } else {
+        statsHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 modal-enter w-full max-w-sm mx-auto"><div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold text-slate-800">Your Stats</h2><button id="close-stats-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button></div><p class="text-slate-500 text-center py-8">Play a game to see your stats here!</p></div>`;
+    }
+    statsModalContent.innerHTML = statsHTML;
+    const closeButton = document.getElementById('close-stats-button');
+    if (closeButton) {
+        closeButton.onclick = () => { statsModal.classList.add('hidden'); gameContentEl.classList.remove('blurred'); };
+    }
+}
+
+async function fetchAndCalculateStats() {
+    if (!db || !userId) return null;
+    const playerDocRef = doc(db, "players", userId);
+    const docSnap = await getDoc(playerDocRef); 
+    if (!docSnap.exists() || !docSnap.data().totalGamesPlayed) {
+        return null;
+    }
+    const stats = docSnap.data();
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const todayStr = today.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const yesterdayStr = yesterday.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    let finalPlayStreak = stats.playStreak || 0;
+    if (stats.lastPlayDate !== todayStr && stats.lastPlayDate !== yesterdayStr) {
+        finalPlayStreak = 0;
+    }
+    return {
+        totalGamesPlayed: stats.totalGamesPlayed,
+        totalPoints: stats.totalPoints,
+        totalWordsFound: stats.totalWordsFound || 0,
+        totalLettersFound: stats.totalLettersFound || 0,
+        top5Scores: stats.top5Scores || [],
+        top5LongestWords: stats.top5LongestWords || [],
+        highScore: stats.highScore || 0,
+        bestWord: stats.bestWord || { word: '', score: 0 },
+        playStreak: finalPlayStreak
+    };
+}
+
+async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
+    if (!listElement) return;
+    if (loadingElement) loadingElement.style.display = 'block';
+    listElement.innerHTML = '';
+    if (!db) {
+        listElement.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard is offline.</p>`;
+        if (loadingElement) loadingElement.style.display = 'none';
+        return;
+    }
+    try {
+        let html = '';
+        const icons = {
+            highScore: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg>',
+            totalPoints: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg>',
+            bestWord: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg>'
+        };
+
+        if (type === 'all-time') {
+            const leaderboardRef = doc(db, "leaderboards", "allTime");
+            const docSnap = await getDoc(leaderboardRef);
+
+            if (!docSnap.exists() || !docSnap.data()) {
+                html = `<p class="text-slate-500 text-center text-sm p-2">All-Time leaderboard is not available.</p>`;
+            } else {
+                const data = docSnap.data();
+                const categories = [
+                    { key: 'topByHighScore',   title: `${icons.highScore} High Score` },
+                    { key: 'topByTotalPoints', title: `${icons.totalPoints} Total Points` },
+                    { key: 'topByBestWord',    title: `${icons.bestWord} Best Word` }
+                ];
+
+                for (const cat of categories) {
+                    html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center gap-2">${cat.title}</h3>`;
+                    const players = data[cat.key] || [];
+
+                    if (players.length === 0) {
+                        html += `<p class="text-slate-500 text-center text-sm p-2">No players yet.</p>`;
+                    } else {
+                        const scores = players.map((player, i) => {
+                            let value;
+                            if (cat.key === 'topByBestWord') {
+                                value = player.bestWord && player.bestWord.word ? `${player.bestWord.word.toUpperCase()} (${player.bestWord.score})` : 'N/A';
+                            } else if (cat.key === 'topByTotalPoints') {
+                                value = player.totalPoints?.toLocaleString() || 0;
+                            } else {
+                                value = player.score?.toLocaleString() || 0;
+                            }
+                            const isCurrentUser = player.userID === userId;
+                            return `<li class="flex items-center p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${player.name}</span><span class="font-bold text-green-500">${value}</span></li>`;
+                        }).join('');
+                        html += `<ol class="space-y-1">${scores}</ol>`;
+                    }
+                }
+            }
+        } else { // Daily logic
+            const leaderboardRef = doc(db, "leaderboards", "daily");
+            const docSnap = await getDoc(leaderboardRef);
+
+            if (!docSnap.exists() || !docSnap.data().topScores || docSnap.data().topScores.length === 0) {
+                html += `<p class="text-slate-500 text-center text-sm p-2">No scores yet today. Be the first!</p>`;
+            } else {
+                const dailyPlayers = docSnap.data().topScores;
+                const categories = [
+                    { key: 'dailyHighScore',  title: `${icons.highScore} High Score` },
+                    { key: 'dailyTotalScore', title: `${icons.totalPoints} Total Points` },
+                    { key: 'dailyBestWord',   title: `${icons.bestWord} Best Word` }
+                ];
+
+                for (const cat of categories) {
+                    html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center gap-2">${cat.title}</h3>`;
+                    
+                    const sortedPlayers = [...dailyPlayers].sort((a, b) => {
+                        if (cat.key === 'dailyBestWord') {
+                            return (b.dailyBestWord?.score || 0) - (a.dailyBestWord?.score || 0);
+                        }
+                        return (b[cat.key] || 0) - (a[cat.key] || 0);
+                    });
+
+                    const scores = sortedPlayers.map((player, i) => {
+                        let value;
+                        if (cat.key === 'dailyBestWord') {
+                            value = player.dailyBestWord && player.dailyBestWord.word ? `${player.dailyBestWord.word.toUpperCase()} (${player.dailyBestWord.score})` : 'N/A';
+                        } else {
+                            value = player[cat.key]?.toLocaleString() || 0;
+                        }
+                        const isCurrentUser = player.userID === userId;
+                        return `<li class="flex items-center p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${player.name}</span><span class="font-bold text-green-500">${value}</span></li>`;
+                    }).join('');
+                    html += `<ol class="space-y-1">${scores}</ol>`;
+                }
+            }
+        }
+        listElement.innerHTML = html;
+    } catch (e) {
+        console.error(`Could not fetch ${type} leaderboard`, e);
+        listElement.innerHTML = `<p class="text-red-500 text-center p-4">Could not load leaderboard.</p>`;
+    } finally {
+        if (loadingElement) loadingElement.style.display = 'none';
+    }
+}
+
+function setupEventListeners() {
+    const getTileFromEvent = (e) => { const touch = e.touches ? e.touches[0] : e; const point = { x: touch.clientX, y: touch.clientY }; let closestTile = null; let minDistance = Infinity; tilePositions.forEach(tilePos => { const distance = Math.sqrt((point.x - tilePos.center.x)**2 + (point.y - tilePos.center.y)**2); if (distance < minDistance && distance < tilePos.hitRadius) { minDistance = distance; closestTile = tilePos.el; } }); return closestTile; };
+    const startInteraction = e => { e.preventDefault(); isMouseDown = true; clearSelection(); const tile = getTileFromEvent(e); handleInteraction(tile); };
+    const moveInteraction = e => { if (!isMouseDown) return; e.preventDefault(); const tile = getTileFromEvent(e); handleInteraction(tile); };
+    const endInteraction = () => { if (!isMouseDown) return; submitWord(); isMouseDown = false; };
+    
+    grid.addEventListener('pointerdown', startInteraction); 
+    grid.addEventListener('pointermove', moveInteraction); 
+    grid.addEventListener('pointerup', endInteraction); 
+    grid.addEventListener('pointerleave', endInteraction); 
+    window.addEventListener('resize', resizeCanvas);
+    
+    menuButton.addEventListener('click', (e) => { e.stopPropagation(); const isHidden = dropdownMenu.classList.contains('hidden'); if (isHidden) { dropdownMenu.classList.remove('hidden'); setTimeout(() => { dropdownMenu.style.opacity = '1'; dropdownMenu.style.transform = 'scale(1)'; }, 10); } else { dropdownMenu.style.opacity = '0'; dropdownMenu.style.transform = 'scale(0.95)'; setTimeout(() => dropdownMenu.classList.add('hidden'), 200); } });
+    document.addEventListener('click', () => { if (!dropdownMenu.classList.contains('hidden')) { dropdownMenu.style.opacity = '0'; dropdownMenu.style.transform = 'scale(0.95)'; setTimeout(() => dropdownMenu.classList.add('hidden'), 200); } });
+    document.getElementById('menu-home').addEventListener('click', (e) => { e.preventDefault(); resetGame(); });
+    document.getElementById('menu-stats').addEventListener('click', (e) => { e.preventDefault(); showStatsModal(); });
+    document.getElementById('menu-leaderboard').addEventListener('click', (e) => { e.preventDefault(); showLeaderboardModal(); });
+}
+
+function cacheTilePositions() {
+    tilePositions = [];
+    for (const tile of grid.children) {
+        const rect = tile.getBoundingClientRect();
+        tilePositions.push({
+            el: tile,
+            center: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+            hitRadius: 0.45 * tile.offsetWidth
+        });
+    }
+}
+
+function resizeCanvas() {
+    const gridRect = grid.getBoundingClientRect();
+    lineCanvas.width = gridRect.width;
+    lineCanvas.height = gridRect.height;
+    cacheTilePositions();
+    drawLines();
+}
+
+function drawLines() {
+    clearLines();
+    if (selectedTiles.length < 2) {
+        return;
+    }
+    ctx.beginPath();
+    ctx.strokeStyle = "rgba(59, 130, 246, 0.8)";
+    ctx.lineWidth = 12;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    selectedTiles.forEach((tile, index) => {
+        const center = getTileCenter(tile);
+        if (index === 0) {
+            ctx.moveTo(center.x, center.y);
+        } else {
+            ctx.lineTo(center.x, center.y);
+        }
+    });
+    ctx.stroke();
+}
+
+function clearLines() {
+    ctx.clearRect(0, 0, lineCanvas.width, lineCanvas.height);
+}
+
+function getTileCenter(tile) {
+    const gridRect = grid.getBoundingClientRect();
+    const tileRect = tile.getBoundingClientRect();
+    return {
+        x: tileRect.left + tileRect.width / 2 - gridRect.left,
+        y: tileRect.top + tileRect.height / 2 - gridRect.top
+    };
+}
+
+function checkNoClumps(board) {
+    for (let row = 0; row <= 2; row++) {
+        for (let col = 0; col <= 2; col++) {
+            const topLeft = row * GRID_COLS + col;
+            const topRight = topLeft + 1;
+            const bottomLeft = topLeft + GRID_COLS;
+            const bottomRight = bottomLeft + 1;
+
+            const clumpLetters = [board[topLeft], board[topRight], board[bottomLeft], board[bottomRight]];
+            const areAllVowels = clumpLetters.every(letter => VOWELS.includes(letter));
+            const areAllConsonants = clumpLetters.every(letter => !VOWELS.includes(letter));
+
+            if (areAllVowels || areAllConsonants) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+function generateAndValidateBoard(existingBoard = null) {
+    let board;
+    const MAX_ATTEMPTS = 200;
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+        board = existingBoard ? [...existingBoard] : new Array(GRID_SIZE).fill(null);
+        
+        board.forEach((tile, index) => {
+            if (tile === null) {
+                board[index] = getRandomLetter();
+            }
+        });
+
+        if (dictionaryTrie && isBoardPlayable(board)) {
+            return board;
+        }
+        if (!dictionaryTrie && i > 0) {
+             return board;
+        }
+        board = null;
+    }
+    console.warn(`Failed to generate a high-quality board after ${MAX_ATTEMPTS} attempts, using last random attempt.`);
+    return board || Array.from({ length: GRID_SIZE }, () => getRandomLetter());
+}
+
+function isBoardPlayable(board) {
+    const vowelCount = board.filter(letter => VOWELS.includes(letter)).length;
+    if (vowelCount < 3 || vowelCount > 7) return false;
+
+    const hardConsonantCount = board.filter(letter => HARD_CONSONANTS.includes(letter)).length;
+    if (hardConsonantCount > 1) return false;
+
+    const qIndex = board.indexOf("Q");
+    if (qIndex !== -1 && !getNeighbors(qIndex, board).some(letter => letter === "U")) {
+        return false;
+    }
+    
+    const solvableWords = solveBoard(board);
+    const fourLetterWords = Array.from(solvableWords).filter(word => word.length >= 4).length;
+    const threeLetterWords = Array.from(solvableWords).filter(word => word.length === 3).length;
+    if (fourLetterWords < 2 || threeLetterWords < 2) {
+        return false;
+    }
+
+    if (!checkNoClumps(board)) return false;
+
+    return true;
+}
+
+function getNeighbors(index, board) {
+    const neighbors = [];
+    const [col, row] = [index % GRID_COLS, Math.floor(index / GRID_COLS)];
+
+    for (let r_offset = -1; r_offset <= 1; r_offset++) {
+        for (let c_offset = -1; c_offset <= 1; c_offset++) {
+            if (r_offset === 0 && c_offset === 0) continue;
+
+            const [checkCol, checkRow] = [col + c_offset, row + r_offset];
+            if (checkCol >= 0 && checkCol < GRID_COLS && checkRow >= 0 && checkRow < GRID_COLS) {
+                neighbors.push(board[checkRow * GRID_COLS + checkCol]);
+            }
+        }
+    }
+    return neighbors;
+}
+
+function solveBoard(board) {
+    const foundWordsSet = new Set();
+    for (let i = 0; i < GRID_SIZE; i++) {
+        findWordsRecursive(i, "", [i], foundWordsSet, board);
+    }
+    return foundWordsSet;
+}
+
+function findWordsRecursive(tileIndex, currentPrefix, path, foundWordsSet, board) {
+    currentPrefix += board[tileIndex];
+
+    if (!dictionaryTrie || !dictionaryTrie.search(currentPrefix, true)) {
+        return;
+    }
+
+    if (currentPrefix.length >= 3 && dictionaryTrie.search(currentPrefix)) {
+        foundWordsSet.add(currentPrefix);
+    }
+
+    const [col, row] = [tileIndex % GRID_COLS, Math.floor(tileIndex / GRID_COLS)];
+    for (let r_offset = -1; r_offset <= 1; r_offset++) {
+        for (let c_offset = -1; c_offset <= 1; c_offset++) {
+            if (r_offset === 0 && c_offset === 0) continue;
+
+            const [nextCol, nextRow] = [col + c_offset, row + r_offset];
+            const nextIndex = nextRow * GRID_COLS + nextCol;
+
+            if (nextCol >= 0 && nextCol < GRID_COLS && nextRow >= 0 && nextRow < GRID_COLS && !path.includes(nextIndex)) {
+                findWordsRecursive(nextIndex, currentPrefix, [...path, nextIndex], foundWordsSet, board);
+            }
+        }
+    }
+}
+
+async function shareScore() {
+    const bestWordFound = foundWords.length > 0 ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { word: '', score: 0 }) : null;
+    let shareText = `I just scored ${score} on Word Worm! 🐛\n`;
+    if (bestWordFound && bestWordFound.word) {
+        shareText += `My best word was ${bestWordFound.word.toUpperCase()} for ${bestWordFound.score} points!\n\n`;
+    }
+    const gameUrl = 'https://tputerio.github.io/word-rush-game/';
+    shareText += `Think you can beat me? Play now:\n${gameUrl}`;
+    const shareData = { title: 'Word Worm', text: shareText };
+    if (navigator.share) {
+        try { await navigator.share(shareData); console.log('Score shared successfully!'); } catch (err) { console.error('Share failed:', err); }
+    } else {
+        try {
+            await navigator.clipboard.writeText(shareText);
+            const shareButton = document.getElementById('share-score-link');
+            if (shareButton) {
+                const originalText = shareButton.innerHTML;
+                shareButton.innerHTML = 'Copied! ✓';
+                shareButton.classList.add('text-green-500');
+                setTimeout(() => {
+                    shareButton.innerHTML = originalText;
+                    shareButton.classList.remove('text-green-500');
+                }, 2000);
+            }
+        } catch (err) { console.error('Failed to copy: ', err); alert('Could not copy score to clipboard.'); }
+    }
+}
+
+function showEndGameScreen() {
+    gameContentEl.classList.add('blurred');
+    endGameModal.classList.remove('hidden');
+    triggerEndGameConfetti();
+    
+    const sortedWords = [...foundWords].sort((a,b)=>b.score-a.score);
+    const foundWordsHTML = sortedWords.length ? sortedWords.map(fw => `<div class="flex justify-between text-sm p-1 ${sortedWords.indexOf(fw) % 2 === 0 ? 'bg-slate-50' : ''} rounded"><span class="font-semibold">${fw.word.toUpperCase()}</span><span>+${fw.score}</span></div>`).join('') : '<p class="text-sm text-slate-500 text-center py-4">No words found.</p>';
+
+    endGameModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
+        <h2 class="text-3xl font-black text-green-500">Great Game!</h2>
+        <p class="text-slate-600 mb-2">Your final score is:</p>
+        <p class="text-6xl font-black text-slate-800 mb-3">${score}</p>
+        <div id="submission-container" class="h-8 flex items-center justify-center">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
+        </div>
+        <hr class="my-4">
+        <div class="text-left w-full">
+            <div class="flex justify-between items-baseline mb-2">
+                <h3 class="text-xl font-bold text-slate-700">Your Words (${foundWords.length})</h3>
+                <button id="endgame-stats-button" class="flex items-center text-base font-bold text-blue-500 hover:text-blue-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg>
+                    <span class="ml-1">Your Stats</span>
+                </button>
+            </div>
+            <div class="space-y-1 max-h-48 overflow-y-auto pr-2">${foundWordsHTML}</div>
+        </div>
+        <div id="share-link-container" class="h-10 flex items-center justify-center"></div>
+        <div class="flex space-x-2 mt-3">
+            <button id="endgame-leaderboard-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-base flex-1">Leaderboard</button>
+            <button id="play-again-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex-1">Play Again</button>
+        </div>
+    </div>`;
+
+    document.getElementById('play-again-button').onclick = resetGame;
+    document.getElementById('endgame-leaderboard-button').onclick = showLeaderboardModal;
+    document.getElementById('endgame-stats-button').onclick = showStatsModal;
+    
+    const shareLinkContainer = document.getElementById('share-link-container');
+    if (navigator.share || navigator.clipboard) {
+        const shareIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5 mr-1"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" /></svg>`;
+        shareLinkContainer.innerHTML = `<a href="#" id="share-score-link" class="flex items-center text-blue-500 hover:underline font-bold">${shareIcon} Share Score</a>`;
+        document.getElementById('share-score-link').onclick = (e) => { e.preventDefault(); shareScore(); };
+    }
+}
+
+function updateEndGameSubmissionUI(playerName, rankInfo) {
+    const submissionContainer = document.getElementById('submission-container');
+    if (!submissionContainer) return;
+    
+    let finalMessageHtml = '';
+    if (rankInfo && rankInfo.didBeatDailyHighScore) {
+        const trophyIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg>`;
+        let leaderboardMessage = `New daily high: <strong>${score}</strong>!`; 
+        if (rankInfo.rank && rankInfo.rank <= 10) {
+            leaderboardMessage = `You placed&nbsp;<strong>#${rankInfo.rank}</strong> on today's leaderboard!`;
+        }
+        finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${trophyIcon} ${leaderboardMessage}</div>`;
+    } else {
+        const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>`;
+        const standardMessage = `Score submitted as&nbsp;<strong>${playerName}</strong>!`;
+        finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${checkIcon} ${standardMessage}</div>`;
+    }
+    submissionContainer.innerHTML = finalMessageHtml;
+}
+
+function setupTutorial() {
+    const container = document.getElementById('how-to-play-container'); if (!container) return;
+    container.innerHTML = `<div class="relative w-full h-full flex flex-col">
+        <h3 class="text-md font-bold text-slate-700 text-center mb-2">How to Play</h3>
+        <div id="tutorial-content" class="flex-grow overflow-y-auto pr-2">
+            <div class="mb-4 flex flex-col justify-center items-center">
+                <div id="tutorial-word-builder" class="h-8 mb-2 w-32 bg-white rounded-md flex items-center justify-center space-x-0.5 shadow-inner"><span class="opacity-0">W</span></div>
+                <div id="tutorial-grid-container" class="relative w-32 h-32">
+                    <canvas id="tutorial-line-canvas" class="absolute top-0 left-0 w-full h-full pointer-events-none" style="z-index: 5;"></canvas>
+                    <div class="grid grid-cols-4 gap-1">${['W','A','R','D','O','R','D','E','B','N','M','I','S','L','P','T'].map(l => `<div class="tutorial-tile w-8 h-8 flex items-center justify-center font-bold text-base bg-white rounded-md border-2 border-slate-300">${l}<sub class="text-[0.55rem] font-semibold ml-0.5">${letterConfig[l]?letterConfig[l].p:1}</sub></div>`).join('')}</div>
+                </div>
+                <p class="text-center text-xs font-semibold text-slate-700 mt-4">Touch and drag to form words (3+ letters)!</p>
+            </div>
+            <div class="text-left">
+                <ul class="text-xs space-y-2 mb-4">
+                    <li class="flex items-start"><span class="inline-block w-5 h-5 mr-2 shrink-0"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg></span><span><strong>Your Goal:</strong> Score as many points as you can in 60 seconds!</span></li>
+                    <li class="flex items-start"><span class="inline-block w-5 h-5 mr-2 shrink-0"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0 0 20.25 18V6A2.25 2.25 0 0 0 18 3.75H6A2.25 2.25 0 0 0 3.75 6v12A2.25 2.25 0 0 0 6 20.25Z" /></svg></span><span><strong>How to Score:</strong> Your score is the sum of letter points and any bonuses.</span></li>
+                    <li class="flex items-start"><span class="inline-block w-5 h-5 mr-2 shrink-0"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" /></svg></span><span><strong>Pro-Tip:</strong> Use bonuses and long words to maximize your score!</span></li>
+                </ul>
+                <div class="text-xs space-y-2 mb-4">
+                    <div><strong class="font-semibold text-slate-700">Bonus Tiles:</strong>
+                        <div class="grid grid-cols-2 gap-x-4 mt-1">
+                            <ul class="list-none space-y-1">
+                                <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #3b82f6;">DL</span> Double Letter</span></li>
+                                <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #ef4444;">TL</span> Triple Letter</span></li>
+                            </ul>
+                            <ul class="list-none space-y-1">
+                                <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #f59e0b;">DW</span> Double Word</span></li>
+                                <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #22c55e;">+5s</span> Extra Time</span></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                 <div class="text-xs space-y-3">
+                    <div><strong class="font-semibold text-slate-700">Long Word Bonus:</strong>
+                        <table class="w-full mt-1 text-left text-xs">
+                            <tbody>
+                                <tr><td class="py-0.5 pr-2">4 Letters: <span class="font-medium">+2 pts</span></td><td class="py-0.5">6 Letters: <span class="font-medium">+10 pts</span></td></tr>
+                                <tr><td class="py-0.5 pr-2">5 Letters: <span class="font-medium">+5 pts</span></td><td class="py-0.5">7+ Letters: <span class="font-medium">+20 pts</span></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pt-2"><strong class="font-semibold text-slate-700">Letter Point Values:</strong>
+                        <div id="letter-values-container" class="flex flex-wrap gap-1 mt-1"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="scroll-indicator" class="absolute bottom-0 left-1/2 -translate-x-1/2 animate-bounce-slow">
+            <svg class="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+        </div>
+    </div>`;
+    const letterValuesContainer = container.querySelector('#letter-values-container'); if (letterValuesContainer) { const sortedLetters = Object.keys(letterConfig).sort(); const letterTilesHtml = sortedLetters.map(letter => { const config = letterConfig[letter]; return `<span class="bg-slate-200 text-slate-700 font-bold rounded-sm px-1.5 py-0.5 text-[10px] leading-none">${letter}-${config.p}</span>`; }).join(''); letterValuesContainer.innerHTML = letterTilesHtml; }
+    
+    const tutorialContent = container.querySelector('#tutorial-content');
+    const scrollIndicator = container.querySelector('#scroll-indicator');
+    tutorialContent.onscroll = () => {
+        if (tutorialContent.scrollTop > 10) scrollIndicator.style.display = 'none';
+        else scrollIndicator.style.display = 'block';
+    };
+
+    const tutorialGridContainer = container.querySelector('#tutorial-grid-container'); const tutorialCanvas = container.querySelector('#tutorial-line-canvas'); const tutorialCtx = tutorialCanvas.getContext('2d'); const tutorialTiles = Array.from(tutorialGridContainer.querySelectorAll('.tutorial-tile')); const wordBuilder = container.querySelector('#tutorial-word-builder'); const animationSequence = [0, 4, 5, 10]; const word = 'WORM';
+    const runAnimation = () => { const gridRect = tutorialGridContainer.getBoundingClientRect(); tutorialCanvas.width = gridRect.width; tutorialCanvas.height = gridRect.height; const tileCenters = tutorialTiles.map(tile => { const tileRect = tile.getBoundingClientRect(); return { x: tileRect.left + tileRect.width / 2 - gridRect.left, y: tileRect.top + tileRect.height / 2 - gridRect.top }; }); wordBuilder.innerHTML = '<span class="opacity-0">W</span>'; tutorialTiles.forEach(t => t.classList.remove('highlight')); tutorialCtx.clearRect(0, 0, tutorialCanvas.width, tutorialCanvas.height); let scoreEl = tutorialGridContainer.querySelector('.flying-score-tutorial'); if(scoreEl) scoreEl.remove(); const pathPoints = []; animationSequence.forEach((tileIndex, step) => { setTimeout(() => { tutorialTiles[tileIndex].classList.add('highlight'); const newLetterHTML = `<span class="current-letter bg-white text-blue-500 font-bold text-sm px-1 py-0.5 rounded-md shadow-sm">${word[step]}</span>`; if (step === 0) { wordBuilder.innerHTML = newLetterHTML; } else { wordBuilder.innerHTML += newLetterHTML; } pathPoints.push(tileCenters[tileIndex]); tutorialCtx.clearRect(0, 0, tutorialCanvas.width, tutorialCanvas.height); if(pathPoints.length > 1) { tutorialCtx.beginPath(); tutorialCtx.strokeStyle = 'rgba(59, 130, 246, 0.8)'; tutorialCtx.lineWidth = 8; tutorialCtx.lineCap = 'round'; tutorialCtx.lineJoin = 'round'; tutorialCtx.moveTo(pathPoints[0].x, pathPoints[0].y); for(let i = 1; i < pathPoints.length; i++) { tutorialCtx.lineTo(pathPoints[i].x, pathPoints[i].y); } tutorialCtx.stroke(); } }, 1000 + (step + 1) * 750); }); setTimeout(() => { const el = document.createElement('div'); el.className = 'flying-score'; el.style.fontSize = '1rem'; el.style.padding = '4px 8px'; el.style.animation = 'fly-up-tutorial 1.5s ease-in-out forwards'; el.style.position = 'absolute'; el.style.top = '50%'; el.style.left = '50%'; el.textContent = `+9`; el.classList.add('flying-score-tutorial'); tutorialGridContainer.appendChild(el); }, 1000 + (animationSequence.length + 1) * 750); };
+    if(animationInterval) clearInterval(animationInterval); setTimeout(() => { runAnimation(); animationInterval = setInterval(runAnimation, 6000); }, 350);
+};
+
+document.addEventListener('DOMContentLoaded', main);
