@@ -74,75 +74,78 @@ async function checkAndResetDailyLeaderboard() {
 function main() {
     setupEventListeners();
     topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">0</div>`;
+    
+    // Initialize UI and then load assets
     showWelcomeScreen();
-    loadAssets();
+    initializeFirebase();
 }
 
-async function loadAssets() {
-    const initializeFirebase = async () => {
-        try {
-            // IMPORTANT: It's recommended to use Firebase App Check to secure your API keys in production.
-            const firebaseConfig = { apiKey: "REPLACE_WITH_YOUR_API_KEY", authDomain: "word-rush-game-9010a.firebaseapp.com", projectId: "word-rush-game-9010a", storageBucket: "word-rush-game-9010a.appspot.com", messagingSenderId: "551838491871", appId: "1:551838491871:web:757325be04daab9289b56a" };
-            const app = initializeApp(firebaseConfig);
-            auth = getAuth(app);
-            db = getFirestore(app);
+// --- CORE INITIALIZATION ---
 
-            onAuthStateChanged(auth, async (user) => {
-                if (user) {
-                    userId = user.uid;
-                    console.log("Firebase connected. User ID:", userId);
-                    await checkAndResetDailyLeaderboard();
-                    fetchGlobalStats();
-                    fetchPlayerStats(userId);
-                    const showLeaderboardBtn = document.getElementById('show-leaderboard-button');
-                    if (showLeaderboardBtn) showLeaderboardBtn.disabled = false;
-                } else {
-                    signInAnonymously(auth).catch(err => console.error("Anonymous sign-in failed:", err));
-                }
-            });
-        } catch (firebaseError) {
-            console.warn("Firebase features failed to load, continuing in offline mode:", firebaseError);
-            const globalPlayCountSpan = document.getElementById('global-play-count');
-            if (globalPlayCountSpan) globalPlayCountSpan.textContent = "N/A";
-        }
-    };
+async function initializeFirebase() {
+    try {
+        // IMPORTANT: It's recommended to use Firebase App Check to secure your API keys in production.
+        const firebaseConfig = { apiKey: "AIzaSyBa2DPRjwaI-G5mz-OmHVXEDJ4_MzBAZgA", authDomain: "word-rush-game-9010a.firebaseapp.com", projectId: "word-rush-game-9010a", storageBucket: "word-rush-game-9010a.appspot.com", messagingSenderId: "551838491871", appId: "1:551838491871:web:757325be04daab9289b56a" };
+        const app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        db = getFirestore(app);
 
-    const loadDictionaryAndEnableButtons = async () => {
-        const playGameModeButton = document.getElementById('play-game-mode-button');
-        const playPracticeButton = document.getElementById('play-practice-button');
-        const loadingErrorEl = document.getElementById('loading-error');
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                userId = user.uid;
+                console.log("Firebase connected. User ID:", userId);
+                await checkAndResetDailyLeaderboard();
+                fetchGlobalStats();
+                fetchPlayerStats(userId);
+                const showLeaderboardBtn = document.getElementById('show-leaderboard-button');
+                if (showLeaderboardBtn) showLeaderboardBtn.disabled = false;
+            } else {
+                signInAnonymously(auth).catch(err => console.error("Anonymous sign-in failed:", err));
+            }
+        });
+    } catch (firebaseError) {
+        console.warn("Firebase features failed to load, continuing in offline mode:", firebaseError);
+        const globalPlayCountSpan = document.getElementById('global-play-count');
+        if (globalPlayCountSpan) globalPlayCountSpan.textContent = "N/A";
+    }
+};
+
+async function loadDictionaryAndEnableButtons() {
+    const playGameModeButton = document.getElementById('play-game-mode-button');
+    const playPracticeButton = document.getElementById('play-practice-button');
+    const loadingErrorEl = document.getElementById('loading-error');
+
+    if (playGameModeButton) {
+        playGameModeButton.disabled = true;
+        playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
+    }
+    if (playPracticeButton) {
+        playPracticeButton.disabled = true;
+        playPracticeButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
+    }
+
+    try {
+        const res = await fetch('https://raw.githubusercontent.com/tputerio/word-rush-game/main/dictionary.json');
+        if (!res.ok) throw new Error(`Dictionary download failed: ${res.statusText}`);
+        const trieData = await res.json();
+        dictionaryTrie = new Trie(trieData);
+        console.log("Pre-built dictionary loaded. Game is playable.");
 
         if (playGameModeButton) {
-            playGameModeButton.disabled = true;
-            playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
+            playGameModeButton.disabled = false;
+            playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg><span>Play</span></div>`;
         }
         if (playPracticeButton) {
-            playPracticeButton.disabled = true;
-            playPracticeButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
+            playPracticeButton.disabled = false;
+            playPracticeButton.innerHTML = `<div class="flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg><span>Practice</span></div>`;
         }
-
-        try {
-            const res = await fetch('https://raw.githubusercontent.com/tputerio/word-rush-game/main/dictionary.json');
-            if (!res.ok) throw new Error(`Dictionary download failed: ${res.statusText}`);
-            const trieData = await res.json();
-            dictionaryTrie = new Trie(trieData);
-            console.log("Pre-built dictionary loaded. Game is playable.");
-
-            if (playGameModeButton) {
-                playGameModeButton.disabled = false;
-                playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg><span>Play</span></div>`;
-            }
-            if (playPracticeButton) {
-                playPracticeButton.disabled = false;
-                playPracticeButton.innerHTML = `<div class="flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg><span>Practice</span></div>`;
-            }
-        } catch (e) {
-            console.error("Critical Asset loading failed (Dictionary):", e);
-            if (loadingErrorEl) loadingErrorEl.textContent = "Error: Could not load game dictionary.";
-            if (playGameModeButton) { playGameModeButton.innerHTML = `<span>Error</span>`; playGameModeButton.classList.add('bg-red-500'); }
-            if (playPracticeButton) { playPracticeButton.innerHTML = `<span>Error</span>`; playPracticeButton.classList.add('bg-red-500'); }
-        }
-    };
+    } catch (e) {
+        console.error("Critical Asset loading failed (Dictionary):", e);
+        if (loadingErrorEl) loadingErrorEl.textContent = "Error: Could not load game dictionary.";
+        if (playGameModeButton) { playGameModeButton.innerHTML = `<span>Error</span>`; playGameModeButton.classList.add('bg-red-500'); }
+        if (playPracticeButton) { playPracticeButton.innerHTML = `<span>Error</span>`; playPracticeButton.classList.add('bg-red-500'); }
+    }
+};
 
     initializeFirebase();
     loadDictionaryAndEnableButtons();
@@ -640,6 +643,7 @@ function updateCurrentWord() {
 
 function showWelcomeScreen() {
     const template = document.getElementById('welcome-screen-template');
+    if (!template) return;
     const content = template.content.cloneNode(true);
 
     content.getElementById('play-game-mode-button').onclick = () => startGame(false);
@@ -654,6 +658,9 @@ function showWelcomeScreen() {
 
     setupTutorial();
     menuContainer.classList.add('hidden');
+    
+    // THE FIX: Call this function AFTER the buttons are on the page
+    loadDictionaryAndEnableButtons(); 
 }
 
 function showEndGameScreen() {
@@ -662,6 +669,7 @@ function showEndGameScreen() {
     triggerEndGameConfetti();
 
     const template = document.getElementById('end-game-template');
+    if (!template) return;
     const content = template.content.cloneNode(true);
 
     content.querySelector('.final-score').textContent = score;
