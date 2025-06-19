@@ -1144,7 +1144,7 @@ async function shareScore() {
     }
 }
 
-// Replace your existing showEndGameScreen function with this one
+// Replace your existing showEndGameScreen function with this corrected one
 async function showEndGameScreen(didBeatDailyHighScore) {
     gameContentEl.classList.add('blurred');
     endGameModal.classList.remove('hidden');
@@ -1157,13 +1157,9 @@ async function showEndGameScreen(didBeatDailyHighScore) {
             <h2 class="text-3xl font-black text-green-500">Great Game!</h2>
             <p class="text-slate-600 mb-2">Your final score is:</p>
             <p class="text-6xl font-black text-slate-800 mb-3">${score}</p>
-
             <div id="submission-container" class="h-8 flex items-center justify-center"></div>
-            
             <div id="share-link-container" class="h-8 flex items-center justify-center"></div>
-
             <hr class="my-4">
-
             <div class="text-left w-full">
                 <div class="flex justify-between items-baseline mb-2">
                     <h3 class="text-xl font-bold text-slate-700">Your Words (${foundWords.length})</h3>
@@ -1209,16 +1205,24 @@ async function showEndGameScreen(didBeatDailyHighScore) {
     }
     
     const processSubmission = async (name, currentScore) => {
+        // --- FIX: Submit the score unconditionally before determining the message ---
+        // This ensures the leaderboard is updated after every game.
+        try {
+            await submitLeaderboardScore(name, currentScore);
+        } catch (e) {
+            console.error("Submission failed:", e);
+            submissionContainer.innerHTML = `<div class="text-red-500 font-bold">Error saving score!</div>`;
+            return;
+        }
+
         let finalMessageHtml = '';
         if (didBeatDailyHighScore) {
-            await submitLeaderboardScore(name, currentScore);
             const leaderboardRef = doc(db, "leaderboards", "daily");
             const leaderboardDoc = await getDoc(leaderboardRef);
             let rank = null;
             if (leaderboardDoc.exists()) {
                 const topScores = leaderboardDoc.data().topScores || [];
                 const sorted = [...topScores].sort((a, b) => (b.dailyHighScore || 0) - (a.dailyHighScore || 0));
-                // --- THIS IS THE FIX ---
                 rank = sorted.findIndex(entry => entry.userID === userId) + 1;
             }
             const trophyIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg>`;
@@ -1236,7 +1240,7 @@ async function showEndGameScreen(didBeatDailyHighScore) {
     };
 
     if (!showSubmitForm) {
-        processSubmission(playerName, score);
+        await processSubmission(playerName, score);
     } else {
         submissionContainer.innerHTML = `<div id="submit-score-form" class="w-full"><div class="flex space-x-2"><input type="text" id="player-name" placeholder="Enter your name" class="w-full px-3 py-2 border border-slate-300 rounded-lg" maxlength="10"><button id="submit-global-score" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Submit</button></div></div>`;
         const nameInput = document.getElementById('player-name');
@@ -1253,7 +1257,6 @@ async function showEndGameScreen(didBeatDailyHighScore) {
         };
     }
 }
-
     
     function setupTutorial() {
         const container = document.getElementById('how-to-play-container'); if (!container) return;
