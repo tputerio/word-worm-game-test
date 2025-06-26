@@ -4,6 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Word Worm</title>
+    <meta property="og:title" content="Word Worm - The Fast-Paced Word Finding Game!">
+    <meta property="og:description" content="Race against the clock to find words from a jumbled grid. Challenge friends and climb the daily leaderboards!">
+    <meta property="og:image" content="assets/word-worm-logo.png">
+    <meta property="og:url" content="https://wordwormgame.com">
+    <meta property="og:type" content="website">
+    
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Word Worm - The Fast-Paced Word Finding Game!">
+    <meta name="twitter:description" content="Race against the clock to find words from a jumbled grid. Challenge friends and climb the daily leaderboards!">
+    <meta name="twitter:image" content="assets/word-worm-logo.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
     <style>
@@ -124,9 +134,9 @@
         <div class="flex items-center justify-between mb-3">
             <div class="flex-grow flex items-center justify-center">
                 <h1 class="text-3xl font-black text-slate-800 tracking-tighter flex items-center justify-center">
-                    <img src="https://raw.githubusercontent.com/tputerio/word-rush-game/main/word-worm-logo.png" alt="Word Worm Logo" class="w-9 h-9 mr-2">
+                    <img src="assets/word-worm-logo.png" alt="Word Worm Logo" class="w-9 h-9 mr-2">
                     <span>Word Worm</span>
-                </h1>
+                </h1> 
             </div>
         </div>
         <div id="scoreboard" class="grid grid-cols-3 items-center text-center bg-white rounded-xl shadow-lg p-2 mb-3">
@@ -289,7 +299,7 @@
             }
             
             try {
-                const res = await fetch('https://raw.githubusercontent.com/tputerio/word-rush-game/main/dictionary.json');
+                const res = await fetch('assets/dictionary.json');
                 if (!res.ok) throw new Error(`Dictionary download failed: ${res.statusText}`);
                 const trieData = await res.json();
                 dictionaryTrie = new Trie(trieData);
@@ -790,7 +800,7 @@
         modalContent.innerHTML = `
             <div class="bg-white rounded-2xl shadow-2xl p-6 text-center modal-enter">
                 <h1 class="text-4xl font-black text-slate-800 tracking-tighter mb-1 flex items-center justify-center">
-                    <img src="https://raw.githubusercontent.com/tputerio/word-rush-game/main/word-worm-logo.png" alt="Word Worm Logo" class="w-12 h-12 mr-2">
+                    <img src="assets/word-worm-logo.png" alt="Word Worm Logo" class="w-12 h-12 mr-2">
                     <span>Word Worm</span>
                 </h1>
                 <p class="text-slate-500 text-sm mb-4">The fast-paced word finding game!</p>
@@ -1215,7 +1225,7 @@
         if (bestWordFound && bestWordFound.word) {
             shareText += `My best word was ${bestWordFound.word.toUpperCase()} for ${bestWordFound.score} points!\n\n`;
         }
-        const gameUrl = 'https://tputerio.github.io/word-rush-game/';
+        const gameUrl = 'https://wordwormgame.com/';
         shareText += `Think you can beat me? Play now:\n${gameUrl}`;
         const shareData = { title: 'Word Worm', text: shareText };
         if (navigator.share) {
@@ -1291,7 +1301,7 @@
             const trophyIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg>`;
             let leaderboardMessage = `New daily high: <strong>${score}</strong>!`; 
             if (rankInfo.rank && rankInfo.rank <= 10) {
-                leaderboardMessage = `You placed&nbsp;<strong>#${rankInfo.rank}</strong> on today's leaderboard!`;
+                leaderboardMessage = `You placed&nbsp;<strong>#${rankInfo.rank}</strong>&nbsp;on today's leaderboard!`;
             }
             finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${trophyIcon} ${leaderboardMessage}</div>`;
         } else {
