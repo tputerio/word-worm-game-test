@@ -578,11 +578,8 @@
    async function processEndOfGame(finalScore, words, uId) {
     if (!db || !uId || isPracticeMode) return;
     const submissionContainer = document.getElementById('submission-container');
+    submissionContainer.innerHTML = `<div class="text-yellow-500 font-bold ...">Submitting...</div>`;
 
-    submissionContainer.innerHTML = `<div class="text-yellow-500 font-bold flex items-center justify-center">
-                                       <svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                       <span>Submitting...</span>
-                                     </div>`;
     try {
         const playerDoc = await getDoc(doc(db, "players", uId));
         const playerName = playerDoc.exists() ? playerDoc.data().name || "Anonymous" : "Anonymous";
@@ -631,12 +628,12 @@ function displayLeaderboard(data, listElement) {
             };
 
     const renderCategory = (title, icon, players, valueKey) => {
-        let categoryHtml = `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center">${icon} ${title}</h3>`;
+        let categoryHtml = `<h3 class="text-lg font-bold ...">${icon} ${title}</h3>`;
         if (!players || players.length === 0) {
             categoryHtml += `<p class="text-slate-500 text-sm pl-4">No scores yet.</p>`;
             return categoryHtml;
         }
-        
+
         categoryHtml += '<ol class="space-y-1">';
         let rank = 1;
         players.forEach(player => {
@@ -647,11 +644,7 @@ function displayLeaderboard(data, listElement) {
             } else {
                 scoreValue = player[valueKey]?.toLocaleString() || 0;
             }
-            categoryHtml += `<li class="flex items-center p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : ''}">
-                               <span class="font-bold text-slate-500 w-8 text-center">${rank++}.</span>
-                               <span class="font-semibold text-slate-800 flex-grow truncate mr-4">${player.name}</span>
-                               <span class="font-bold text-green-500">${scoreValue}</span>
-                             </li>`;
+            categoryHtml += `<li class="flex items-center p-2 ...">${rank++}. ... ${scoreValue}</li>`;
         });
         categoryHtml += '</ol>';
         return categoryHtml;
@@ -659,8 +652,8 @@ function displayLeaderboard(data, listElement) {
 
     const { highScoreData, totalPointsData, bestWordData } = data;
     let finalHtml = '';
-    finalHtml += renderCategory('High Score', icons.highScore, highScoreData, highScoreData[0]?.dailyHighScore ? 'dailyHighScore' : 'highScore');
-    finalHtml += renderCategory('Total Points', icons.totalPoints, totalPointsData, totalPointsData[0]?.dailyTotalScore ? 'dailyTotalScore' : 'totalPoints');
+    finalHtml += renderCategory('High Score', icons.highScore, highScoreData, type === 'daily' ? 'dailyHighScore' : 'highScore');
+    finalHtml += renderCategory('Total Points', icons.totalPoints, totalPointsData, type === 'daily' ? 'dailyTotalScore' : 'totalPoints');
     finalHtml += renderCategory('Best Word', icons.bestWord, bestWordData, 'bestWord');
 
     listElement.innerHTML = finalHtml;
@@ -874,50 +867,37 @@ async function showLeaderboardModal() {
         };
     }
     
-// REPLACE your old function with this
+// Final fetchAndDisplayLeaderboard function
 async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
     if (loadingElement) loadingElement.style.display = 'block';
 
-    const cacheKey = `leaderboard_v2_${type}`;
+    const cacheKey = `leaderboard_view_${type}`;
     const cachedItem = localStorage.getItem(cacheKey);
-    const cacheTTL = 3 * 60 * 1000; // 3 minutes
+    // Cache for only 1 minute, to align with the backend update schedule
+    const cacheTTL = 1 * 60 * 1000; 
 
     if (cachedItem) {
         const { timestamp, data } = JSON.parse(cachedItem);
         if (Date.now() - timestamp < cacheTTL) {
-            displayLeaderboard(data, listElement);
+            displayLeaderboard(data, listElement, type);
             if (loadingElement) loadingElement.style.display = 'none';
             return;
         }
     }
-    
+
     try {
-        const collectionName = type === 'daily' ? 'daily_aggregates' : 'allTime_aggregates';
-        const dateFilter = type === 'daily' ? where('date', '==', new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })) : null;
+        // This is now an incredibly simple and cheap operation
+        const viewDocRef = doc(db, "leaderboardViews", type); // 'daily' or 'allTime'
+        const docSnap = await getDoc(viewDocRef);
 
-        const fieldMap = {
-            highScore: type === 'daily' ? 'dailyHighScore' : 'highScore',
-            totalPoints: type === 'daily' ? 'dailyTotalScore' : 'totalPoints',
-            bestWord: 'bestWord.score'
-        };
-
-        const queries = [
-            query(collection(db, collectionName), ...(dateFilter ? [dateFilter] : []), orderBy(fieldMap.highScore, 'desc'), limit(5)),
-            query(collection(db, collectionName), ...(dateFilter ? [dateFilter] : []), orderBy(fieldMap.totalPoints, 'desc'), limit(5)),
-            query(collection(db, collectionName), ...(dateFilter ? [dateFilter] : []), orderBy(fieldMap.bestWord, 'desc'), limit(5))
-        ];
-
-        const [highScoreSnap, totalPointsSnap, bestWordSnap] = await Promise.all(queries.map(q => getDocs(q)));
-
-        const data = {
-            highScoreData: highScoreSnap.docs.map(doc => doc.data()),
-            totalPointsData: totalPointsSnap.docs.map(doc => doc.data()),
-            bestWordData: bestWordSnap.docs.map(doc => doc.data())
-        };
-        
-        localStorage.setItem(cacheKey, JSON.stringify({ timestamp: Date.now(), data }));
-        displayLeaderboard(data, listElement);
-
+        if (docSnap.exists()) {
+            const leaderboardData = docSnap.data();
+            // Your existing displayLeaderboard function receives the exact data it needs
+            displayLeaderboard(leaderboardData, listElement, type);
+            localStorage.setItem(cacheKey, JSON.stringify({ timestamp: Date.now(), data: leaderboardData }));
+        } else {
+            listElement.innerHTML = `<p class="text-slate-500 text-center text-sm">Leaderboard is being generated. Check back in a moment!</p>`;
+        }
     } catch (e) {
         console.error(`Could not fetch ${type} leaderboard:`, e);
         listElement.innerHTML = `<p class="text-red-500 text-center p-4">Could not load leaderboard.</p>`;
