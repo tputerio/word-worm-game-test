@@ -5,7 +5,6 @@ import Redis from "ioredis";
 import * as logger from "firebase-functions/logger";
 import {defineSecret} from "firebase-functions/params";
 
-// Define the secret in one place
 const redisUrlSecret = defineSecret("UPSTASH_REDIS_CONNECTION_URL");
 
 admin.initializeApp();
@@ -20,34 +19,77 @@ function getRedisClient(): Redis {
     logger.error("FATAL: Redis connection URL is not available.");
     throw new HttpsError("internal", "Database configuration is missing.");
   }
-  return new Redis(connectionUrl, {
-    lazyConnect: true,
-  });
+  return new Redis(connectionUrl, {lazyConnect: true});
 }
 
-const functionOptions = {
-  secrets: [redisUrlSecret], // Tell all functions to use this secret
-};
+const functionOptions = {secrets: [redisUrlSecret]};
 
-/**
- * Retrieves the current leaderboard.
- */
 export const getLeaderboard = onCall(functionOptions, async () => {
   let redisClient: Redis | undefined;
   try {
     redisClient = getRedisClient();
-    logger.log("Fetching leaderboard...");
-
-    const leaderboardData = await redisClient.zrevrange(
-      "daily_high_scores", 0, 9, "WITHSCORES"
+    logger.log("Fetching leaderboards...");
+    const dailyHighScores = await redisClient.zrevrange(
+      "daily_high_scores",
+      0,
+      9,
+      "WITHSCORES"
     );
-    return {leaderboard: leaderboardData};
+    const dailyTotalPoints = await redisClient.zrevrange(
+      "daily_total_points",
+      0,
+      9,
+      "WITHSCORES"
+    );
+    const dailyBestWord = await redisClient.zrevrange(
+      "daily_best_word",
+      0,
+      9,
+      "WITHSCORES"
+    );
+    const allTimeHighScores = await redisClient.zrevrange(
+      "all_time_high_scores",
+      0,
+      9,
+      "WITHSCORES"
+    );
+    const allTimeTotalPoints = await redisClient.zrevrange(
+      "all_time_total_points",
+      0,
+      9,
+      "WITHSCORES"
+    );
+    const allTimeBestWord = await redisClient.zrevrange(
+      "all_time_best_word",
+      0,
+      9,
+      "WITHSCORES"
+    );
+
+    const formatLeaderboard = (data: string[]) => {
+      const formatted = [];
+      for (let i = 0; i < data.length; i += 2) {
+        const [playerName] = data[i].split(":");
+        formatted.push(playerName, data[i + 1]);
+      }
+      return formatted;
+    };
+
+    return {
+      daily: {
+        highScores: formatLeaderboard(dailyHighScores),
+        totalPoints: formatLeaderboard(dailyTotalPoints),
+        bestWord: formatLeaderboard(dailyBestWord),
+      },
+      allTime: {
+        highScores: formatLeaderboard(allTimeHighScores),
+        totalPoints: formatLeaderboard(allTimeTotalPoints),
+        bestWord: formatLeaderboard(allTimeBestWord),
+      },
+    };
   } catch (error) {
     logger.error("Error in getLeaderboard:", error);
-    throw new HttpsError(
-      "internal",
-      "An error occurred while fetching the leaderboard."
-    );
+    throw new HttpsError("internal", "Error fetching leaderboards.");
   } finally {
     if (redisClient) {
       redisClient.quit();
@@ -55,33 +97,51 @@ export const getLeaderboard = onCall(functionOptions, async () => {
   }
 });
 
-/**
- * Submits a new score to the leaderboard.
- */
 export const submitScore = onCall(functionOptions, async (request) => {
-  const {playerName, score} = request.data;
+  const {
+    playerName,
+    userId,
+    highScore,
+    totalPoints,
+    bestWordScore,
+    bestWord,
+  } = request.data;
 
-  if (!playerName || typeof score !== "number") {
+  if (
+    !playerName ||
+    !userId ||
+    typeof highScore !== "number" ||
+    typeof totalPoints !== "number" ||
+    typeof bestWordScore !== "number" ||
+    !bestWord
+  ) {
     throw new HttpsError(
       "invalid-argument",
-      "Player name and score are required."
+      "Missing or invalid required fields."
     );
   }
 
   let redisClient: Redis | undefined;
   try {
     redisClient = getRedisClient();
-    logger.log("Submitting score...");
+    logger.log(`Submitting scores for ${playerName}...`);
+    const member = `${playerName}:${userId}`;
+    const bestWordMember = `${member}:${bestWord}`;
+    await Promise.all([
+      redisClient.zadd("daily_high_scores", highScore, member),
+      redisClient.zadd("daily_total_points", totalPoints, member),
+      redisClient.zadd("daily_best_word", bestWordScore, bestWordMember),
+      redisClient.zadd("all_time_high_scores", highScore, member),
+      redisClient.zadd("all_time_total_points", totalPoints, member),
+      redisClient.zadd("all_time_best_word", bestWordScore, bestWordMember),
+    ]);
 
-    await redisClient.zadd("daily_high_scores", score, playerName);
-
-    const message = `Score for ${playerName} submitted.`;
-    return {status: "success", message: message};
+    return {status: "success", message: `Scores for ${playerName} submitted.`};
   } catch (error) {
     logger.error("Error in submitScore:", error);
     throw new HttpsError(
       "internal",
-      "An error occurred while submitting the score."
+      "Error submitting scores to leaderboards."
     );
   } finally {
     if (redisClient) {
@@ -90,26 +150,25 @@ export const submitScore = onCall(functionOptions, async (request) => {
   }
 });
 
-/**
- * Runs on a schedule to reset the daily leaderboard.
- */
 export const resetDailyLeaderboards = onSchedule(
   {schedule: "every day 00:00", ...functionOptions},
   async () => {
     let redisClient: Redis | undefined;
     try {
       redisClient = getRedisClient();
-      logger.log("Resetting daily leaderboard...");
-
-      await redisClient.del("daily_high_scores");
-
-      logger.log("Daily leaderboard has been reset successfully.");
+      logger.log("Resetting daily leaderboards...");
+      await Promise.all([
+        redisClient.del("daily_high_scores"),
+        redisClient.del("daily_total_points"),
+        redisClient.del("daily_best_word"),
+      ]);
+      logger.log("Daily leaderboards reset successfully.");
     } catch (error) {
-      logger.error("Error resetting daily leaderboard:", error);
+      logger.error("Error resetting daily leaderboards:", error);
     } finally {
       if (redisClient) {
         redisClient.quit();
       }
     }
-  },
+  }
 );
