@@ -1,5 +1,6 @@
 import {onCall, onRequest, HttpsError} from "firebase-functions/v2/https";
 import {onSchedule} from "firebase-functions/v2/scheduler";
+import * as functions from "firebase-functions"; // Import the v1 SDK for config
 import * as admin from "firebase-admin";
 import Redis from "ioredis";
 import * as logger from "firebase-functions/logger";
@@ -7,27 +8,23 @@ import * as logger from "firebase-functions/logger";
 admin.initializeApp();
 const db = admin.firestore();
 
-// Set secrets required by functions
-const functionOptions = {
-  secrets: ["UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"],
-};
+// --- NEW: Read from functions.config() instead of process.env ---
+const redisUrl = functions.config().upstash.url;
+const redisToken = functions.config().upstash.token;
 
-// Check for secrets and initialize Redis client safely
-if (
-  !process.env.UPSTASH_REDIS_REST_URL ||
-  !process.env.UPSTASH_REDIS_REST_TOKEN
-) {
-  logger.error("FATAL: Redis environment variables not set!");
+if (!redisUrl || !redisToken) {
+  logger.error("FATAL: Redis configuration not found in functions.config()");
 }
-const redisClient = new Redis(process.env.UPSTASH_REDIS_REST_URL ?? "", {
-  password: process.env.UPSTASH_REDIS_REST_TOKEN ?? "",
+const redisClient = new Redis(redisUrl, {
+  password: redisToken,
   lazyConnect: true,
 });
 
 /**
  * A callable function that a user calls from the game after finishing.
+ * NOTE: We have removed the 'functionOptions' with secrets.
  */
-export const submitScore = onCall(functionOptions, async (request) => {
+export const submitScore = onCall(async (request) => {
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError("unauthenticated", "You must be logged in.");
   }
@@ -35,9 +32,7 @@ export const submitScore = onCall(functionOptions, async (request) => {
   const finalScore = Number(request.data.finalScore) || 0;
 
   type Word = { word: string, score: number };
-  const words: Word[] = Array.isArray(request.data.words) ?
-    request.data.words :
-    [];
+  const words: Word[] = Array.isArray(request.data.words) ? request.data.words : [];
 
   let playerName = "Anonymous";
   try {
@@ -49,8 +44,8 @@ export const submitScore = onCall(functionOptions, async (request) => {
   const member = `${userId}:${playerName}`;
 
   const bestWord = words.reduce(
-    (max: Word, word: Word) => (word.score > max.score ? word : max),
-    {word: "", score: 0},
+      (max: Word, word: Word) => (word.score > max.score ? word : max),
+      {word: "", score: 0},
   );
 
   const promises = [
@@ -145,16 +140,3 @@ export const resetDailyLeaderboards = onSchedule("0 0 * * *", async () => {
     logger.error("Error resetting daily leaderboards:", error);
   }
 });
-
-// TEST SECRET
-export const testSecretAccess = onRequest(
-  {secrets: ["TEST_SECRET"]},
-  (request, response) => {
-    const secretValue = process.env.TEST_SECRET;
-    if (secretValue) {
-      response.send(`The secret value is: ${secretValue}`);
-    } else {
-      response.status(500).send("ERROR: Could not read TEST_SECRET.");
-    }
-  },
-);
