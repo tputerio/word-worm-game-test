@@ -1,5 +1,4 @@
-import {onCall, HttpsError} from "firebase-functions/v2/https";
-import {onRequest} from "firebase-functions/v2/https";
+import {onCall, onRequest, HttpsError} from "firebase-functions/v2/https";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
 import Redis from "ioredis";
@@ -14,8 +13,10 @@ const functionOptions = {
 };
 
 // Check for secrets and initialize Redis client safely.
-if (!process.env.UPSTASH_REDIS_REST_URL ||
-    !process.env.UPSTASH_REDIS_REST_TOKEN) {
+if (
+  !process.env.UPSTASH_REDIS_REST_URL ||
+  !process.env.UPSTASH_REDIS_REST_TOKEN
+) {
   logger.error("Redis environment variables not set!");
 }
 const redisClient = new Redis(process.env.UPSTASH_REDIS_REST_URL ?? "", {
@@ -47,8 +48,8 @@ export const submitScore = onCall(functionOptions, async (request) => {
   const member = `${userId}:${playerName}`;
 
   const bestWord = words.reduce(
-      (max: Word, word: Word) => (word.score > max.score ? word : max),
-      {word: "", score: 0},
+    (max: Word, word: Word) => (word.score > max.score ? word : max),
+    {word: "", score: 0},
   );
 
   const promises = [
