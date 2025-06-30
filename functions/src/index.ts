@@ -49,8 +49,8 @@ export const submitScore = onCall(functionOptions, async (request) => {
   const member = `${userId}:${playerName}`;
 
   const bestWord = words.reduce(
-      (max: Word, word: Word) => (word.score > max.score ? word : max),
-      {word: "", score: 0},
+    (max: Word, word: Word) => (word.score > max.score ? word : max),
+    {word: "", score: 0},
   );
 
   const promises = [
