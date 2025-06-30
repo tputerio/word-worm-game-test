@@ -7,26 +7,21 @@ import * as logger from "firebase-functions/logger";
 admin.initializeApp();
 const db = admin.firestore();
 
-// Set secrets required by functions. This is the v2 way.
+// Set secrets required by functions
 const functionOptions = {
   secrets: ["UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"],
 };
 
-// Check for secrets and initialize Redis client safely.
-if (
-  !process.env.UPSTASH_REDIS_REST_URL ||
-  !process.env.UPSTASH_REDIS_REST_TOKEN
-) {
-  logger.error("Redis environment variables not set!");
+// Check for secrets and initialize Redis client safely
+if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+  logger.error("FATAL: Redis environment variables not set!");
 }
 const redisClient = new Redis(process.env.UPSTASH_REDIS_REST_URL ?? "", {
   password: process.env.UPSTASH_REDIS_REST_TOKEN ?? "",
   lazyConnect: true,
 });
 
-/**
- * A callable function that a user calls from the game after finishing.
- */
+
 export const submitScore = onCall(functionOptions, async (request) => {
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError("unauthenticated", "You must be logged in.");
@@ -35,8 +30,7 @@ export const submitScore = onCall(functionOptions, async (request) => {
   const finalScore = Number(request.data.finalScore) || 0;
 
   type Word = { word: string, score: number };
-  const words: Word[] = Array.isArray(request.data.words) ?
-    request.data.words : [];
+  const words: Word[] = Array.isArray(request.data.words) ? request.data.words : [];
 
   let playerName = "Anonymous";
   try {
@@ -65,14 +59,10 @@ export const submitScore = onCall(functionOptions, async (request) => {
     }, {merge: true}),
     redisClient.zadd("daily_high_scores", finalScore, member),
     redisClient.zincrby("daily_total_points", finalScore, member),
-    bestWord.score > 0 ?
-      redisClient.zadd("daily_best_word", "GT", bestWord.score, member) :
-      Promise.resolve(),
+    bestWord.score > 0 ? redisClient.zadd("daily_best_word", "GT", bestWord.score, member) : Promise.resolve(),
     redisClient.zadd("alltime_high_scores", "GT", finalScore, member),
     redisClient.zincrby("alltime_total_points", finalScore, member),
-    bestWord.score > 0 ?
-      redisClient.zadd("alltime_best_word", "GT", bestWord.score, member) :
-      Promise.resolve(),
+    bestWord.score > 0 ? redisClient.zadd("alltime_best_word", "GT", bestWord.score, member) : Promise.resolve(),
   ];
 
   await Promise.all(promises);
@@ -80,16 +70,9 @@ export const submitScore = onCall(functionOptions, async (request) => {
   return {rank: rank !== null ? rank + 1 : null};
 });
 
-/**
- * An HTTP-triggered function to fetch the top 10s for all leaderboards.
- */
 export const getLeaderboard = onRequest({cors: true}, async (req, res) => {
   const formatLeaderboard = (data: string[]) => {
-    const result: {
-      userId: string,
-      name: string,
-      score: number
-    }[] = [];
+    const result: { userId: string, name: string, score: number }[] = [];
     for (let i = 0; i < data.length; i += 2) {
       const [member, score] = [data[i], data[i+1]];
       const [userId, ...nameParts] = member.split(":");
@@ -128,16 +111,9 @@ export const getLeaderboard = onRequest({cors: true}, async (req, res) => {
   });
 });
 
-/**
- * A scheduled function that runs every day at midnight.
- */
 export const resetDailyLeaderboards = onSchedule("0 0 * * *", async () => {
   try {
-    const dailyKeys = [
-      "daily_high_scores",
-      "daily_total_points",
-      "daily_best_word",
-    ];
+    const dailyKeys = ["daily_high_scores", "daily_total_points", "daily_best_word"];
     await redisClient.del(dailyKeys);
     logger.log("Daily leaderboards have been successfully reset.");
   } catch (error) {
