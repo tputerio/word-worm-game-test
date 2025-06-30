@@ -145,3 +145,16 @@ export const resetDailyLeaderboards = onSchedule("0 0 * * *", async () => {
     logger.error("Error resetting daily leaderboards:", error);
   }
 });
+
+// ADD THIS NEW FUNCTION TO THE BOTTOM OF YOUR functions/src/index.ts FILE
+export const testSecretAccess = onRequest(
+  {secrets: ["TEST_SECRET"]},
+  (request, response) => {
+    const secretValue = process.env.TEST_SECRET;
+    if (secretValue) {
+      response.send(`The secret value is: ${secretValue}`);
+    } else {
+      response.status(500).send("ERROR: Could not read TEST_SECRET.");
+    }
+  },
+);
