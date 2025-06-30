@@ -146,7 +146,7 @@ export const resetDailyLeaderboards = onSchedule("0 0 * * *", async () => {
   }
 });
 
-// ADD THIS NEW FUNCTION TO THE BOTTOM OF YOUR functions/src/index.ts FILE
+// TEST SECRET
 export const testSecretAccess = onRequest(
   {secrets: ["TEST_SECRET"]},
   (request, response) => {
