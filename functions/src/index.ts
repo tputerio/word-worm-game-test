@@ -1,29 +1,49 @@
 import {onCall, onRequest, HttpsError} from "firebase-functions/v2/https";
 import {onSchedule} from "firebase-functions/v2/scheduler";
-import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import Redis from "ioredis";
 import * as logger from "firebase-functions/logger";
+import {SecretManagerServiceClient} from "@google-cloud/secret-manager";
 
 admin.initializeApp();
 const db = admin.firestore();
+const secretClient = new SecretManagerServiceClient();
 
-// --- Read from functions.config() instead of process.env ---
-const redisUrl = functions.config().upstash.url;
-const redisToken = functions.config().upstash.token;
+/**
+ * Creates and returns a new Redis client instance.
+ * @return {Promise<Redis>} A Promise that resolves to a new ioredis client.
+ */
+async function getRedisClient(): Promise<Redis> {
+  const projectId = process.env.GCLOUD_PROJECT || "word-rush-game-9010a";
+  const secretBasePath = `projects/${projectId}/secrets`;
 
-if (!redisUrl || !redisToken) {
-  logger.error("FATAL: Redis configuration not found in functions.config()");
+  const [urlVersion] = await secretClient.accessSecretVersion({
+    name: `${secretBasePath}/UPSTASH_REDIS_REST_URL/versions/latest`,
+  });
+  const [tokenVersion] = await secretClient.accessSecretVersion({
+    name: `${secretBasePath}/UPSTASH_REDIS_REST_TOKEN/versions/latest`,
+  });
+
+  const redisUrl = urlVersion.payload?.data?.toString();
+  const redisToken = tokenVersion.payload?.data?.toString();
+
+  if (!redisUrl || !redisToken) {
+    logger.error("FATAL: Could not fetch Redis secrets from Secret Manager.");
+    throw new Error("Missing Redis configuration.");
+  }
+
+  return new Redis(redisUrl, {
+    password: redisToken,
+    lazyConnect: true,
+  });
 }
-const redisClient = new Redis(redisUrl, {
-  password: redisToken,
-  lazyConnect: true,
-});
 
 /**
  * A callable function that a user calls from the game after finishing.
  */
 export const submitScore = onCall(async (request) => {
+  const redisClient = await getRedisClient();
+
   if (!request.auth || !request.auth.uid) {
     throw new HttpsError("unauthenticated", "You must be logged in.");
   }
@@ -32,7 +52,8 @@ export const submitScore = onCall(async (request) => {
 
   type Word = { word: string, score: number };
   const words: Word[] = Array.isArray(request.data.words) ?
-    request.data.words : [];
+    request.data.words :
+    [];
 
   let playerName = "Anonymous";
   try {
@@ -80,6 +101,8 @@ export const submitScore = onCall(async (request) => {
  * An HTTP-triggered function to fetch the top 10s for all leaderboards.
  */
 export const getLeaderboard = onRequest({cors: true}, async (req, res) => {
+  const redisClient = await getRedisClient();
+
   const formatLeaderboard = (data: string[]) => {
     const result: {
       userId: string,
@@ -127,16 +150,24 @@ export const getLeaderboard = onRequest({cors: true}, async (req, res) => {
 /**
  * A scheduled function that runs every day at midnight.
  */
-export const resetDailyLeaderboards = onSchedule("0 0 * * *", async () => {
-  try {
-    const dailyKeys = [
-      "daily_high_scores",
-      "daily_total_points",
-      "daily_best_word",
-    ];
-    await redisClient.del(dailyKeys);
-    logger.log("Daily leaderboards have been successfully reset.");
-  } catch (error) {
-    logger.error("Error resetting daily leaderboards:", error);
-  }
-});
+export const resetDailyLeaderboards = onSchedule(
+  {
+    schedule: "0 0 * * *",
+    timeZone: "America/New_York",
+    secrets: ["UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"],
+  },
+  async () => {
+    const redisClient = await getRedisClient();
+    try {
+      const dailyKeys = [
+        "daily_high_scores",
+        "daily_total_points",
+        "daily_best_word",
+      ];
+      await redisClient.del(dailyKeys);
+      logger.log("Daily leaderboards have been successfully reset.");
+    } catch (error) {
+      logger.error("Error resetting daily leaderboards:", error);
+    }
+  },
+);
