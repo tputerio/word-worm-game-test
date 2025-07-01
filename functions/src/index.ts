@@ -22,55 +22,56 @@ function getRedisClient(): Redis {
   return new Redis(connectionUrl, {lazyConnect: true});
 }
 
-const functionOptions = {secrets: [redisUrlSecret]};
+const functionOptions = {secrets: [redisUrlSecret]}; // Removed minInstances: 1
 
 export const getLeaderboard = onCall(functionOptions, async () => {
   let redisClient: Redis | undefined;
   try {
     redisClient = getRedisClient();
+    await redisClient.connect();
     logger.log("Fetching leaderboards...");
-    const dailyHighScores = await redisClient.zrevrange(
-      "daily_high_scores",
-      0,
-      9,
-      "WITHSCORES"
-    );
-    const dailyTotalPoints = await redisClient.zrevrange(
-      "daily_total_points",
-      0,
-      9,
-      "WITHSCORES"
-    );
-    const dailyBestWord = await redisClient.zrevrange(
-      "daily_best_word",
-      0,
-      9,
-      "WITHSCORES"
-    );
-    const allTimeHighScores = await redisClient.zrevrange(
-      "all_time_high_scores",
-      0,
-      9,
-      "WITHSCORES"
-    );
-    const allTimeTotalPoints = await redisClient.zrevrange(
-      "all_time_total_points",
-      0,
-      9,
-      "WITHSCORES"
-    );
-    const allTimeBestWord = await redisClient.zrevrange(
-      "all_time_best_word",
-      0,
-      9,
-      "WITHSCORES"
-    );
 
-    const formatLeaderboard = (data: string[]) => {
+    // Use Redis pipelining to batch all zrevrange calls
+    const pipelineResults = await redisClient.pipeline([
+      ["zrevrange", "daily_high_scores", 0, 9, "WITHSCORES"],
+      ["zrevrange", "daily_total_points", 0, 9, "WITHSCORES"],
+      ["zrevrange", "daily_best_word", 0, 9, "WITHSCORES"],
+      ["zrevrange", "all_time_high_scores", 0, 9, "WITHSCORES"],
+      ["zrevrange", "all_time_total_points", 0, 9, "WITHSCORES"],
+      ["zrevrange", "all_time_best_word", 0, 9, "WITHSCORES"],
+    ]).exec();
+
+    // Handle null pipeline results
+    if (!pipelineResults) {
+      logger.error("Redis pipeline returned null");
+      throw new HttpsError("internal",
+        "Failed to fetch leaderboards: pipeline returned null");
+    }
+
+    // Extract results, ensuring each result is typed correctly
+    const [
+      dailyHighScores,
+      dailyTotalPoints,
+      dailyBestWord,
+      allTimeHighScores,
+      allTimeTotalPoints,
+      allTimeBestWord,
+    ] = pipelineResults.map((result) => {
+      if (result[0]) throw result[0]; // Throw any pipeline command error
+      return result[1] as string[];
+    });
+
+    const formatLeaderboard = (data: string[], isBestWord = false) => {
       const formatted = [];
       for (let i = 0; i < data.length; i += 2) {
-        const [playerName] = data[i].split(":");
-        formatted.push(playerName, data[i + 1]);
+        const [key, score] = [data[i], data[i + 1]];
+        if (isBestWord) {
+          const [word] = key.split(":").slice(0, -1);
+          formatted.push(word, score);
+        } else {
+          const [playerName] = key.split(":");
+          formatted.push(playerName, score);
+        }
       }
       return formatted;
     };
@@ -79,12 +80,12 @@ export const getLeaderboard = onCall(functionOptions, async () => {
       daily: {
         highScores: formatLeaderboard(dailyHighScores),
         totalPoints: formatLeaderboard(dailyTotalPoints),
-        bestWord: formatLeaderboard(dailyBestWord),
+        bestWord: formatLeaderboard(dailyBestWord, true),
       },
       allTime: {
         highScores: formatLeaderboard(allTimeHighScores),
         totalPoints: formatLeaderboard(allTimeTotalPoints),
-        bestWord: formatLeaderboard(allTimeBestWord),
+        bestWord: formatLeaderboard(allTimeBestWord, true),
       },
     };
   } catch (error) {
@@ -92,7 +93,7 @@ export const getLeaderboard = onCall(functionOptions, async () => {
     throw new HttpsError("internal", "Error fetching leaderboards.");
   } finally {
     if (redisClient) {
-      redisClient.quit();
+      await redisClient.quit();
     }
   }
 });
@@ -124,17 +125,18 @@ export const submitScore = onCall(functionOptions, async (request) => {
   let redisClient: Redis | undefined;
   try {
     redisClient = getRedisClient();
+    await redisClient.connect();
     logger.log(`Submitting scores for ${playerName}...`);
     const member = `${playerName}:${userId}`;
-    const bestWordMember = `${member}:${bestWord}`;
-    await Promise.all([
-      redisClient.zadd("daily_high_scores", highScore, member),
-      redisClient.zadd("daily_total_points", totalPoints, member),
-      redisClient.zadd("daily_best_word", bestWordScore, bestWordMember),
-      redisClient.zadd("all_time_high_scores", highScore, member),
-      redisClient.zadd("all_time_total_points", totalPoints, member),
-      redisClient.zadd("all_time_best_word", bestWordScore, bestWordMember),
-    ]);
+    const bestWordMember = `${bestWord}:${userId}`;
+    await redisClient.pipeline([
+      ["zadd", "daily_high_scores", highScore, member],
+      ["zadd", "daily_total_points", totalPoints, member],
+      ["zadd", "daily_best_word", bestWordScore, bestWordMember, "XX"],
+      ["zadd", "all_time_high_scores", highScore, member],
+      ["zadd", "all_time_total_points", totalPoints, member],
+      ["zadd", "all_time_best_word", bestWordScore, bestWordMember, "XX"],
+    ]).exec();
 
     return {status: "success", message: `Scores for ${playerName} submitted.`};
   } catch (error) {
@@ -145,7 +147,7 @@ export const submitScore = onCall(functionOptions, async (request) => {
     );
   } finally {
     if (redisClient) {
-      redisClient.quit();
+      await redisClient.quit();
     }
   }
 });
@@ -156,18 +158,19 @@ export const resetDailyLeaderboards = onSchedule(
     let redisClient: Redis | undefined;
     try {
       redisClient = getRedisClient();
+      await redisClient.connect();
       logger.log("Resetting daily leaderboards...");
-      await Promise.all([
-        redisClient.del("daily_high_scores"),
-        redisClient.del("daily_total_points"),
-        redisClient.del("daily_best_word"),
-      ]);
+      await redisClient.pipeline([
+        ["del", "daily_high_scores"],
+        ["del", "daily_total_points"],
+        ["del", "daily_best_word"],
+      ]).exec();
       logger.log("Daily leaderboards reset successfully.");
     } catch (error) {
       logger.error("Error resetting daily leaderboards:", error);
     } finally {
       if (redisClient) {
-        redisClient.quit();
+        await redisClient.quit();
       }
     }
   }
