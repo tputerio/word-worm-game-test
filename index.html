@@ -112,6 +112,24 @@
         .dropdown-menu {
             transition: all 0.2s ease-out;
         }
+
+                    /* Subtle custom scrollbar for scrollable containers */
+            .scrollbar-subtle {
+              scrollbar-width: thin;
+              scrollbar-color: #94a3b8 #f1f5f9;
+              scrollbar-gutter: stable; /* always reserve space for the scrollbar */
+            }
+            .scrollbar-subtle::-webkit-scrollbar {
+              width: 8px;
+            }
+            .scrollbar-subtle::-webkit-scrollbar-thumb {
+              background: #94a3b8;
+              border-radius: 6px;
+            }
+            .scrollbar-subtle::-webkit-scrollbar-track {
+              background: #f1f5f9;
+              border-radius: 6px;
+            }
     </style>
 </head>
 <body class="bg-slate-100 flex justify-center items-start md:items-center min-h-screen">
@@ -840,8 +858,7 @@
                     <span>Word Worm</span>
                 </h1>
                 <p class="text-slate-500 text-sm mb-4">The fast-paced word finding game!</p>
-                <div id="how-to-play-container" class="relative bg-slate-100 p-3 rounded-lg mb-4 h-[17rem] overflow-hidden"></div>
-                <div class="flex flex-col sm:flex-row sm:space-x-4 mb-3">
+                    <div id="how-to-play-container" class="scrollbar-subtle relative bg-slate-100 p-3 rounded-lg mb-4 h-[17rem] overflow-y-auto"></div>                <div class="flex flex-col sm:flex-row sm:space-x-4 mb-3">
                     <button id="play-practice-button" class="bg-blue-500 hover:bg-blue-600 flex-1 text-white font-bold py-2 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 mb-3 sm:mb-0 disabled:bg-slate-400 disabled:cursor-wait">...</button>
                     <button id="play-game-mode-button" class="bg-green-500 hover:bg-green-600 flex-1 text-white font-bold py-2 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-wait">...</button>
                 </div>
@@ -880,8 +897,7 @@
                 <button id="all-time-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">All-Time</button>
             </div>
             <div id="leaderboard-loading-secondary" class="text-slate-500 p-2">Fetching Scores...</div>
-            <div id="leaderboard-scroll-container" class="relative max-h-[20rem] overflow-y-auto">
-                <div id="leaderboard-list-simple" class="space-y-2 text-left"></div>
+            <div id="leaderboard-scroll-container" class="scrollbar-subtle relative max-h-[20rem] overflow-y-auto">                <div id="leaderboard-list-simple" class="space-y-2 text-left"></div>
             </div>
             <button id="close-leaderboard-button" class="mt-4 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 px-4 rounded-lg">Close</button>
         </div>`;
@@ -1395,9 +1411,6 @@
                         </div>
                     </div>
                 </div>
-            </div>
-            <div id="scroll-indicator" class="absolute bottom-0 left-1/2 -translate-x-1/2 animate-bounce-slow">
-                <svg class="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
             </div>
         </div>`;
         const letterValuesContainer = container.querySelector('#letter-values-container'); if (letterValuesContainer) { const sortedLetters = Object.keys(letterConfig).sort(); const letterTilesHtml = sortedLetters.map(letter => { const config = letterConfig[letter]; return `<span class="bg-slate-200 text-slate-700 font-bold rounded-sm px-1.5 py-0.5 text-[10px] leading-none">${letter}-${config.p}</span>`; }).join(''); letterValuesContainer.innerHTML = letterTilesHtml; }
