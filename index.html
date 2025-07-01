@@ -182,6 +182,9 @@
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
     import { getFirestore, collection, addDoc, getDocs, query, where, orderBy, limit, doc, getDoc, setDoc, updateDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
+    // --- Google Analytics ---
+    import { getAnalytics, logEvent, setUserId } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-analytics.js";
+    
     // --- Config ---
     const [GRID_SIZE, GRID_COLS, GAME_TIME] = [16, 4, 60];
     const letterConfig={'A':{p:1},'B':{p:3},'C':{p:3},'D':{p:2},'E':{p:1},'F':{p:4},'G':{p:2},'H':{p:4},'I':{p:1},'J':{p:8},'K':{p:5},'L':{p:1},'M':{p:3},'N':{p:1},'O':{p:1},'P':{p:3},'Q':{p:10},'R':{p:1},'S':{p:1},'T':{p:1},'U':{p:1},'V':{p:4},'W':{p:4},'X':{p:8},'Y':{p:4},'Z':{p:10}};
@@ -206,7 +209,7 @@
     const statsModal = document.getElementById('stats-modal'), statsModalContent = document.getElementById('stats-modal-content');
 
     // --- Firebase State ---
-    let auth, db, userId;
+    let auth, db, userId, analytics;
 
     // --- Game State ---
     let score = 0, timer = GAME_TIME, timerInterval, dictionaryTrie, foundWords = [], selectedTiles = [], isMouseDown = false;
@@ -265,14 +268,24 @@
 
         const initializeFirebase = async () => {
             try {
-                const firebaseConfig = { apiKey: "AIzaSyBa2DPRjwaI-G5mz-OmHVXEDJ4_MzBAZgA", authDomain: "word-rush-game-9010a.firebaseapp.com", projectId: "word-rush-game-9010a", storageBucket: "word-rush-game-9010a.appspot.com", messagingSenderId: "551838491871", appId: "1:551838491871:web:757325be04daab9289b56a" };
+                const firebaseConfig = { apiKey: "AIzaSyBa2DPRjwaI-G5mz-OmHVXEDJ4_MzBAZgA",
+                                        authDomain: "word-rush-game-9010a.firebaseapp.com",
+                                        projectId: "word-rush-game-9010a",
+                                        storageBucket: "word-rush-game-9010a.appspot.com",
+                                        messagingSenderId: "551838491871",
+                                        appId: "1:551838491871:web:757325be04daab9289b56a",
+                                        measurementId: "G-492874294"};
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
+                analytics = getAnalytics(app);
 
                 onAuthStateChanged(auth, async (user) => {
                     if (user) {
                         userId = user.uid;
+                        if (analytics && userId) {
+                              setUserId(analytics, userId);
+                                }
                         console.log("Firebase connected. User ID:", userId);
                         await checkAndResetDailyLeaderboard();
                         fetchGlobalStats();
@@ -417,6 +430,12 @@
         document.getElementById('menu-home').style.display = 'flex';
         menuContainer.classList.remove('hidden');
 
+        if (analytics) {
+          logEvent(analytics, 'game_start', {
+                game_mode: practiceMode ? 'practice' : 'timed'
+                  });
+                }
+
         if (isPracticeMode) {
             practiceTimeElapsed = 0;
             topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-blue-500 uppercase tracking-wider">Pace</div><div id="pace-score" class="text-3xl font-black text-blue-400">0</div>`;
@@ -448,6 +467,15 @@
         menuContainer.classList.add('hidden');
         
         showEndGameScreen();
+
+        if (analytics) {
+          logEvent(analytics, 'game_end', {
+            game_mode: isPracticeMode ? 'practice' : 'timed',
+            final_score: score,
+            words_found_count: foundWords.length,
+            time_taken_seconds: isPracticeMode ? practiceTimeElapsed : (GAME_TIME - timer)
+              });
+            }
 
         if (!isPracticeMode && db && userId) {
             processEndOfGame(score, foundWords, userId);
@@ -513,6 +541,14 @@
             else if (word.length === 6) finalScore += 10;
             else if (word.length === 5) finalScore += 5;
             else if (word.length === 4) finalScore += 2;
+
+                if (analytics) {
+                  logEvent(analytics, 'submit_word', {
+                    word_length: word.length,
+                    score: finalScore,
+                    game_mode: isPracticeMode ? 'practice' : 'timed'
+                  });
+                }
             
             if (timeBonus > 0 && !isPracticeMode) {
                 timer += timeBonus; 
