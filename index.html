@@ -130,6 +130,25 @@
               background: #f1f5f9;
               border-radius: 6px;
             }
+
+                        /* Fade overlay cue at the bottom of scrollable areas */
+                .scroll-fade-bottom {
+                  position: relative;
+                }
+                .scroll-fade-bottom::after {
+                  content: "";
+                  pointer-events: none;
+                  position: absolute;
+                  left: 0; right: 0; bottom: 0; height: 2.2em; /* Adjust height if needed */
+                  background: linear-gradient(to bottom, transparent, #f1f5f9 85%);
+                  z-index: 10;
+                  transition: opacity 0.25s;
+                  opacity: 1;
+                }
+                
+                .scroll-fade-bottom.hide-fade::after {
+                  opacity: 0;
+                }
     </style>
 </head>
 <body class="bg-slate-100 flex justify-center items-start md:items-center min-h-screen">
@@ -858,8 +877,7 @@
                     <span>Word Worm</span>
                 </h1>
                 <p class="text-slate-500 text-sm mb-4">The fast-paced word finding game!</p>
-                    <div id="how-to-play-container" class="scrollbar-subtle relative bg-slate-100 p-3 rounded-lg mb-4 h-[17rem] overflow-y-auto"></div>                <div class="flex flex-col sm:flex-row sm:space-x-4 mb-3">
-                    <button id="play-practice-button" class="bg-blue-500 hover:bg-blue-600 flex-1 text-white font-bold py-2 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 mb-3 sm:mb-0 disabled:bg-slate-400 disabled:cursor-wait">...</button>
+                    <div id="how-to-play-container" class="scrollbar-subtle scroll-fade-bottom relative bg-slate-100 p-3 rounded-lg mb-4 h-[17rem] overflow-y-auto">                    <button id="play-practice-button" class="bg-blue-500 hover:bg-blue-600 flex-1 text-white font-bold py-2 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 mb-3 sm:mb-0 disabled:bg-slate-400 disabled:cursor-wait">...</button>
                     <button id="play-game-mode-button" class="bg-green-500 hover:bg-green-600 flex-1 text-white font-bold py-2 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-wait">...</button>
                 </div>
                 <div class="flex justify-between items-center border-t border-slate-200 pt-3">
@@ -897,9 +915,7 @@
                 <button id="all-time-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">All-Time</button>
             </div>
             <div id="leaderboard-loading-secondary" class="text-slate-500 p-2">Fetching Scores...</div>
-            <div id="leaderboard-scroll-container" class="scrollbar-subtle relative max-h-[20rem] overflow-y-auto">                <div id="leaderboard-list-simple" class="space-y-2 text-left"></div>
-            </div>
-            <button id="close-leaderboard-button" class="mt-4 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 px-4 rounded-lg">Close</button>
+            <div id="leaderboard-scroll-container" class="scrollbar-subtle scroll-fade-bottom relative max-h-[20rem] overflow-y-auto pr-3">            <button id="close-leaderboard-button" class="mt-4 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 px-4 rounded-lg">Close</button>
         </div>`;
         const dailyTab = document.getElementById('daily-tab');
         const allTimeTab = document.getElementById('all-time-tab');
@@ -1416,16 +1432,31 @@
         const letterValuesContainer = container.querySelector('#letter-values-container'); if (letterValuesContainer) { const sortedLetters = Object.keys(letterConfig).sort(); const letterTilesHtml = sortedLetters.map(letter => { const config = letterConfig[letter]; return `<span class="bg-slate-200 text-slate-700 font-bold rounded-sm px-1.5 py-0.5 text-[10px] leading-none">${letter}-${config.p}</span>`; }).join(''); letterValuesContainer.innerHTML = letterTilesHtml; }
         
         const tutorialContent = container.querySelector('#tutorial-content');
-        const scrollIndicator = container.querySelector('#scroll-indicator');
-        tutorialContent.onscroll = () => {
-            if (tutorialContent.scrollTop > 10) scrollIndicator.style.display = 'none';
-            else scrollIndicator.style.display = 'block';
-        };
 
         const tutorialGridContainer = container.querySelector('#tutorial-grid-container'); const tutorialCanvas = container.querySelector('#tutorial-line-canvas'); const tutorialCtx = tutorialCanvas.getContext('2d'); const tutorialTiles = Array.from(tutorialGridContainer.querySelectorAll('.tutorial-tile')); const wordBuilder = container.querySelector('#tutorial-word-builder'); const animationSequence = [0, 4, 5, 10]; const word = 'WORM';
         const runAnimation = () => { const gridRect = tutorialGridContainer.getBoundingClientRect(); tutorialCanvas.width = gridRect.width; tutorialCanvas.height = gridRect.height; const tileCenters = tutorialTiles.map(tile => { const tileRect = tile.getBoundingClientRect(); return { x: tileRect.left + tileRect.width / 2 - gridRect.left, y: tileRect.top + tileRect.height / 2 - gridRect.top }; }); wordBuilder.innerHTML = '<span class="opacity-0">W</span>'; tutorialTiles.forEach(t => t.classList.remove('highlight')); tutorialCtx.clearRect(0, 0, tutorialCanvas.width, tutorialCanvas.height); let scoreEl = tutorialGridContainer.querySelector('.flying-score-tutorial'); if(scoreEl) scoreEl.remove(); const pathPoints = []; animationSequence.forEach((tileIndex, step) => { setTimeout(() => { tutorialTiles[tileIndex].classList.add('highlight'); const newLetterHTML = `<span class="current-letter bg-white text-blue-500 font-bold text-sm px-1 py-0.5 rounded-md shadow-sm">${word[step]}</span>`; if (step === 0) { wordBuilder.innerHTML = newLetterHTML; } else { wordBuilder.innerHTML += newLetterHTML; } pathPoints.push(tileCenters[tileIndex]); tutorialCtx.clearRect(0, 0, tutorialCanvas.width, tutorialCanvas.height); if(pathPoints.length > 1) { tutorialCtx.beginPath(); tutorialCtx.strokeStyle = 'rgba(59, 130, 246, 0.8)'; tutorialCtx.lineWidth = 8; tutorialCtx.lineCap = 'round'; tutorialCtx.lineJoin = 'round'; tutorialCtx.moveTo(pathPoints[0].x, pathPoints[0].y); for(let i = 1; i < pathPoints.length; i++) { tutorialCtx.lineTo(pathPoints[i].x, pathPoints[i].y); } tutorialCtx.stroke(); } }, 1000 + (step + 1) * 750); }); setTimeout(() => { const el = document.createElement('div'); el.className = 'flying-score'; el.style.fontSize = '1rem'; el.style.padding = '4px 8px'; el.style.animation = 'fly-up-tutorial 1.5s ease-in-out forwards'; el.style.position = 'absolute'; el.style.top = '50%'; el.style.left = '50%'; el.textContent = `+9`; el.classList.add('flying-score-tutorial'); tutorialGridContainer.appendChild(el); }, 1000 + (animationSequence.length + 1) * 750); };
         if(animationInterval) clearInterval(animationInterval); setTimeout(() => { runAnimation(); animationInterval = setInterval(runAnimation, 6000); }, 350);
     };
+
+    function setupScrollFade(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  function updateFade() {
+    // If scrolled to the bottom, hide the fade
+    if (container.scrollHeight - container.scrollTop <= container.clientHeight + 1) {
+      container.classList.add('hide-fade');
+    } else {
+      container.classList.remove('hide-fade');
+    }
+  }
+  container.addEventListener('scroll', updateFade);
+  // Initial check (in case content already fits)
+  updateFade();
+}
+
+// Call this after the containers are rendered/populated:
+setupScrollFade('how-to-play-container');
+setupScrollFade('leaderboard-scroll-container');
 
     document.addEventListener('DOMContentLoaded', main);
 </script>
