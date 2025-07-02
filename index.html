@@ -2,20 +2,23 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Word Worm</title>
     <meta property="og:title" content="Word Worm - The Fast-Paced Word Finding Game!">
     <meta property="og:description" content="Race against the clock to find words from a jumbled grid. Challenge friends and climb the daily leaderboards!">
-    <meta property="og:image" content="assets/word-worm-social-logo.png">
+    <meta property="og:image" content="https://wordwormgame.com/assets/word-worm-social-logo.png">
     <meta property="og:url" content="https://wordwormgame.com">
     <meta property="og:type" content="website">
     
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Word Worm - The Fast-Paced Word Finding Game!">
     <meta name="twitter:description" content="Race against the clock to find words from a jumbled grid. Challenge friends and climb the daily leaderboards!">
-    <meta name="twitter:image" content="assets/word-worm-social-logo.png">
+    <meta name="twitter:image" content="https://wordwormgame.com/assets/word-worm-social-logo.png">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap"></noscript>
     <style>
         body { font-family: 'Inter', sans-serif; overflow: hidden; touch-action: none; }
         .tile {
@@ -176,7 +179,7 @@
     </div>
 </div>
 
-<script type="module">
+<script type="module" defer>
     // --- Firebase SDKs ---
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
