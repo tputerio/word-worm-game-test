@@ -1,41 +1,62 @@
 const fs = require('fs');
 const path = require('path');
+const https = require('https'); // Use the built-in 'https' module to fetch the file
 
-// Define the input and output file paths
-const inputFilePath = path.join(__dirname, 'dictionary.txt');
-const outputFilePath = path.join(__dirname, 'assets', 'dictionary-clean.txt');
+// --- File Paths ---
+const inputFilePath = path.join(__dirname, 'dictionary.txt');      // Your 20k common word list
+const outputFilePath = path.join(__dirname, 'assets', 'dictionary-clean.txt'); // The final output
+const scrabbleWordsUrl = 'https://raw.githubusercontent.com/redbo/scrabble/master/dictionary.txt';
 
-console.log('Reading original dictionary...');
+// This is an async function to handle the web request
+async function run() {
+  console.log('Fetching Scrabble master list from GitHub...');
 
-// Read the original file
-const dictionaryText = fs.readFileSync(inputFilePath, 'utf-8');
-const originalWords = dictionaryText.split('\n');
-
-console.log(`Original word count: ${originalWords.length}`);
-console.log('Cleaning words...');
-
-// Clean the words based on our rules
-const cleanedWords = originalWords
-  .map(word => word.trim().toLowerCase()) // Trim whitespace and make all words lowercase
-  .filter(word => {
-    // Keep the word ONLY if it meets all these conditions:
-    const isLongEnough = word.length >= 3;
-    const isShortEnough = word.length <= 12; // Rule updated to 12 letters
-    const hasNoSpecialChars = /^[a-z]+$/.test(word);
-
-    return isLongEnough && isShortEnough && hasNoSpecialChars;
+  // Fetch the remote Scrabble dictionary
+  const scrabbleWordsText = await new Promise((resolve, reject) => {
+    https.get(scrabbleWordsUrl, (res) => {
+      let data = '';
+      res.on('data', (chunk) => data += chunk);
+      res.on('end', () => resolve(data));
+    }).on('error', (err) => reject(err));
   });
 
-// Remove duplicates
-let uniqueCleanedWords = [...new Set(cleanedWords)];
+  // Create a Set of official Scrabble words for very fast lookups
+  // The .toLowerCase() handles the capitalization in the source file
+  const scrabbleWordsSet = new Set(scrabbleWordsText.split('\n').map(w => w.trim().toLowerCase()));
 
-// Sort the final list alphabetically
-uniqueCleanedWords.sort();
+  console.log(`Loaded ${scrabbleWordsSet.size} official Scrabble words.`);
+  console.log('Reading your local dictionary...');
 
-console.log(`New word count: ${uniqueCleanedWords.length}`);
-console.log('Saving new clean dictionary...');
+  // Read your local 20k dictionary
+  const dictionaryText = fs.readFileSync(inputFilePath, 'utf-8');
 
-// Write the new, clean list to the output file
-fs.writeFileSync(outputFilePath, uniqueCleanedWords.join('\n'));
+  console.log('Validating your dictionary...');
 
-console.log(`✅ Success! Clean dictionary saved to: ${outputFilePath}`);
+  // --- Filtering Logic ---
+  const cleanedWords = dictionaryText
+    .split('\n')
+    .map(word => word.trim().toLowerCase())
+    .filter(word => {
+      // A word is kept ONLY if it meets ALL of these conditions:
+      const isScrabbleWord = scrabbleWordsSet.has(word);
+      const isLongEnough = word.length >= 3;
+      const isShortEnough = word.length <= 12;
+      const hasNoSpecialChars = /^[a-z]+$/.test(word);
+
+      return isScrabbleWord && isLongEnough && isShortEnough && hasNoSpecialChars;
+    });
+
+  let uniqueCleanedWords = [...new Set(cleanedWords)];
+
+
+  uniqueCleanedWords.sort();
+
+  console.log(`New word count: ${uniqueCleanedWords.length}`);
+  console.log('Saving new clean dictionary...');
+
+  fs.writeFileSync(outputFilePath, uniqueCleanedWords.join('\n'));
+  console.log(`✅ Success! Final dictionary saved to: ${outputFilePath}`);
+}
+
+// Run the main async function
+run().catch(err => console.error(err));
