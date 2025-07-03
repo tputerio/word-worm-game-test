@@ -29,15 +29,6 @@ const cleanedWords = originalWords
 // Remove duplicates
 let uniqueCleanedWords = [...new Set(cleanedWords)];
 
-// Manually add specific words if they don't already exist
-const customWordsToAdd = ['zen', 'kin'];
-customWordsToAdd.forEach(customWord => {
-  if (!uniqueCleanedWords.includes(customWord)) {
-    uniqueCleanedWords.push(customWord);
-    console.log(`Added missing word: ${customWord}`);
-  }
-});
-
 // Sort the final list alphabetically
 uniqueCleanedWords.sort();
 
