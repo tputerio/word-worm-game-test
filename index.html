@@ -1183,7 +1183,7 @@
     
     function generateAndValidateBoard(existingBoard = null) {
         let board;
-        const MAX_ATTEMPTS = 200;
+        const MAX_ATTEMPTS = 10000;
         for (let i = 0; i < MAX_ATTEMPTS; i++) {
             board = existingBoard ? [...existingBoard] : new Array(GRID_SIZE).fill(null);
             
@@ -1194,7 +1194,6 @@
             });
 
             if (dictionaryTrie && isBoardPlayable(board)) {
-               console.log(`Generated a valid board in ${attempts} attempts.`);
                 return board;
             }
             if (!dictionaryTrie && i > 0) {
