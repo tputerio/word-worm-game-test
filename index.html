@@ -1182,28 +1182,34 @@
     }
     
     function generateAndValidateBoard(existingBoard = null) {
-        let board;
-        const MAX_ATTEMPTS = 10000;
-        for (let i = 0; i < MAX_ATTEMPTS; i++) {
-            board = existingBoard ? [...existingBoard] : new Array(GRID_SIZE).fill(null);
-            
-            board.forEach((tile, index) => {
-                if (tile === null) {
-                    board[index] = getRandomLetter();
-                }
-            });
+    const MAX_ATTEMPTS = 10000;
 
-            if (dictionaryTrie && isBoardPlayable(board)) {
-                return board;
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+        let board = existingBoard ? [...existingBoard] : new Array(GRID_SIZE).fill(null);
+        
+        board.forEach((tile, index) => {
+            if (tile === null) {
+                board[index] = getRandomLetter();
             }
-            if (!dictionaryTrie && i > 0) {
-                 return board;
-            }
-            board = null;
+        });
+
+        if (dictionaryTrie && isBoardPlayable(board)) {
+            // --- THIS IS WHERE YOU ADD THE CONSOLE LOG ---
+            console.log(`Generated a valid board in ${i + 1} attempts.`);
+            return board;
         }
-        console.warn(`Failed to generate a high-quality board after ${MAX_ATTEMPTS} attempts, using last random attempt.`);
-        return board || Array.from({ length: GRID_SIZE }, () => getRandomLetter());
+        
+        if (!dictionaryTrie) {
+            return board;
+        }
     }
+
+    // This part runs ONLY if the loop fails 10,000 times.
+    console.error(`FAILED to generate a valid board after ${MAX_ATTEMPTS} attempts.`);
+    
+    // It returns a safe, pre-defined board to prevent errors.
+    return ['W', 'O', 'R', 'D', 'W', 'O', 'R', 'M', 'G', 'A', 'M', 'E', 'P', 'L', 'A', 'Y'];
+}
     
     function isBoardPlayable(board) {
     // Rule: Ensure a good balance of vowels
