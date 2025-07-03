@@ -529,7 +529,7 @@
 
     function submitWord() {
         const word = selectedTiles.map(t => t.dataset.letter).join('');
-    if (word.length >= 3 && dictionaryTrie.search(word.toLowerCase())) {
+    if (word.length >= 3 && dictionaryTrie.search(word)) {
             let baseScore = 0; let wordMultiplier = 1; let timeBonus = 0;
             selectedTiles.forEach(tile => {
                 let letterScore = parseInt(tile.dataset.points);
@@ -1161,7 +1161,7 @@
     }
     
     function generateAndValidateBoard(existingBoard = null) {
-    const MAX_ATTEMPTS = 10000;
+    const MAX_ATTEMPTS = 200;
 
     for (let i = 0; i < MAX_ATTEMPTS; i++) {
         let board = existingBoard ? [...existingBoard] : new Array(GRID_SIZE).fill(null);
@@ -1205,11 +1205,13 @@
         return false;
     }
     
-    // Rule: The board must contain at least 5 total findable words
+    // Rule: The board must contain at least 2 three and four letter words
     const solvableWords = solveBoard(board);
-    if (solvableWords.size < 5) {
-      return false;
-    }
+    const fourLetterWords = Array.from(solvableWords).filter(word => word.length >= 4).length;
+    const threeLetterWords = Array.from(solvableWords).filter(word => word.length === 3).length;
+        if (fourLetterWords < 2 || threeLetterWords < 2) {
+            return false;
+        }
 
     // Rule: There cannot be any 2x2 blocks of only vowels or only consonants
     if (!checkNoClumps(board)) return false;
@@ -1246,11 +1248,11 @@
     function findWordsRecursive(tileIndex, currentPrefix, path, foundWordsSet, board) {
         currentPrefix += board[tileIndex];
 
-        if (!dictionaryTrie || !dictionaryTrie.search(currentPrefix.toLowerCase(), true)) {
+        if (!dictionaryTrie || !dictionaryTrie.search(currentPrefix, true)) {
             return;
         }
 
-if (currentPrefix.length >= 3 && dictionaryTrie.search(currentPrefix.toLowerCase())) {
+if (currentPrefix.length >= 3 && dictionaryTrie.search(currentPrefix)) {
             foundWordsSet.add(currentPrefix);
         }
 
