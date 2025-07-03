@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Define the input and output file paths
-const inputFilePath = path.join(__dirname, 'assets', 'dictionary.txt');
+const inputFilePath = path.join(__dirname, 'dictionary.txt');
 const outputFilePath = path.join(__dirname, 'assets', 'dictionary-clean.txt');
 
 console.log('Reading original dictionary...');
