@@ -1183,7 +1183,7 @@
     
     function generateAndValidateBoard(existingBoard = null) {
         let board;
-        const MAX_ATTEMPTS = 200;
+        const MAX_ATTEMPTS = 10000;
         for (let i = 0; i < MAX_ATTEMPTS; i++) {
             board = existingBoard ? [...existingBoard] : new Array(GRID_SIZE).fill(null);
             
@@ -1220,9 +1220,9 @@
         return false;
     }
     
-    // Rule: The board must contain at least 5 total findable words
+    // Rule: The board must contain at least 3 total findable words
     const solvableWords = solveBoard(board);
-    if (solvableWords.size < 5) {
+    if (solvableWords.size < 3) {
       return false;
     }
 
