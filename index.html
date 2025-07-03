@@ -1205,24 +1205,33 @@
         return board || Array.from({ length: GRID_SIZE }, () => getRandomLetter());
     }
     
-   function isBoardPlayable(board) {
-        const vowelCount = board.filter(letter => VOWELS.includes(letter)).length;
-        if (vowelCount < 3 || vowelCount > 7) return false;
+    function isBoardPlayable(board) {
+    // Rule: Ensure a good balance of vowels
+    const vowelCount = board.filter(letter => VOWELS.includes(letter)).length;
+    if (vowelCount < 4 || vowelCount > 7) return false;
 
-        const hardConsonantCount = board.filter(letter => HARD_CONSONANTS.includes(letter)).length;
-        if (hardConsonantCount > 1) return false;
+    // Rule: Limit difficult consonants
+    const hardConsonantCount = board.filter(letter => HARD_CONSONANTS.includes(letter)).length;
+    if (hardConsonantCount > 1) return false;
 
-        const qIndex = board.indexOf("Q");
-        if (qIndex !== -1 && !getNeighbors(qIndex, board).some(letter => letter === "U")) {
-            return false;
-        }
-        
-        const solvableWords = solveBoard(board);
-        const fourLetterWords = Array.from(solvableWords).filter(word => word.length >= 4).length;
-        const threeLetterWords = Array.from(solvableWords).filter(word => word.length === 3).length;
-        if (fourLetterWords < 2 || threeLetterWords < 2) {
-            return false;
-        }
+    // Rule: 'Q' must have a neighboring 'U'
+    const qIndex = board.indexOf("Q");
+    if (qIndex !== -1 && !getNeighbors(qIndex, board).some(letter => letter === "U")) {
+        return false;
+    }
+    
+    // Rule: The board must contain at least 3 total findable words
+    const solvableWords = solveBoard(board);
+    if (solvableWords.size < 3) {
+      return false;
+    }
+
+    // Rule: There cannot be any 2x2 blocks of only vowels or only consonants
+    if (!checkNoClumps(board)) return false;
+
+    // If all rules pass, the board is valid
+    return true;
+}
     
     function getNeighbors(index, board) {
         const neighbors = [];
@@ -1252,11 +1261,11 @@
     function findWordsRecursive(tileIndex, currentPrefix, path, foundWordsSet, board) {
         currentPrefix += board[tileIndex];
 
-        if (!dictionaryTrie || !dictionaryTrie.search(currentPrefix, true)) {
+        if (!dictionaryTrie || !dictionaryTrie.search(currentPrefix.toLowerCase(), true)) {
             return;
         }
 
-    if (currentPrefix.length >= 3 && dictionaryTrie.search(currentPrefix.toLowerCase())) {
+if (currentPrefix.length >= 3 && dictionaryTrie.search(currentPrefix.toLowerCase())) {
             foundWordsSet.add(currentPrefix);
         }
 
