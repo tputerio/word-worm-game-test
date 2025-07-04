@@ -15,7 +15,14 @@
     <meta name="twitter:description" content="Race against the clock to find words from a jumbled grid. Challenge friends and climb the daily leaderboards!">
     <meta name="twitter:image" content="https://wordwormgame.com/assets/word-worm-social-logo.png">
     <meta name="description" content="Race against the clock to find words from a jumbled grid. Challenge friends and climb the daily leaderboards!">
-<link href="./dist/style.css" rel="stylesheet">
+
+<link rel="preconnect" href="https://firebase.googleapis.com">
+  <link rel="preconnect" href="https://apis.google.com">
+  <link rel="preconnect" href="https://word-rush-game-9010a.firebaseapp.com">
+  <link rel="preconnect" href="https://firestore.googleapis.com">
+
+<link rel="stylesheet" href="./dist/style.css" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="./dist/style.css"></noscript>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" media="print" onload="this.media='all'">
@@ -32,8 +39,8 @@
             color: white; transform: scale(1.08); border-color: #2563eb;
             box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.2), 0 4px 6px -4px rgb(0 0 0 / 0.1);
         }
+
         #game-content.blurred, #modal-content.blurred { filter: blur(8px); transform: scale(0.95); transition: all 0.3s ease-in-out; }
-        #game-content, #modal-content { transition: all 0.3s ease-in-out; }
         #line-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
         
         /* Bonus Tile Styles */
@@ -134,8 +141,8 @@
         </div>
     </div>
 
-    <div id="game-content">
-        <div class="flex items-center justify-between mb-3">
+<div id="game-content" class="z-0">
+    <div class="flex items-center justify-between mb-3">
             <div class="flex-grow flex items-center justify-center">
                 <h1 class="text-3xl font-black text-slate-800 tracking-tighter flex items-center justify-center">
                     <img src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-9 h-9 mr-2">
@@ -166,16 +173,16 @@
         </div>
     </div>
     
-    <div id="message-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-20 p-4">
+    <div id="message-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-20 p-4">
         <div id="modal-content" class="w-full max-w-sm mx-auto"></div>
     </div>
-    <div id="end-game-modal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+    <div id="end-game-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
         <div id="end-game-modal-content" class="w-full max-w-sm mx-auto"></div>
     </div>
-    <div id="leaderboard-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+    <div id="leaderboard-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
         <div id="leaderboard-modal-content" class="w-full max-w-xs mx-auto"></div>
     </div>
-    <div id="stats-modal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[70] p-4 overflow-y-auto">
+    <div id="stats-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-[70] p-4 overflow-y-auto">
         <div id="stats-modal-content" class="w-full max-w-xs mx-auto"></div>
     </div>
 </div>
