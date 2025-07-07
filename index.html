@@ -365,36 +365,39 @@
     }
 
     async function fetchPlayerStats(uid) {
-        if (!db) return;
-        const playerDocRef = doc(db, "players", uid);
-        try {
-            const docSnap = await getDoc(playerDocRef);
-            let highScore = 0;
-            let gamesPlayed = 0;
-            let playerName = 'Anonymous';
+    if (!db) return;
+    const playerDocRef = doc(db, "players", uid);
+    try {
+        const docSnap = await getDoc(playerDocRef);
+        let highScore = 0;
+        let playerName = 'Anonymous';
 
-            if (docSnap.exists()) {
-                const playerData = docSnap.data();
-                highScore = playerData.highScore || 0;
-                gamesPlayed = playerData.totalGamesPlayed || 0;
-                playerName = playerData.name && playerData.name !== 'Anonymous' ? playerData.name : 'Anonymous';
-            }
-
-            const highScoreEl = document.getElementById('high-score');
-            if (highScoreEl) highScoreEl.textContent = highScore;
-
-            const welcomeHighScoreEl = document.getElementById('welcome-high-score');
-            if (welcomeHighScoreEl) welcomeHighScoreEl.textContent = highScore;
-            
-            const playerStatsDisplayEl = document.getElementById('player-stats-display');
-            if (playerStatsDisplayEl) {
-                playerStatsDisplayEl.innerHTML = `Playing as <strong class="text-slate-500">${playerName}</strong> | You’ve played <strong class="text-slate-500">${gamesPlayed}</strong> games!`;
-            }
-
-        } catch (e) {
-            console.error("Could not fetch player stats:", e);
+        if (docSnap.exists()) {
+            const playerData = docSnap.data();
+            highScore = playerData.highScore || 0;
+            playerName = playerData.name && playerData.name !== 'Anonymous' ? playerData.name : 'Anonymous';
         }
+
+        const highScoreEl = document.getElementById('high-score');
+        if (highScoreEl) highScoreEl.textContent = highScore;
+
+        const welcomeHighScoreEl = document.getElementById('welcome-high-score');
+        if (welcomeHighScoreEl) welcomeHighScoreEl.textContent = highScore.toLocaleString();
+        
+        // Updated logic for personalized greeting
+        const playerGreetingEl = document.getElementById('player-greeting');
+        if (playerGreetingEl) {
+            if (playerName !== 'Anonymous') {
+                playerGreetingEl.innerHTML = `Welcome back, <strong class="font-bold">${playerName}</strong>!`;
+            } else {
+                playerGreetingEl.innerHTML = `Playing as <strong class="font-bold">Anonymous</strong>`;
+            }
+        }
+
+    } catch (e) {
+        console.error("Could not fetch player stats:", e);
     }
+}
     
     function createGrid() {
         const board = generateAndValidateBoard();
@@ -842,56 +845,64 @@
 
    function showWelcomeScreen() {
     modalContent.innerHTML = `
-        <div class="bg-white rounded-2xl shadow-2xl p-6 text-center modal-enter">
+        <div class="bg-white rounded-2xl shadow-lg p-6 text-center">
             <h1 class="text-4xl font-black text-slate-800 tracking-tighter mb-1 flex items-center justify-center">
                 <img src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-12 h-12 mr-2" width="48" height="48">
                 <span>Word Worm</span>
             </h1>
-            <p class="text-slate-500 text-sm mb-4">The fast-paced word finding game!</p>
-            <div id="how-to-play-container" class="relative bg-slate-100 p-3 rounded-lg mb-2 h-[17rem] overflow-hidden"></div>
+            <p class="text-slate-500 text-sm mb-3">The fast-paced word finding game!</p>
             
-            <div class="flex items-center gap-4 mb-2">
-                <button id="play-practice-button" class="bg-blue-500 hover:bg-blue-600 flex-1 text-white font-bold py-3 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-wait"></button>
-                <button id="play-game-mode-button" class="bg-green-500 hover:bg-green-600 flex-1 text-white font-bold py-3 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-wait"></button>
-            </div>
+            <div id="how-to-play-container" class="relative bg-slate-100 p-3 rounded-lg h-[17rem] overflow-y-auto"></div>
 
-            <div class="grid grid-cols-3 gap-1 text-center bg-slate-100 p-1 rounded-xl shadow-inner mb-2">
-                <div class="p-1 rounded-lg flex flex-col items-center justify-center">
-                    <div id="welcome-high-score" class="h-5 flex items-center justify-center text-xl font-black text-amber-500">0</div>
-                    <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Your High</div>
+            <div class="flex items-center gap-4 mt-4">
+                <button id="play-practice-button" class="bg-blue-500 hover:bg-blue-600 flex-1 text-white font-bold py-3 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-wait">
+                    <div class="flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg>
+                        <span>Practice</span>
+                    </div>
+                </button>
+                <button id="play-game-mode-button" class="bg-green-500 hover:bg-green-600 flex-1 text-white font-bold py-3 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-wait">
+                     <div class="flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg>
+                        <span>Play</span>
+                    </div>
+                </button>
+            </div>
+            
+            <div class="bg-slate-100 rounded-xl p-2 mt-4">
+                <div class="grid grid-cols-3 gap-1 text-center">
+                    <div class="bg-white rounded-lg shadow-sm p-1 flex flex-col items-center justify-center">
+                        <div class="h-7 flex items-center justify-center text-xl font-black text-amber-500">1,234</div>
+                        <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Your High</div>
+                    </div>
+                
+                    <a href="#" id="welcome-stats-button" class="bg-white rounded-lg shadow-sm p-1 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors">
+                        <div class="h-7 flex items-center justify-center text-blue-500">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg>
+                        </div>
+                        <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Your Stats</div>
+                    </a>
+                
+                    <a href="#" id="welcome-leaderboard-button" class="bg-white rounded-lg shadow-sm p-1 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors">
+                        <div class="h-7 flex items-center justify-center text-green-500">
+                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="m6.115 5.19.319 1.913A6 6 0 0 0 8.11 10.36L9.75 12l-.387.775c-.217.433-.132.956.21 1.298l1.348 1.348c.21.21.329.497.329.795v1.089c0 .426.24.815.622 1.006l.153.076c.433.217.956.132 1.298-.21l.723-.723a8.7 8.7 0 0 0 2.288-4.042 1.087 1.087 0 0 0-.358-1.099l-1.33-1.108c-.251-.21-.582-.299-.905-.245l-1.17.195a1.125 1.125 0 0 1-.98-.314l-.295-.295a1.125 1.125 0 0 1 0-1.591l.13-.132a1.125 1.125 0 0 1 1.3-.21l.603.302a.809.809 0 0 0 1.086-1.086L14.25 7.5l1.256-.837a4.5 4.5 0 0 0 1.528-1.732l.146-.292M6.115 5.19A9 9 0 1 0 17.18 4.64M6.115 5.19A8.965 8.965 0 0 1 12 3c1.929 0 3.716.607 5.18 1.64" /></svg>
+                        </div>
+                        <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Leaderboard</div>
+                    </a>
                 </div>
-            
-                <a href="#" id="welcome-stats-button" class="p-1 rounded-lg hover:bg-slate-200 transition-colors flex flex-col items-center justify-center">
-                    <div class="h-5 flex items-center justify-center text-blue-500">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" />
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" />
-                        </svg>
-                    </div>
-                    <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Stats</div>
-                </a>
-            
-                <a href="#" id="welcome-leaderboard-button" class="p-1 rounded-lg hover:bg-slate-200 transition-colors flex flex-col items-center justify-center">
-                    <div class="h-5 flex items-center justify-center text-green-500">
-                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="m6.115 5.19.319 1.913A6 6 0 0 0 8.11 10.36L9.75 12l-.387.775c-.217.433-.132.956.21 1.298l1.348 1.348c.21.21.329.497.329.795v1.089c0 .426.24.815.622 1.006l.153.076c.433.217.956.132 1.298-.21l.723-.723a8.7 8.7 0 0 0 2.288-4.042 1.087 1.087 0 0 0-.358-1.099l-1.33-1.108c-.251-.21-.582-.299-.905-.245l-1.17.195a1.125 1.125 0 0 1-.98-.314l-.295-.295a1.125 1.125 0 0 1 0-1.591l.13-.132a1.125 1.125 0 0 1 1.3-.21l.603.302a.809.809 0 0 0 1.086-1.086L14.25 7.5l1.256-.837a4.5 4.5 0 0 0 1.528-1.732l.146-.292M6.115 5.19A9 9 0 1 0 17.18 4.64M6.115 5.19A8.965 8.965 0 0 1 12 3c1.929 0 3.716.607 5.18 1.64" />
-                        </svg>
-                    </div>
-                    <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Leaderboard</div>
-                </a>
+                <div class="border-t border-slate-200 mt-2 pt-2">
+                    <p id="player-greeting" class="text-xs text-slate-600 font-medium"></p>
+                </div>
             </div>
-            
-            <p id="player-stats-display" class="text-xs text-slate-400"></p>
-            <p class="text-xs text-slate-400 mt-1"><span id="global-play-count">...</span> games played globally</p>
-            <p id="loading-error" class="text-red-500 mt-2 font-semibold"></p>
 
-            <div class="text-center text-[10px] text-slate-400 mt-5">&copy; 2025 Word Worm &bull; <a href="#" class="hover:underline">Privacy Policy</a> &bull; <a href="#" class="hover:underline">Terms of Use</a></div>
+            <div class="text-center text-xs text-slate-400 mt-4">
+                <p>&copy; 2025 Word Worm &bull; <a href="#" class="hover:underline">Privacy Policy</a> &bull; <a href="#" class="hover:underline">Terms of Use</a></p>
+            </div>
         </div>
     `;
 
     messageModal.classList.remove('hidden');
     
-    // --- New Button Click Handlers ---
     document.getElementById('welcome-stats-button').onclick = (e) => {
         e.preventDefault();
         showStatsModal();
