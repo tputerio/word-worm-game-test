@@ -21,8 +21,7 @@
   <link rel="preconnect" href="https://word-rush-game-9010a.firebaseapp.com">
   <link rel="preconnect" href="https://firestore.googleapis.com">
 
-<link rel="stylesheet" href="./dist/style.css" media="print" onload="this.media='all'">
-<noscript><link rel="stylesheet" href="./dist/style.css"></noscript>
+<link rel="stylesheet" href="./dist/style.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=block" media="print" onload="this.media='all'">
@@ -133,7 +132,7 @@
         </button>
     </div>
 
-<div id="game-content" class="z-0">
+<div id="game-content" class="z-0 hidden">
     <div class="flex items-center justify-between mb-3">
             <div class="flex-grow flex items-center justify-center">
                 <h1 class="text-3xl font-black text-slate-800 tracking-tighter flex items-center justify-center">
@@ -462,6 +461,7 @@
     }
 
     function startGame(practiceMode = false) {
+        gameContentEl.classList.remove('hidden'); // <-- ADD THIS LINE
         isPracticeMode = practiceMode; 
         clearInterval(timerInterval); 
         score = 0; 
