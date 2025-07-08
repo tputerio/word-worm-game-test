@@ -636,7 +636,7 @@
             words: words.map(w => ({ word: w.word, score: w.score, length: w.length }))
         };
         try {
-            await addDoc(collection(db, `players/${uId}/games`), gameData);
+        //await addDoc(collection(db, `players/${uId}/games`), gameData);
         } catch(e) { console.error("Failed to save game history:", e); }
 
         const { updatedStats, didBeatDailyHighScore } = await runTransaction(db, async (transaction) => {
