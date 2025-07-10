@@ -161,6 +161,19 @@
             <canvas id="line-canvas"></canvas>
             <div id="grid" class="grid grid-cols-4 gap-2 select-none"></div>
         </div>
+
+<footer id="main-game-footer" style="margin-top: 3rem;">
+      <div class="text-center text-xs text-slate-400 mt-4">
+  <p>&copy; 2025 Word Worm</p>
+  <p>
+    <a href="/about.html" class="hover:underline">About</a> &bull;
+    <a href="/contact.html" class="hover:underline">Contact</a> &bull;
+    <a href="/privacy.html" class="hover:underline">Privacy Policy</a> &bull;
+    <a href="/terms.html" class="hover:underline">Terms of Use</a>
+  </p>
+</div>
+</footer>
+
     </div>
     
     <div id="message-modal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-20 p-4">
@@ -461,6 +474,7 @@
     }
 
     function startGame(practiceMode = false) {
+        document.getElementById('main-game-footer').classList.remove('hidden'); 
         gameContentEl.classList.remove('hidden'); // <-- ADD THIS LINE
         isPracticeMode = practiceMode; 
         clearInterval(timerInterval); 
@@ -1467,6 +1481,18 @@ if (currentPrefix.length >= 3 && dictionaryTrie.search(currentPrefix)) {
                 <button id="endgame-leaderboard-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-base flex-1">Leaderboard</button>
                 <button id="play-again-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex-1">Play Again</button>
             </div>
+        
+
+        <div class="text-center text-xs text-slate-400 mt-4">
+  <p>&copy; 2025 Word Worm</p>
+  <p>
+    <a href="/about.html" class="hover:underline">About</a> &bull;
+    <a href="/contact.html" class="hover:underline">Contact</a> &bull;
+    <a href="/privacy.html" class="hover:underline">Privacy Policy</a> &bull;
+    <a href="/terms.html" class="hover:underline">Terms of Use</a>
+  </p>
+</div>
+
         </div>`;
 
         document.getElementById('play-again-button').onclick = resetGame;
