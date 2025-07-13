@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5">
     <title>Word Worm</title>
-    <meta name="google-site-verification" content="mi5zlh2EQ9mYTrAfD-LayBzy5iQ7ObatJbs40C8rcP4" />    <meta property="og:title" content="Word Worm - The Fast-Paced Word Finding Game!">
+    <meta name="google-site-verification" content="mi5zlh2EQ9mYTrAfD-LayBzy5iQ7ObatJbs40C8rcP4" />
+    <meta property="og:title" content="Word Worm - The Fast-Paced Word Finding Game!">
     <meta property="og:description" content="Race against the clock to find words from a jumbled grid. Challenge friends and climb the daily leaderboards!">
     <meta property="og:image" content="https://wordwormgame.com/assets/word-worm-social-logo.png">
     <meta property="og:url" content="https://wordwormgame.com">
@@ -58,6 +59,23 @@
         .bonus-Time { background-color: #22c55e !important; } /* Green */
         
         /* Animations */
+
+               @keyframes pulse-text-glow {
+  0%, 100% {
+    transform: scale(1.05);
+    text-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+  }
+  50% {
+    transform: scale(1.15);
+    text-shadow: 0 0 14px rgba(239, 68, 68, 0.8);
+  }
+}
+
+.timer-warning {
+  /* This applies the new text-based glow animation */
+  animation: pulse-text-glow 1s infinite;
+}
+        
         @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
         .animate-pulse { animation: pulse 1s infinite; }
         @keyframes fly-to-score {
@@ -265,9 +283,11 @@
     let auth, db, userId, analytics;
 
     // --- Game State ---
-    let score = 0, timer = GAME_TIME, timerInterval, dictionaryTrie, foundWords = [], selectedTiles = [], isMouseDown = false;
+    let score = 0, timer = GAME_TIME, timerInterval, foundWords = [], selectedTiles = [], isMouseDown = false;
+    let validationTrie;       // For checking if a board is playable
+    let fullDictionaryTrie;   // For checking player-submitted words
     let tilePositions = [];
-    let isPracticeMode = false; 
+    let isPracticeMode = false;
     let practiceTimeElapsed = 0;
     let animationInterval;
 
@@ -364,31 +384,44 @@
             }
             
             try {
-                const res = await fetch('assets/dictionary.json');
-                if (!res.ok) throw new Error(`Dictionary download failed: ${res.statusText}`);
-                const trieData = await res.json();
-                dictionaryTrie = new Trie(trieData);
-                console.log("Pre-built dictionary loaded. Game is playable.");
+            // Fetch both dictionaries at the same time
+            const [commonRes, fullRes] = await Promise.all([
+                fetch('assets/common-dictionary.json'),      // The new, smaller dictionary
+                fetch('assets/scrabble-dictionary.json') // The renamed, full dictionary
+            ]);
 
-                if (playGameModeButton) {
-                    playGameModeButton.disabled = false;
-                    playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg><span>Play</span></div>`;
-                }
-                if (playPracticeButton) {
-                    playPracticeButton.disabled = false;
-                    playPracticeButton.innerHTML = `<div class="flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg><span>Practice</span></div>`;
-                }
-            } catch (e) {
-                console.error("Critical Asset loading failed (Dictionary):", e);
-                if (loadingErrorEl) loadingErrorEl.textContent = "Error: Could not load game dictionary.";
-                if (playGameModeButton) { playGameModeButton.innerHTML = `<span>Error</span>`; playGameModeButton.classList.add('bg-red-500'); }
-                if (playPracticeButton) { playPracticeButton.innerHTML = `<span>Error</span>`; playPracticeButton.classList.add('bg-red-500'); }
+            if (!commonRes.ok || !fullRes.ok) {
+                throw new Error(`Dictionary download failed`);
             }
-        };
 
-        initializeFirebase();
-        loadDictionaryAndEnableButtons();
-    }
+            const commonTrieData = await commonRes.json();
+            const fullTrieData = await fullRes.json();
+
+            // Create two separate Trie objects
+            validationTrie = new Trie(commonTrieData);
+            fullDictionaryTrie = new Trie(fullTrieData);
+
+            console.log("Both dictionaries loaded. Game is playable.");
+
+            if (playGameModeButton) {
+                playGameModeButton.disabled = false;
+                playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg><span>Play</span></div>`;
+            }
+            if (playPracticeButton) {
+                playPracticeButton.disabled = false;
+                playPracticeButton.innerHTML = `<div class="flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg><span>Practice</span></div>`;
+            }
+        } catch (e) {
+            console.error("Critical Asset loading failed (Dictionaries):", e);
+            if (loadingErrorEl) loadingErrorEl.textContent = "Error: Could not load game dictionaries.";
+            if (playGameModeButton) { playGameModeButton.innerHTML = `<span>Error</span>`; playGameModeButton.classList.add('bg-red-500'); }
+            if (playPracticeButton) { playPracticeButton.innerHTML = `<span>Error</span>`; playPracticeButton.classList.add('bg-red-500'); }
+        }
+    };
+
+    initializeFirebase();
+    loadDictionaryAndEnableButtons();
+}
 
     async function fetchGlobalStats() {
         const globalPlayCountSpan = document.getElementById('global-play-count');
@@ -579,45 +612,46 @@
     }
 
     function submitWord() {
-        const word = selectedTiles.map(t => t.dataset.letter).join('');
-    if (word.length >= 3 && dictionaryTrie.search(word)) {
-            let baseScore = 0; let wordMultiplier = 1; let timeBonus = 0;
-            selectedTiles.forEach(tile => {
-                let letterScore = parseInt(tile.dataset.points);
-                switch(tile.dataset.bonus) {
-                    case 'DL': letterScore *= 2; break; case 'TL': letterScore *= 3; break;
-                    case 'DW': wordMultiplier *= 2; break; case 'Time': timeBonus += 5; break;
-                }
-                baseScore += letterScore;
-            });
-            
-            let finalScore = baseScore * wordMultiplier;
-            if (word.length >= 7) finalScore += 20;
-            else if (word.length === 6) finalScore += 10;
-            else if (word.length === 5) finalScore += 5;
-            else if (word.length === 4) finalScore += 2;
-
-                if (analytics) {
-                  logEvent(analytics, 'submit_word', {
-                    word_length: word.length,
-                    score: finalScore,
-                    game_mode: isPracticeMode ? 'practice' : 'timed'
-                  });
-                }
-            
-            if (timeBonus > 0 && !isPracticeMode) {
-                timer += timeBonus; 
-                updateTimerUI();
+    const word = selectedTiles.map(t => t.dataset.letter).join('');
+    if (word.length >= 3 && fullDictionaryTrie.search(word)) {
+        let baseScore = 0; let wordMultiplier = 1; let timeBonus = 0;
+        selectedTiles.forEach(tile => {
+            let letterScore = parseInt(tile.dataset.points);
+            switch(tile.dataset.bonus) {
+                case 'DL': letterScore *= 2; break; case 'TL': letterScore *= 3; break;
+                case 'DW': wordMultiplier *= 2; break; case 'Time': timeBonus += 5; break;
             }
-            
-            foundWords.push({ word, score: finalScore, length: word.length });
-            createFlyingScore(finalScore, selectedTiles[0]);
-            triggerConfetti(selectedTiles);
-            setTimeout(() => { score += finalScore; updateScoreDisplay(); }, 500);
-            replaceSelectedTiles();
+            baseScore += letterScore;
+        });
+
+        let finalScore = baseScore * wordMultiplier;
+        if (word.length >= 7) finalScore += 20;
+        else if (word.length === 6) finalScore += 10;
+        else if (word.length === 5) finalScore += 5;
+        else if (word.length === 4) finalScore += 2;
+
+        if (analytics) {
+            logEvent(analytics, 'submit_word', {
+                word_length: word.length,
+                score: finalScore,
+                game_mode: isPracticeMode ? 'practice' : 'timed'
+            });
         }
-        clearSelection();
+
+        if (timeBonus > 0 && !isPracticeMode) {
+            timer += timeBonus;
+            updateTimerUI();
+        }
+
+        foundWords.push({ word, score: finalScore, length: word.length });
+        createFlyingScore(finalScore, selectedTiles[0]);
+        triggerConfetti(selectedTiles);
+        setTimeout(() => { score += finalScore; updateScoreDisplay(); }, 500);
+        replaceSelectedTiles();
     }
+    clearSelection();
+}
+
 
     function replaceSelectedTiles() {
         let currentBoardLetters = Array.from(grid.children).map(t => t.dataset.letter);
@@ -650,7 +684,7 @@
             words: words.map(w => ({ word: w.word, score: w.score, length: w.length }))
         };
         try {
-        //await addDoc(collection(db, `players/${uId}/games`), gameData);
+        await addDoc(collection(db, `players/${uId}/games`), gameData);
         } catch(e) { console.error("Failed to save game history:", e); }
 
         const { updatedStats, didBeatDailyHighScore } = await runTransaction(db, async (transaction) => {
@@ -825,12 +859,19 @@
     }
 
     function updateTimerUI() {
-        timerEl.textContent = timer;
-        timerEl.classList.remove('text-green-500', 'text-yellow-500', 'text-red-500', 'animate-pulse');
-        if (timer <= 10) { timerEl.classList.add('text-red-500', 'animate-pulse'); } 
-        else if (timer <= 30) { timerEl.classList.add('text-yellow-500'); } 
-        else { timerEl.classList.add('text-green-500'); }
+    timerEl.textContent = timer;
+    // Remove all potential timer classes
+    timerEl.classList.remove('text-green-500', 'text-yellow-500', 'text-red-500', 'timer-warning');
+
+    if (timer <= 10) {
+        // Add the red text color and the new glowing pulse animation
+        timerEl.classList.add('text-red-500', 'timer-warning');
+    } else if (timer <= 30) {
+        timerEl.classList.add('text-yellow-500');
+    } else {
+        timerEl.classList.add('text-green-500');
     }
+}
     
     function updatePracticeUI() {
         const minutes = Math.floor(practiceTimeElapsed / 60);
@@ -846,7 +887,23 @@
         }
     }
 
-    function triggerConfetti(tiles) { tiles.forEach(tile => { const rect = tile.getBoundingClientRect(); for (let i = 0; i < 10; i++) { const p = document.createElement('div'); p.className = 'particle'; const angle = Math.random() * Math.PI * 2, dist = Math.random() * 40 + 20; p.style.setProperty('--transform-end',`translate(${Math.cos(angle)*dist}px,${Math.sin(angle)*dist}px)`); p.style.left = `${rect.left+rect.width/2-4}px`; p.style.top = `${rect.top+rect.height/2-4}px`; document.body.appendChild(p); setTimeout(() => p.remove(), 1200); } }); }
+function triggerConfetti(tiles) {
+    tiles.forEach(tile => {
+        const rect = tile.getBoundingClientRect();
+        for (let i = 0; i < 10; i++) {
+            const p = document.createElement('div');
+            p.className = 'particle';
+            const angle = Math.random() * Math.PI * 2,
+                dist = Math.random() * 40 + 20;
+            p.style.setProperty('--transform-end', `translate(${Math.cos(angle)*dist}px,${Math.sin(angle)*dist}px)`);
+            p.style.left = `${rect.left+rect.width/2-4}px`;
+            p.style.top = `${rect.top+rect.height/2-4}px`;
+            document.body.appendChild(p);
+            setTimeout(() => p.remove(), 1200);
+        }
+    });
+}
+
     function triggerEndGameConfetti() {
         const modalContent = document.getElementById('end-game-modal-content');
         if (!modalContent) return;
@@ -869,21 +926,66 @@
         }
     }
     
-    function createFlyingScore(points, startTile) {
-        const el = document.createElement('div');
-        el.className = 'flying-score';
-        el.textContent = `+${points}`;
-        const rect = startTile.getBoundingClientRect();
-        el.style.left = `${rect.left}px`;
-        el.style.top = `${rect.top}px`;
-        document.body.appendChild(el);
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                 el.style.animation = 'fly-to-score 1.5s ease-in-out forwards';
-            });
-        });
-        setTimeout(() => el.remove(), 1500);
-    }   
+   function createFlyingScore(points, startTile) {
+    const scale = 1; // All popups are now the same size
+    let vibrationIntensity = 0;
+    let colorGradient = 'linear-gradient(45deg, #facc15, #f59e0b)'; // Default yellow for scores <= 10
+
+    // Set vibration and redness based on score tier
+    if (points > 100) {
+        vibrationIntensity = 5;
+        colorGradient = 'linear-gradient(45deg, #b91c1c, #7f1d1d)'; // Darkest "full" red
+    } else if (points > 50) {
+        vibrationIntensity = 3.5;
+        colorGradient = 'linear-gradient(45deg, #dc2626, #b91c1c)'; // Darker red
+    } else if (points > 30) {
+        vibrationIntensity = 2.5;
+        colorGradient = 'linear-gradient(45deg, #ef4444, #dc2626)'; // Medium red
+    } else if (points > 10) {
+        vibrationIntensity = 1.5;
+        colorGradient = 'linear-gradient(45deg, #fca5a5, #ef4444)'; // Light red
+    }
+
+    const rect = startTile.getBoundingClientRect();
+
+    // 1. Create the outer wrapper that will fly up
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'absolute';
+    wrapper.style.left = `${rect.left}px`;
+    wrapper.style.top = `${rect.top}px`;
+    wrapper.style.zIndex = '100';
+    wrapper.style.pointerEvents = 'none';
+    wrapper.style.animation = 'fly-to-score 1.5s ease-in-out forwards';
+
+    // 2. Create the inner score element that will vibrate
+    const el = document.createElement('div');
+    el.className = 'flying-score';
+    el.style.animation = 'none';
+    el.textContent = `+${points}`;
+    el.style.position = 'static';
+    el.style.transform = `scale(${scale})`; // Apply the standard scale
+    el.style.background = colorGradient; // Apply the tiered color
+
+    // 3. Append and start the animation
+    wrapper.appendChild(el);
+    document.body.appendChild(wrapper);
+
+    // If vibration is needed, start the vibration loop on the inner element
+    if (vibrationIntensity > 0) {
+        let animationFrameId;
+        const vibrate = () => {
+            const x = (Math.random() - 0.5) * vibrationIntensity;
+            const y = (Math.random() - 0.5) * vibrationIntensity;
+            el.style.transform = `scale(${scale}) translate(${x}px, ${y}px)`;
+            animationFrameId = requestAnimationFrame(vibrate);
+        };
+        vibrate();
+        setTimeout(() => cancelAnimationFrame(animationFrameId), 1300);
+    }
+
+    // Remove the entire wrapper after the animation is complete
+    setTimeout(() => wrapper.remove(), 1500);
+}
 
     function updateCurrentWord() { currentWordLettersEl.innerHTML = selectedTiles.map(t => `<span class="current-letter bg-white text-blue-500 font-bold text-xl p-1 rounded-md shadow-sm">${t.dataset.letter}</span>`).join(''); }
 
@@ -1324,13 +1426,15 @@
             }
         });
 
-        if (dictionaryTrie && isBoardPlayable(board)) {
+        // Check if the dictionaries have been loaded. If so, validate the board.
+        if (validationTrie && isBoardPlayable(board)) {
             // --- THIS IS WHERE YOU ADD THE CONSOLE LOG ---
             console.log(`Generated a valid board in ${i + 1} attempts.`);
             return board;
         }
-        
-        if (!dictionaryTrie) {
+
+        // If dictionaries haven't loaded yet, just return the random board to avoid errors.
+        if (!validationTrie) {
             return board;
         }
     }
@@ -1342,33 +1446,35 @@
     return ['W', 'O', 'R', 'D', 'W', 'O', 'R', 'M', 'G', 'A', 'M', 'E', 'P', 'L', 'A', 'Y'];
 }
     
-    function isBoardPlayable(board) {
-    // Rule: Ensure a good balance of vowels
+   function isBoardPlayable(board) {
     const vowelCount = board.filter(letter => VOWELS.includes(letter)).length;
     if (vowelCount < 4 || vowelCount > 7) return false;
 
-    // Rule: Limit difficult consonants
     const hardConsonantCount = board.filter(letter => HARD_CONSONANTS.includes(letter)).length;
     if (hardConsonantCount > 1) return false;
 
-    // Rule: 'Q' must have a neighboring 'U'
     const qIndex = board.indexOf("Q");
     if (qIndex !== -1 && !getNeighbors(qIndex, board).some(letter => letter === "U")) {
         return false;
     }
-    
-    // Rule: The board must contain at least 2 three and four letter words
-    const solvableWords = solveBoard(board);
-    const fourLetterWords = Array.from(solvableWords).filter(word => word.length >= 4).length;
-    const threeLetterWords = Array.from(solvableWords).filter(word => word.length === 3).length;
-        if (fourLetterWords < 2 || threeLetterWords < 2) {
-            return false;
-        }
 
-    // Rule: There cannot be any 2x2 blocks of only vowels or only consonants
+    const solvableWords = solveBoard(board, validationTrie);
+
+    // --- ADD THIS LINE (to be removed) ---
+    console.log('Available words on board:', Array.from(solvableWords).sort());
+
+        // This is the new, stricter logic
+    const threeLetterWords = Array.from(solvableWords).filter(w => w.length === 3).length;
+    const fourLetterWords = Array.from(solvableWords).filter(w => w.length === 4).length;
+    const fiveLetterWords = Array.from(solvableWords).filter(w => w.length >= 5).length;
+
+    // Now, require more words, including at least one 5-letter word
+    if (threeLetterWords < 4 || fourLetterWords < 3 || fiveLetterWords < 1) {
+        return false;
+    }
+
     if (!checkNoClumps(board)) return false;
 
-    // If all rules pass, the board is valid
     return true;
 }
     
@@ -1389,39 +1495,39 @@
         return neighbors;
     }
     
-    function solveBoard(board) {
-        const foundWordsSet = new Set();
-        for (let i = 0; i < GRID_SIZE; i++) {
-            findWordsRecursive(i, "", [i], foundWordsSet, board);
-        }
-        return foundWordsSet;
+    function solveBoard(board, trie) {
+    const foundWordsSet = new Set();
+    for (let i = 0; i < GRID_SIZE; i++) {
+        findWordsRecursive(i, "", [i], foundWordsSet, board, trie);
+    }
+    return foundWordsSet;
+}
+
+   function findWordsRecursive(tileIndex, currentPrefix, path, foundWordsSet, board, trie) {
+    currentPrefix += board[tileIndex];
+
+    if (!trie || !trie.search(currentPrefix, true)) {
+        return;
     }
 
-    function findWordsRecursive(tileIndex, currentPrefix, path, foundWordsSet, board) {
-        currentPrefix += board[tileIndex];
+    if (currentPrefix.length >= 3 && trie.search(currentPrefix)) {
+        foundWordsSet.add(currentPrefix);
+    }
 
-        if (!dictionaryTrie || !dictionaryTrie.search(currentPrefix, true)) {
-            return;
-        }
+    const [col, row] = [tileIndex % GRID_COLS, Math.floor(tileIndex / GRID_COLS)];
+    for (let r_offset = -1; r_offset <= 1; r_offset++) {
+        for (let c_offset = -1; c_offset <= 1; c_offset++) {
+            if (r_offset === 0 && c_offset === 0) continue;
 
-if (currentPrefix.length >= 3 && dictionaryTrie.search(currentPrefix)) {
-            foundWordsSet.add(currentPrefix);
-        }
+            const [nextCol, nextRow] = [col + c_offset, row + r_offset];
+            const nextIndex = nextRow * GRID_COLS + nextCol;
 
-        const [col, row] = [tileIndex % GRID_COLS, Math.floor(tileIndex / GRID_COLS)];
-        for (let r_offset = -1; r_offset <= 1; r_offset++) {
-            for (let c_offset = -1; c_offset <= 1; c_offset++) {
-                if (r_offset === 0 && c_offset === 0) continue;
-
-                const [nextCol, nextRow] = [col + c_offset, row + r_offset];
-                const nextIndex = nextRow * GRID_COLS + nextCol;
-
-                if (nextCol >= 0 && nextCol < GRID_COLS && nextRow >= 0 && nextRow < GRID_COLS && !path.includes(nextIndex)) {
-                    findWordsRecursive(nextIndex, currentPrefix, [...path, nextIndex], foundWordsSet, board);
-                }
+            if (nextCol >= 0 && nextCol < GRID_COLS && nextRow >= 0 && nextRow < GRID_COLS && !path.includes(nextIndex)) {
+                findWordsRecursive(nextIndex, currentPrefix, [...path, nextIndex], foundWordsSet, board, trie);
             }
         }
     }
+}
 
     async function shareScore() {
         const bestWordFound = foundWords.length > 0 ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { word: '', score: 0 }) : null;
