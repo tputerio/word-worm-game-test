@@ -22,7 +22,7 @@
   <link rel="preconnect" href="https://word-rush-game-9010a.firebaseapp.com">
   <link rel="preconnect" href="https://firestore.googleapis.com">
 
-<link rel="stylesheet" href="./dist/style.css">
+<link rel="stylesheet" href="./dist/style.css?v=1.1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=block" media="print" onload="this.media='all'">
@@ -1077,7 +1077,7 @@ function triggerConfetti(tiles) {
             </h1>
             <p class="text-slate-500 text-sm mb-3">The fast-paced word finding game!</p>
             
-            <div id="how-to-play-container" class="relative bg-slate-100 p-3 rounded-lg h-[17rem] overflow-y-auto"></div>
+<div id="how-to-play-container" class="relative bg-slate-100 p-3 rounded-lg h-[17rem] flex flex-col"></div>
 
             <div class="flex items-center gap-4 mt-4">
                 <button id="play-practice-button" class="bg-blue-500 hover:bg-blue-600 flex-1 text-white font-bold py-3 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-wait">
@@ -1540,7 +1540,7 @@ function triggerConfetti(tiles) {
     const solvableWords = solveBoard(board, validationTrie);
 
     // --- ADD THIS LINE (to be removed) ---
-    console.log('Available words on board:', Array.from(solvableWords).sort());
+    //console.log('Available words on board:', Array.from(solvableWords).sort());
 
         // This is the new, stricter logic
     const threeLetterWords = Array.from(solvableWords).filter(w => w.length === 3).length;
