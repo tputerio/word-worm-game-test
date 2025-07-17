@@ -31,7 +31,7 @@
   <link rel="preconnect" href="https://word-rush-game-9010a.firebaseapp.com">
   <link rel="preconnect" href="https://firestore.googleapis.com">
 
-<link rel="stylesheet" href="./dist/style.css?v=1.1">
+<link rel="stylesheet" href="./dist/style.css?v=1.3">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=block" media="print" onload="this.media='all'">
@@ -68,6 +68,14 @@
         .bonus-Time { background-color: #22c55e !important; } /* Green */
         
         /* Animations */
+
+                @keyframes fade-in-out {
+            0%, 100% { opacity: 0; transform: translateY(10px); }
+            10%, 90% { opacity: 1; transform: translateY(0); }
+        }
+        .game-message {
+            animation: fade-in-out 2s ease-in-out forwards;
+        }
 
       /* --- START: Tutorial-specific CSS --- */
 .tut-tile {
@@ -228,59 +236,62 @@
 </head>
 <body class="bg-slate-100 flex justify-center items-start md:items-center min-h-screen">
 
-<div id="game-container" class="w-full max-w-sm mx-auto p-4 relative">
+    <div id="game-container" class="w-full max-w-sm mx-auto p-4 relative">
 
-    <div id="menu-container" class="absolute top-4 right-4 z-30 hidden">
-        <button id="menu-button" class="text-slate-700 p-2 transition-transform hover:scale-105">
-             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                 <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-             </svg>
-        </button>
-    </div>
-
-<div id="game-content" class="z-0 hidden">
-    <div class="flex items-center justify-between mb-3">
-            <div class="flex-grow flex items-center justify-center">
-                <h1 class="text-3xl font-black text-slate-800 tracking-tighter flex items-center justify-center">
-<img src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-9 h-9 mr-2" width="36" height="36">                    <span>Word Worm</span>
-                </h1> 
-            </div>
-        </div>
-        <div id="scoreboard" class="grid grid-cols-3 items-center text-center bg-white rounded-xl shadow-lg p-2 mb-3">
-            <div id="top-left-display">
-                <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div>
-                <div id="high-score" class="text-3xl font-black text-slate-400">0</div>
-            </div>
-            <div>
-                <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Score</div>
-                <div id="score" class="text-3xl font-black text-slate-800">0</div>
-            </div>
-            <div id="timer-display">
-                <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Time</div>
-                <div id="timer" class="text-3xl font-bold text-green-500 transition-all duration-300">60</div>
-            </div>
-        </div>
-        <div id="current-word-container" class="mb-3 p-2 bg-slate-200 rounded-lg shadow-inner h-[52px] flex items-center justify-center">
-            <div id="current-word-letters" class="flex-grow flex items-center justify-center space-x-1"></div>
-        </div>
-        <div id="grid-container" class="relative">
-            <canvas id="line-canvas"></canvas>
-            <div id="grid" class="grid grid-cols-4 gap-2 select-none"></div>
+        <div id="menu-container" class="absolute top-4 right-4 z-30 hidden">
+            <button id="menu-button" class="text-slate-700 p-2 transition-transform hover:scale-105">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                </svg>
+            </button>
         </div>
 
-<footer id="main-game-footer" style="margin-top: 3rem;">
-      <div class="text-center text-xs text-slate-400 mt-4">
-  <p>&copy; 2025 Word Worm</p>
-  <p>
-    <a href="/about.html" class="hover:underline">About</a> &bull;
-    <a href="/contact.html" class="hover:underline">Contact</a> &bull;
-    <a href="/privacy.html" class="hover:underline">Privacy Policy</a> &bull;
-    <a href="/terms.html" class="hover:underline">Terms of Use</a>
-  </p>
-</div>
-</footer>
+        <div id="game-content" class="z-0 hidden">
+            <div class="flex items-center justify-between mb-3">
+                <div class="flex-grow flex items-center justify-center">
+                    <h1 class="text-3xl font-black text-slate-800 tracking-tighter flex items-center justify-center">
+                        <img src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-9 h-9 mr-2" width="36" height="36">
+                        <span>Word Worm</span>
+                    </h1>
+                </div>
+            </div>
+            <div id="scoreboard" class="grid grid-cols-3 items-center text-center bg-white rounded-xl shadow-lg p-2 mb-3">
+                <div id="top-left-display">
+                    <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div>
+                    <div id="high-score" class="text-3xl font-black text-slate-400">0</div>
+                </div>
+                <div>
+                    <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Score</div>
+                    <div id="score" class="text-3xl font-black text-slate-800">0</div>
+                </div>
+                <div id="timer-display">
+                    <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Time</div>
+                    <div id="timer" class="text-3xl font-bold text-green-500 transition-all duration-300">60</div>
+                </div>
+            </div>
+            <div id="current-word-container" class="mb-3 p-2 bg-slate-200 rounded-lg shadow-inner h-[52px] flex items-center justify-center">
+                <div id="current-word-letters" class="flex-grow flex items-center justify-center space-x-1"></div>
+            </div>
+            <div id="grid-container" class="relative">
+                <canvas id="line-canvas"></canvas>
+                <div id="grid" class="grid grid-cols-4 gap-2 select-none"></div>
+            </div>
+            <footer id="main-game-footer" style="margin-top: 3rem;">
+                <div class="text-center text-xs text-slate-400 mt-4">
+                    <p>&copy; 2025 Word Worm</p>
+                    <p>
+                        <a href="/about.html" class="hover:underline">About</a> &bull;
+                        <a href="/contact.html" class="hover:underline">Contact</a> &bull;
+                        <a href="/privacy.html" class="hover:underline">Privacy Policy</a> &bull;
+                        <a href="/terms.html" class="hover:underline">Terms of Use</a>
+                    </p>
+                </div>
+            </footer>
+        </div>
 
-    </div>
+        <div id="daily-challenge-content" class="hidden"></div>
+
+    </div> 
     
     <div id="message-modal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-20 p-4">
         <div id="modal-content" class="w-full max-w-sm mx-auto"></div>
@@ -294,47 +305,41 @@
     <div id="stats-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[70] p-4 overflow-y-auto">
         <div id="stats-modal-content" class="w-full max-w-xs mx-auto"></div>
     </div>
+    <div id="pause-modal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-40 p-4">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xs mx-auto text-center modal-enter relative">
+            <button id="close-pause-modal-button" class="absolute top-4 right-4 text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
+            <div class="flex justify-center items-center mb-4 mt-2">
+                <h2 class="text-2xl font-bold text-slate-800 flex items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 mr-2 text-black">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M14.25 9v6m-4.5 0V9M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                    </svg>
+                    <span>Game Paused</span>
+                </h2>
+            </div>
+            <div class="space-y-3">
+                <button id="resume-game-button" class="w-full flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors border border-slate-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 mr-2 text-green-500">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
+                    </svg>
+                    <span>Resume Game</span>
+                </button>
+                <button id="restart-game-button" class="w-full flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors border border-slate-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 mr-2 text-blue-500">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                    </svg>
+                    <span>New Game</span>
+                </button>
+                <button id="quit-game-button" class="w-full flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors border border-slate-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 mr-2 text-orange-500">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" />
+                    </svg>
+                    <span>Quit Game</span>
+                </button>
+            </div>
+        </div>
+    </div>
 
-  <!-- NEW, REDESIGNED PAUSE MODAL -->
-<div id="pause-modal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-40 p-4">
-<div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xs mx-auto text-center modal-enter relative"> 
-  <!-- Close button positioned absolutely -->
-  <button id="close-pause-modal-button" class="absolute top-4 right-4 text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
-  
-  <!-- Centered header with increased spacing -->
-  <div class="flex justify-center items-center mb-4 mt-2">
-   <h2 class="text-2xl font-bold text-slate-800 flex items-center">
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 mr-2 text-black">
-     <path stroke-linecap="round" stroke-linejoin="round" d="M14.25 9v6m-4.5 0V9M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-    </svg>
-    <span>Game Paused</span>
-   </h2>
-  </div>
-  
-  <!-- Buttons -->
-  <div class="space-y-3">
-   <button id="resume-game-button" class="w-full flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors border border-slate-200">
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 mr-2 text-green-500">
-     <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
-    </svg>
-    <span>Resume Game</span>
-   </button>
-   <button id="restart-game-button" class="w-full flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors border border-slate-200">
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 mr-2 text-blue-500">
-     <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-    </svg>
-    <span>New Game</span>
-   </button>
-   <button id="quit-game-button" class="w-full flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors border border-slate-200">
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 mr-2 text-orange-500">
-     <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" />
-    </svg>
-    <span>Quit Game</span>
-   </button>
-  </div>
- </div>
-</div>
-</div>
+
 
 <script type="module" defer>
     // --- Firebase SDKs ---
@@ -378,6 +383,7 @@
     let isPracticeMode = false;
     let practiceTimeElapsed = 0;
     let animationInterval;
+    let currentGamemode = 'standard';
 
     /// --- Trie Data Structure ---
     class Trie {
@@ -393,6 +399,74 @@
             return isPrefix ? true : node.isEndOfWord === true;
         }
     }
+
+
+    // Creates a seed (a number) from any string (like a date)
+function stringToSeed(str) {
+    let hash = 0;
+    if (str.length === 0) return hash;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash |= 0; // Convert to 32bit integer
+    }
+    return hash;
+}
+
+// A simple seeded random number generator (PRNG)
+function mulberry32(seed) {
+    return function() {
+      let t = seed += 0x6D2B79F5;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    }
+}
+
+/**
+ * Creates the board for the daily challenge, ensuring it meets specific quality criteria.
+ * @returns {Object} An object containing the board array and the set of all possible words.
+ */
+function createDailyChallengeBoard() {
+    const todayStr = new Date().toLocaleDateString('en-CA'); // e.g., "2025-07-16"
+    let attempt = 0;
+
+    while (attempt < 500) { // Try up to 500 times to find a great board
+        const seed = stringToSeed(`${todayStr}-${attempt}`);
+        const rng = mulberry32(seed);
+
+        // Generate a board using your new seeded functions
+        const board = new Array(GRID_SIZE).fill(null).map(() => getRandomLetterSeeded(rng));
+
+        // Use your existing validation logic to do a first pass
+        if (!isBoardPlayable(board)) { 
+            attempt++;
+            continue; // This board is bad, try the next one
+        }
+
+        // If it's playable, solve it to check the word count
+        const allWords = solveBoard(board, fullDictionaryTrie);
+        
+        // Check your new daily challenge rules
+        if (allWords.size >= 25 && allWords.size <= 75) {
+            console.log(`Daily board found for ${todayStr} in ${attempt + 1} attempts.`);
+            // Success! We found a board that meets all criteria.
+            return {
+                board: board,
+                allWords: allWords,
+                totalPossibleScore: 0 // You would calculate this next
+            };
+        }
+
+        // This board was playable but didn't have the right number of words. Try again.
+        attempt++;
+    }
+
+    // Fallback in case a suitable board isn't found after 500 tries
+    console.error("Failed to generate a daily board that meets the criteria.");
+    // You could return a default safe board here
+    return { board: ['W','O','R','D','W','O','R','M','G','A','M','E','P','L','A','Y'], allWords: new Set() };
+}
 
     async function checkAndResetDailyLeaderboard() {
         if (!db) return;
@@ -511,6 +585,19 @@
     loadDictionaryAndEnableButtons();
 }
 
+function showGameMessage(message, type = 'info') {
+    const messageEl = document.createElement('div');
+    const colors = {
+        info: 'bg-slate-700',
+        error: 'bg-red-500',
+        success: 'bg-green-500'
+    };
+    messageEl.className = `game-message fixed bottom-20 left-1/2 -translate-x-1/2 text-white text-sm font-bold px-4 py-2 rounded-full shadow-lg ${colors[type]}`;
+    messageEl.textContent = message;
+    document.body.appendChild(messageEl);
+    setTimeout(() => messageEl.remove(), 2000);
+}
+
     async function fetchGlobalStats() {
         const globalPlayCountSpan = document.getElementById('global-play-count');
         if (!db || !globalPlayCountSpan) return;
@@ -563,28 +650,41 @@
     }
 }
     
-    function createGrid() {
-        const board = generateAndValidateBoard();
-        grid.innerHTML = '';
-        for (let i = 0; i < GRID_SIZE; i++) {
-            const letter = board[i];
-            const points = letterConfig[letter].p;
-            const tile = document.createElement('div');
-            tile.className = 'tile w-full aspect-square border-2 border-slate-300 bg-white rounded-lg flex items-center justify-center text-3xl font-bold text-slate-800 cursor-pointer';
-            tile.dataset.letter = letter; tile.dataset.points = points; tile.dataset.id = i;
-            tile.innerHTML = `<span>${letter}<sub class="text-xs font-semibold ml-1">${points}</sub></span>`;
-            const bonusType = getBonusType();
-            if (bonusType) {
-                tile.dataset.bonus = bonusType.type;
-                tile.classList.add(bonusType.class);
-                tile.innerHTML += `<div class="bonus-label">${bonusType.label}</div>`;
-            }
-            grid.appendChild(tile);
+    function createGrid(board, gridEl) {
+    if (!gridEl) return; // Safety check
+
+    gridEl.innerHTML = ''; // Clear the specific grid we're targeting
+    
+    board.forEach((letterData, i) => {
+        const letter = typeof letterData === 'object' ? letterData.letter : letterData;
+        const points = letterConfig[letter].p;
+        const tile = document.createElement('div');
+        tile.className = 'tile w-full aspect-square border-2 border-slate-300 bg-white rounded-lg flex items-center justify-center text-3xl font-bold text-slate-800 cursor-pointer';
+        tile.dataset.letter = letter;
+        tile.dataset.points = points;
+        tile.dataset.id = i;
+        tile.innerHTML = `<span>${letter}<sub class="text-xs font-semibold ml-1">${points}</sub></span>`;
+        
+        const bonusType = getBonusType();
+        if (bonusType) {
+            tile.dataset.bonus = bonusType.type;
+            tile.classList.add(bonusType.class);
+            tile.innerHTML += `<div class="bonus-label">${bonusType.label}</div>`;
         }
-        setTimeout(resizeCanvas, 0);
-    }
+
+        gridEl.appendChild(tile);
+    });
+
+    setTimeout(resizeCanvas, 0);
+}
     
     function getRandomLetter() { return LETTER_BAG_STRING[Math.floor(Math.random() * LETTER_BAG_STRING.length)]; }
+   
+   function getRandomLetterSeeded(rng) {
+    // This is the same logic, but uses our predictable 'rng' function
+    return LETTER_BAG_STRING[Math.floor(rng() * LETTER_BAG_STRING.length)];
+}
+   
     function getBonusType() {
         const rand = Math.random();
         if (rand < 0.08) return { type: 'Time', label: '+5s', class: 'bonus-Time' };
@@ -594,29 +694,47 @@
         return null;
     }
 
-    function startGame(practiceMode = false) {
-        document.getElementById('main-game-footer').classList.remove('hidden'); 
-        gameContentEl.classList.remove('hidden'); // <-- ADD THIS LINE
-        isPracticeMode = practiceMode; 
-        clearInterval(timerInterval); 
-        score = 0; 
-        foundWords = []; 
-        updateScoreDisplay(); 
-        
+    function getBonusTypeSeeded(rng) {
+    // This is the same logic, but uses our predictable 'rng' function
+    const rand = rng(); 
+    if (rand < 0.18) return { type: 'DW', label: 'DW', class: 'bonus-DW' };
+    if (rand < 0.28) return { type: 'TL', label: 'TL', class: 'bonus-TL' };
+    if (rand < 0.40) return { type: 'DL', label: 'DL', class: 'bonus-DL' };
+    return null;
+}
+
+    function startGame(practiceMode = false, gameMode = 'standard') {
+    if (gameMode === 'daily') {
+        currentGamemode = 'daily'; // Set mode for daily
+        messageModal.classList.add('hidden');
+        const challengeData = createDailyChallengeBoard();
+        setupDailyUI(challengeData);
+        return; // Stop the function here for daily mode
+    } else {
+        document.getElementById('daily-challenge-content').classList.add('hidden');
+        currentGamemode = practiceMode ? 'practice' : 'standard'; // Set mode for standard/practice
+        document.getElementById('main-game-footer').classList.remove('hidden');
+        gameContentEl.classList.remove('hidden');
+        isPracticeMode = practiceMode;
+        clearInterval(timerInterval);
+        score = 0;
+        foundWords = [];
+        updateScoreDisplay();
+
         gameContainer.appendChild(menuContainer);
         menuContainer.className = 'absolute top-4 right-4 z-30';
         menuContainer.classList.remove('hidden');
 
         if (analytics) {
-          logEvent(analytics, 'game_start', {
+            logEvent(analytics, 'game_start', {
                 game_mode: practiceMode ? 'practice' : 'timed'
-                  });
-                }
+            });
+        }
 
         if (isPracticeMode) {
             practiceTimeElapsed = 0;
             topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-blue-500 uppercase tracking-wider">Pace</div><div id="pace-score" class="text-3xl font-black text-blue-400">0</div>`;
-            updatePracticeUI(); 
+            updatePracticeUI();
             timerInterval = setInterval(() => {
                 practiceTimeElapsed++;
                 updatePracticeUI();
@@ -625,17 +743,112 @@
             const highScoreEl = document.getElementById('high-score');
             const currentHighScore = highScoreEl ? highScoreEl.textContent : '0';
             topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${currentHighScore}</div>`;
-            timer = GAME_TIME; 
-            updateTimerUI(); 
+            timer = GAME_TIME;
+            updateTimerUI();
             if (db) { const statsRef = doc(db, "gameStats", "stats"); updateDoc(statsRef, { playCount: increment(1) }).catch(console.warn); }
             timerInterval = setInterval(() => { timer--; updateTimerUI(); if (timer <= 0) endGame(); }, 1000);
         }
 
         messageModal.classList.add('hidden');
         clearInterval(animationInterval);
-        createGrid();
-        grid.style.pointerEvents = 'auto'; 
+        const standardGridEl = gameContentEl.querySelector('#grid');
+        createGrid(generateAndValidateBoard(), standardGridEl);
+        grid.style.pointerEvents = 'auto';
     }
+}
+
+function resetGame() {
+    clearInterval(timerInterval);
+    endGameModal.classList.add('hidden');
+    statsModal.classList.add('hidden');
+    gameContentEl.classList.add('hidden'); // This line fixes the "stuck" screen bug
+    document.getElementById('daily-challenge-content').classList.add('hidden');
+    score = 0;
+    foundWords = [];
+    updateScoreDisplay();
+
+    const highScoreEl = document.getElementById('high-score');
+    const currentHighScore = highScoreEl ? highScoreEl.textContent : '0';
+
+    topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${currentHighScore}</div>`;
+    showWelcomeScreen();
+    loadAssets();
+}
+
+ function setupDailyUI(challengeData) {
+    const dailyChallengeContentEl = document.getElementById('daily-challenge-content');
+    gameContentEl.classList.add('hidden');
+    dailyChallengeContentEl.classList.remove('hidden');
+    menuContainer.classList.remove('hidden');
+
+    const totalWords = challengeData.allWords.size;
+    
+    // This injects the correct UI for the Daily Challenge
+    dailyChallengeContentEl.innerHTML = `
+        <div class="w-full max-w-sm mx-auto">
+            <div class="flex items-center justify-between mb-3">
+                <div class="flex-grow flex items-center justify-center">
+                    <h1 class="text-3xl font-black text-slate-800 tracking-tighter flex items-center justify-center">
+                        <img src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-9 h-9 mr-2" width="36" height="36">
+                        <span>Word Worm</span>
+                    </h1>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-md p-3 mb-3">
+                <div class="flex justify-between items-center">
+                    <div class="text-left">
+                        <div class="text-xs font-bold text-slate-500">WORDS</div>
+                        <div class="text-xl font-black text-slate-800">0 / ${totalWords}</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-xs font-bold text-slate-500">SCORE</div>
+                        <div class="text-xl font-black text-amber-500">0</div>
+                    </div>
+                    <div class="pl-4">
+                        <button id="done-button" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg text-sm shadow-md">
+                            I'm Done
+                        </button>
+                    </div>
+                </div>
+                <div class="w-full bg-slate-200 rounded-full h-2 mt-2">
+                    <div class="bg-green-500 h-2 rounded-full" style="width: 0%;"></div>
+                </div>
+            </div>
+            <div id="accordion-container" class="relative z-10">
+                <button id="accordion-trigger" class="w-full flex justify-between items-center p-2 text-left bg-white rounded-xl shadow-md">
+                    <div class="flex-grow overflow-hidden pr-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold text-slate-500 shrink-0">FOUND:</span>
+                            <div id="recent-words-display" class="flex gap-2 flex-nowrap"></div>
+                        </div>
+                    </div>
+                    <svg id="accordion-arrow" class="w-4 h-4 text-slate-500 shrink-0 transition-transform" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
+                </button>
+                <div id="accordion-content" class="hidden absolute top-full left-0 w-full mt-1 bg-white shadow-lg rounded-xl p-3 border"></div>
+            </div>
+            <div id="grid-container" class="relative mt-3">
+                <canvas id="line-canvas"></canvas>
+                <div id="grid" class="grid grid-cols-4 gap-2 select-none"></div>
+            </div>
+        </div>
+    `;
+
+    // Add event listeners for the new UI elements
+    const accordionTrigger = dailyChallengeContentEl.querySelector('#accordion-trigger');
+    const accordionContent = dailyChallengeContentEl.querySelector('#accordion-content');
+    const accordionArrow = dailyChallengeContentEl.querySelector('#accordion-arrow');
+
+    if(accordionTrigger) {
+        accordionTrigger.addEventListener('click', () => {
+            accordionContent.classList.toggle('hidden');
+            accordionArrow.classList.toggle('rotate-180');
+        });
+    }
+
+    // Call createGrid, making sure to target the grid inside the new daily content
+    const dailyGridEl = dailyChallengeContentEl.querySelector('#grid');
+    createGrid(challengeData.board, dailyGridEl);
+}
     
     function endGame() {
         clearInterval(timerInterval);
@@ -659,22 +872,6 @@
             const submissionContainer = document.getElementById('submission-container');
             if(submissionContainer) submissionContainer.innerHTML = `<div class="text-slate-500 font-bold">Practice complete!</div>`;
         }
-    }
-
-    function resetGame() {
-        clearInterval(timerInterval);
-        endGameModal.classList.add('hidden');
-        statsModal.classList.add('hidden');
-        score = 0;
-        foundWords = [];
-        updateScoreDisplay();
-
-        const highScoreEl = document.getElementById('high-score');
-        const currentHighScore = highScoreEl ? highScoreEl.textContent : '0';
-
-        topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${currentHighScore}</div>`;
-        showWelcomeScreen();
-        loadAssets();
     }
     
     function handleInteraction(tile) {
@@ -1088,20 +1285,22 @@ function triggerConfetti(tiles) {
             
 <div id="how-to-play-container" class="relative bg-slate-100 p-3 rounded-lg h-[17rem] flex flex-col"></div>
 
-            <div class="flex items-center gap-4 mt-4">
-                <button id="play-practice-button" class="bg-blue-500 hover:bg-blue-600 flex-1 text-white font-bold py-3 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-wait">
-                    <div class="flex items-center justify-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg>
-                        <span>Practice</span>
-                    </div>
-                </button>
-                <button id="play-game-mode-button" class="bg-green-500 hover:bg-green-600 flex-1 text-white font-bold py-3 px-4 rounded-lg text-base shadow-lg transition-transform hover:scale-105 disabled:bg-slate-400 disabled:cursor-wait">
-                     <div class="flex items-center justify-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg>
-                        <span>Play</span>
-                    </div>
-                </button>
-            </div>
+     <div class="flex items-center gap-3 mt-4">
+    <button id="play-daily-button" class="bg-blue-500 hover:bg-blue-600 flex-1 text-white font-bold h-12 px-2 rounded-lg text-sm shadow-lg flex items-center justify-center transition-transform hover:scale-105">
+        <div class="flex items-center justify-center">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M14.25 6.087c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003 0-1.036-1.007-1.875-2.25-1.875s-2.25.84-2.25 1.875c0 .369.128.713.349 1.003.215.283.401.604.401.959v0a.64.64 0 0 1-.657.643 48.39 48.39 0 0 1-4.163-.3c.186 1.613.293 3.25.315 4.907a.656.656 0 0 1-.658.663v0c-.355 0-.676-.186-.959-.401a1.647 1.647 0 0 0-1.003-.349c-1.036 0-1.875 1.007-1.875 2.25s.84 2.25 1.875 2.25c.369 0 .713-.128 1.003-.349.283-.215.604-.401.959-.401v0c.31 0 .555.26.532.57a48.039 48.039 0 0 1-.642 5.056c1.518.19 3.058.309 4.616.354a.64.64 0 0 0 .657-.643v0c0-.355-.186-.676-.401-.959a1.647 1.647 0 0 1-.349-1.003c0-1.035 1.008-1.875 2.25-1.875 1.243 0 2.25.84 2.25 1.875 0 .369-.128.713-.349 1.003-.215.283-.4.604-.4.959v0c0 .333.277.599.61.58a48.1 48.1 0 0 0 5.427-.63 48.05 48.05 0 0 0 .582-4.717.532.532 0 0 0-.533-.57v0c-.355 0-.676.186-.959.401-.29.221-.634.349-1.003.349-1.035 0-1.875-1.007-1.875-2.25s.84-2.25 1.875-2.25c.37 0 .713.128 1.003.349.283.215.604.401.96.401v0a.656.656 0 0 0 .658-.663 48.422 48.422 0 0 0-.37-5.36c-1.886.342-3.81.574-5.766.689a.578.578 0 0 1-.61-.58v0Z" />
+        </svg>
+            <span>Daily Challenge</span>
+        </div>
+    </button>
+    <button id="play-game-mode-button" class="bg-green-500 hover:bg-green-600 flex-1 text-white font-bold h-12 px-2 rounded-lg text-base shadow-lg flex items-center justify-center transition-transform hover:scale-105">
+        <div class="flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-1"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg>
+            <span>Play</span>
+        </div>
+    </button>
+</div>
             
             <div class="bg-slate-100 rounded-xl p-2 mt-4">
                 <div class="grid grid-cols-3 gap-1 text-center">
@@ -1140,6 +1339,7 @@ function triggerConfetti(tiles) {
         </div>
     `;
 
+    menuContainer.classList.add('hidden');
     messageModal.classList.remove('hidden');
     
     document.getElementById('welcome-stats-button').onclick = (e) => {
@@ -1156,6 +1356,7 @@ function triggerConfetti(tiles) {
     
     document.getElementById('play-game-mode-button').onclick = () => startGame(false);
     document.getElementById('play-practice-button').onclick = () => startGame(true);
+    document.getElementById('play-daily-button').onclick = () => startGame(false, 'daily');
 }
 
     async function showLeaderboardModal() {
@@ -1355,32 +1556,33 @@ function triggerConfetti(tiles) {
         }
     }
     
-    function setupEventListeners() {
+   function setupEventListeners() {
     // --- Grid interaction listeners (no change here) ---
     const getTileFromEvent = (e) => { const touch = e.touches ? e.touches[0] : e; const point = { x: touch.clientX, y: touch.clientY }; let closestTile = null; let minDistance = Infinity; tilePositions.forEach(tilePos => { const distance = Math.sqrt((point.x - tilePos.center.x)**2 + (point.y - tilePos.center.y)**2); if (distance < minDistance && distance < tilePos.hitRadius) { minDistance = distance; closestTile = tilePos.el; } }); return closestTile; };
     const startInteraction = e => { e.preventDefault(); isMouseDown = true; clearSelection(); const tile = getTileFromEvent(e); handleInteraction(tile); };
     const moveInteraction = e => { if (!isMouseDown) return; e.preventDefault(); const tile = getTileFromEvent(e); handleInteraction(tile); };
     const endInteraction = () => { if (!isMouseDown) return; submitWord(); isMouseDown = false; };
     
-    grid.addEventListener('pointerdown', startInteraction); 
-    grid.addEventListener('pointermove', moveInteraction); 
-    grid.addEventListener('pointerup', endInteraction); 
-    grid.addEventListener('pointerleave', endInteraction); 
+    grid.addEventListener('pointerdown', startInteraction);
+    grid.addEventListener('pointermove', moveInteraction);
+    grid.addEventListener('pointerup', endInteraction);
+    grid.addEventListener('pointerleave', endInteraction);
     window.addEventListener('resize', resizeCanvas);
-    
-    // --- New Pause Menu Logic ---
+
+    // --- New, Corrected Pause Menu Logic ---
     const pauseModal = document.getElementById('pause-modal');
     const resumeButton = document.getElementById('resume-game-button');
     const restartButton = document.getElementById('restart-game-button');
     const quitButton = document.getElementById('quit-game-button');
-    const closePauseButton = document.getElementById('close-pause-modal-button'); // New 'X' button
+    const closePauseButton = document.getElementById('close-pause-modal-button');
 
     // Function to resume the game
     const resumeGame = () => {
         pauseModal.classList.add('hidden');
-        if (timer > 0) {
+        // Only restart timers if not in the untimed daily mode
+        if (currentGamemode !== 'daily' && timer > 0) {
             if (isPracticeMode) {
-                 timerInterval = setInterval(() => {
+                timerInterval = setInterval(() => {
                     practiceTimeElapsed++;
                     updatePracticeUI();
                 }, 1000);
@@ -1394,21 +1596,28 @@ function triggerConfetti(tiles) {
         }
     };
 
-    // When the in-game hamburger menu is clicked
-    menuButton.addEventListener('click', (e) => {
-        e.stopPropagation();
-        clearInterval(timerInterval);
-        pauseModal.classList.remove('hidden');
+    // Use event delegation for the menu button, attached to the body
+    // This ensures the button works even after the UI is redrawn for daily mode
+    document.body.addEventListener('click', (e) => {
+        if (e.target.closest('#menu-button')) {
+            e.stopPropagation();
+            clearInterval(timerInterval);
+            pauseModal.classList.remove('hidden');
+        }
     });
 
-    // Assign resume action to both Resume button and 'X' button
+    // Assign actions to the buttons inside the pause modal
     resumeButton.addEventListener('click', resumeGame);
     closePauseButton.addEventListener('click', resumeGame);
 
-    // When "Restart" is clicked
+    // When "New Game" is clicked, start the correct mode
     restartButton.addEventListener('click', () => {
         pauseModal.classList.add('hidden');
-        startGame(isPracticeMode);
+        if (currentGamemode === 'daily') {
+            startGame(false, 'daily');
+        } else {
+            startGame(isPracticeMode);
+        }
     });
 
     // When "Quit" is clicked
@@ -1417,14 +1626,12 @@ function triggerConfetti(tiles) {
         resetGame();
     });
 
+    // Also allow clicking the backdrop to resume
     pauseModal.addEventListener('click', (e) => {
-        // Check if the click was on the background itself, not the white box
         if (e.target === pauseModal) {
-            resumeGame(); // Resume the game
+            resumeGame();
         }
     });
-
-    
 }
     
     function cacheTilePositions() {
@@ -1771,6 +1978,14 @@ function triggerConfetti(tiles) {
                   <div><strong class="font-semibold text-slate-700">Letter Point Values:</strong>
                       <div id="letter-values-container" class="flex flex-wrap gap-1 mt-1"></div>
                   </div>
+                  <!-- NEW PRACTICE BUTTON ADDED HERE -->
+                 <div class="pt-4 mt-4 border-t border-slate-200">
+                <p class="text-center text-sm font-semibold text-slate-600 mb-2">Practice without the timer here!</p>
+                <div class="flex justify-center">
+                    <button id="play-practice-button" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-5 rounded-lg text-sm">
+                        Practice
+                    </button>
+                </div>
             </div>
         </div>
     `;
@@ -1904,6 +2119,8 @@ function triggerConfetti(tiles) {
     // Initial run and set interval
     runAnimation();
     animationInterval = setInterval(runAnimation, 5000);
+
+    document.getElementById('play-practice-button').onclick = () => startGame(true);
 }
 
     document.addEventListener('DOMContentLoaded', main);
