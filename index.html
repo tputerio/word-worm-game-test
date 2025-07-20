@@ -384,6 +384,11 @@
     let practiceTimeElapsed = 0;
     let animationInterval;
     let currentGamemode = 'standard';
+    let dailyChallengeData = null; 
+    let allDailyWords = new Set();
+    let activeGridEl;
+    let activeCanvasEl;
+    let activeCtx;
 
     /// --- Trie Data Structure ---
     class Trie {
@@ -431,41 +436,52 @@ function createDailyChallengeBoard() {
     const todayStr = new Date().toLocaleDateString('en-CA'); // e.g., "2025-07-16"
     let attempt = 0;
 
-    while (attempt < 500) { // Try up to 500 times to find a great board
+    while (attempt < 500) {
         const seed = stringToSeed(`${todayStr}-${attempt}`);
         const rng = mulberry32(seed);
 
-        // Generate a board using your new seeded functions
         const board = new Array(GRID_SIZE).fill(null).map(() => getRandomLetterSeeded(rng));
 
-        // Use your existing validation logic to do a first pass
         if (!isBoardPlayable(board)) { 
             attempt++;
-            continue; // This board is bad, try the next one
+            continue;
         }
 
-        // If it's playable, solve it to check the word count
         const allWords = solveBoard(board, fullDictionaryTrie);
         
-        // Check your new daily challenge rules
         if (allWords.size >= 25 && allWords.size <= 75) {
             console.log(`Daily board found for ${todayStr} in ${attempt + 1} attempts.`);
-            // Success! We found a board that meets all criteria.
+            
+            // ✅ FIX: Generate 6 deterministic bonus tiles
+            const indices = Array.from({length: 16}, (_, i) => i);
+            let bonusTypes = ['DW', 'DW', 'TL', 'DL', 'DL', 'DL']; // 2xDW, 1xTL, 3xDL
+
+            // Shuffle both arrays using the same seeded RNG (Fisher-Yates shuffle)
+            for (let i = indices.length - 1; i > 0; i--) {
+                const j = Math.floor(rng() * (i + 1));
+                [indices[i], indices[j]] = [indices[j], indices[i]];
+            }
+            for (let i = bonusTypes.length - 1; i > 0; i--) {
+                const j = Math.floor(rng() * (i + 1));
+                [bonusTypes[i], bonusTypes[j]] = [bonusTypes[j], bonusTypes[i]];
+            }
+
+            const bonuses = indices.slice(0, 6).map((tileIndex, i) => ({
+                index: tileIndex,
+                type: bonusTypes[i]
+            }));
+
             return {
                 board: board,
                 allWords: allWords,
-                totalPossibleScore: 0 // You would calculate this next
+                bonuses: bonuses // Return the generated bonuses
             };
         }
-
-        // This board was playable but didn't have the right number of words. Try again.
         attempt++;
     }
 
-    // Fallback in case a suitable board isn't found after 500 tries
     console.error("Failed to generate a daily board that meets the criteria.");
-    // You could return a default safe board here
-    return { board: ['W','O','R','D','W','O','R','M','G','A','M','E','P','L','A','Y'], allWords: new Set() };
+    return { board: ['W','O','R','D','W','O','R','M','G','A','M','E','P','L','A','Y'], allWords: new Set(), bonuses: [] };
 }
 
     async function checkAndResetDailyLeaderboard() {
@@ -585,17 +601,43 @@ function createDailyChallengeBoard() {
     loadDictionaryAndEnableButtons();
 }
 
-function showGameMessage(message, type = 'info') {
-    const messageEl = document.createElement('div');
+function showGameMessage(message, type = 'info', startTile = null) {
     const colors = {
         info: 'bg-slate-700',
         error: 'bg-red-500',
         success: 'bg-green-500'
     };
+
+    // ✅ FIX: In daily mode, if a startTile is provided, create the message there.
+    if (currentGamemode === 'daily' && startTile) {
+        const messageEl = document.createElement('div');
+        // Base styles for the flying message
+        messageEl.className = `absolute px-4 py-2 rounded-full font-bold text-white shadow-lg z-50 ${colors[type]}`;
+        messageEl.textContent = message;
+        
+        // Use the same fly-up animation as the score
+        messageEl.style.animation = 'fly-to-score 1.5s ease-in-out forwards';
+        
+        // Get the position of the starting tile
+        const rect = startTile.getBoundingClientRect();
+        messageEl.style.left = `${rect.left + rect.width / 2}px`;
+        messageEl.style.top = `${rect.top + rect.height / 2}px`;
+        // Center the message on its coordinates and scale it down slightly
+        messageEl.style.transform = 'translate(-50%, -50%) scale(0.9)';
+
+        document.body.appendChild(messageEl);
+        // Remove the element after the animation finishes
+        setTimeout(() => messageEl.remove(), 1500);
+        return; // Exit the function here
+    }
+
+    // --- Fallback for other game modes or if no startTile is given ---
+    const parentEl = document.body;
+    const messageEl = document.createElement('div');
     messageEl.className = `game-message fixed bottom-20 left-1/2 -translate-x-1/2 text-white text-sm font-bold px-4 py-2 rounded-full shadow-lg ${colors[type]}`;
     messageEl.textContent = message;
-    document.body.appendChild(messageEl);
-    setTimeout(() => messageEl.remove(), 2000);
+    parentEl.appendChild(messageEl);
+    setTimeout(() => messageEl.remove(), 1000);
 }
 
     async function fetchGlobalStats() {
@@ -650,10 +692,15 @@ function showGameMessage(message, type = 'info') {
     }
 }
     
-    function createGrid(board, gridEl) {
-    if (!gridEl) return; // Safety check
+   function createGrid(board, gridEl, bonuses = null) {
+    if (!gridEl) return; 
 
-    gridEl.innerHTML = ''; // Clear the specific grid we're targeting
+    gridEl.innerHTML = ''; 
+    const bonusLabels = {
+        'DL': { label: 'DL', class: 'bonus-DL' },
+        'TL': { label: 'TL', class: 'bonus-TL' },
+        'DW': { label: 'DW', class: 'bonus-DW' },
+    };
     
     board.forEach((letterData, i) => {
         const letter = typeof letterData === 'object' ? letterData.letter : letterData;
@@ -665,17 +712,30 @@ function showGameMessage(message, type = 'info') {
         tile.dataset.id = i;
         tile.innerHTML = `<span>${letter}<sub class="text-xs font-semibold ml-1">${points}</sub></span>`;
         
-        const bonusType = getBonusType();
+        let bonusType = null;
+        // ✅ FIX: Check for deterministic bonuses first
+        if (bonuses) {
+            const bonusInfo = bonuses.find(b => b.index === i);
+            if (bonusInfo) {
+                bonusType = bonusLabels[bonusInfo.type];
+                tile.dataset.bonus = bonusInfo.type;
+            }
+        } else {
+            // Fallback to random bonuses for standard/practice modes
+            const randomBonus = getBonusType();
+            if (randomBonus) {
+                bonusType = randomBonus;
+                tile.dataset.bonus = randomBonus.type;
+            }
+        }
+
         if (bonusType) {
-            tile.dataset.bonus = bonusType.type;
             tile.classList.add(bonusType.class);
             tile.innerHTML += `<div class="bonus-label">${bonusType.label}</div>`;
         }
 
         gridEl.appendChild(tile);
     });
-
-    setTimeout(resizeCanvas, 0);
 }
     
     function getRandomLetter() { return LETTER_BAG_STRING[Math.floor(Math.random() * LETTER_BAG_STRING.length)]; }
@@ -703,66 +763,88 @@ function showGameMessage(message, type = 'info') {
     return null;
 }
 
-    function startGame(practiceMode = false, gameMode = 'standard') {
-    if (gameMode === 'daily') {
-        currentGamemode = 'daily'; // Set mode for daily
-        messageModal.classList.add('hidden');
-        const challengeData = createDailyChallengeBoard();
-        setupDailyUI(challengeData);
-        return; // Stop the function here for daily mode
-    } else {
-        document.getElementById('daily-challenge-content').classList.add('hidden');
-        currentGamemode = practiceMode ? 'practice' : 'standard'; // Set mode for standard/practice
-        document.getElementById('main-game-footer').classList.remove('hidden');
-        gameContentEl.classList.remove('hidden');
-        isPracticeMode = practiceMode;
-        clearInterval(timerInterval);
-        score = 0;
-        foundWords = [];
-        updateScoreDisplay();
+  async function startGame(practiceMode = false, gameMode = 'standard') {
+  if (gameMode === 'daily') {
+      currentGamemode = 'daily';
+      messageModal.classList.add('hidden');
+      
+      // ✅ FIX: This now returns { board, allWords, bonuses }
+      const challengeBoardData = createDailyChallengeBoard(); 
+      allDailyWords = challengeBoardData.allWords;
 
-        gameContainer.appendChild(menuContainer);
-        menuContainer.className = 'absolute top-4 right-4 z-30';
-        menuContainer.classList.remove('hidden');
+      if (db && userId) {
+          const todayStr = new Date().toLocaleDateString('en-CA');
+          const dailyDocRef = doc(db, `players/${userId}/dailyChallenges`, todayStr);
+          try {
+              const docSnap = await getDoc(dailyDocRef);
+              if (docSnap.exists()) {
+                  const data = docSnap.data();
+                  score = data.score || 0;
+                  foundWords = data.foundWords || [];
+              } else {
+                  score = 0;
+                  foundWords = [];
+              }
+          } catch (e) {
+              console.error("Error loading daily progress:", e);
+              score = 0;
+              foundWords = [];
+          }
+      } else {
+          score = 0;
+          foundWords = [];
+      }
+      
+      // Pass the whole data object, including bonuses
+      setupDailyUI(challengeBoardData); 
+      return;
 
-        if (analytics) {
-            logEvent(analytics, 'game_start', {
-                game_mode: practiceMode ? 'practice' : 'timed'
-            });
-        }
+  } else { 
+      document.getElementById('daily-challenge-content').style.display = 'none';
+      gameContentEl.style.display = 'block';
+      currentGamemode = practiceMode ? 'practice' : 'standard';
+      isPracticeMode = practiceMode;
+      menuContainer.classList.remove('hidden');
+      clearInterval(timerInterval);
+      score = 0;
+      foundWords = [];
+      updateScoreDisplay();
 
-        if (isPracticeMode) {
-            practiceTimeElapsed = 0;
-            topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-blue-500 uppercase tracking-wider">Pace</div><div id="pace-score" class="text-3xl font-black text-blue-400">0</div>`;
-            updatePracticeUI();
-            timerInterval = setInterval(() => {
-                practiceTimeElapsed++;
-                updatePracticeUI();
-            }, 1000);
-        } else {
-            const highScoreEl = document.getElementById('high-score');
-            const currentHighScore = highScoreEl ? highScoreEl.textContent : '0';
-            topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${currentHighScore}</div>`;
-            timer = GAME_TIME;
-            updateTimerUI();
-            if (db) { const statsRef = doc(db, "gameStats", "stats"); updateDoc(statsRef, { playCount: increment(1) }).catch(console.warn); }
-            timerInterval = setInterval(() => { timer--; updateTimerUI(); if (timer <= 0) endGame(); }, 1000);
-        }
+      if (isPracticeMode) {
+          practiceTimeElapsed = 0;
+          topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-blue-500 uppercase tracking-wider">Pace</div><div id="pace-score" class="text-3xl font-black text-blue-400">0</div>`;
+          updatePracticeUI();
+          timerInterval = setInterval(() => { practiceTimeElapsed++; updatePracticeUI(); }, 1000);
+      } else {
+          const highScoreEl = document.getElementById('high-score');
+          const currentHighScore = highScoreEl ? highScoreEl.textContent : '0';
+          topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${currentHighScore}</div>`;
+          timer = GAME_TIME;
+          updateTimerUI();
+          if (db) { const statsRef = doc(db, "gameStats", "stats"); updateDoc(statsRef, { playCount: increment(1) }).catch(console.warn); }
+          timerInterval = setInterval(() => { timer--; updateTimerUI(); if (timer <= 0) endGame(); }, 1000);
+      }
 
-        messageModal.classList.add('hidden');
-        clearInterval(animationInterval);
-        const standardGridEl = gameContentEl.querySelector('#grid');
-        createGrid(generateAndValidateBoard(), standardGridEl);
-        grid.style.pointerEvents = 'auto';
-    }
+      messageModal.classList.add('hidden');
+      clearInterval(animationInterval);
+      activeGridEl = document.getElementById('grid');
+      activeCanvasEl = document.getElementById('line-canvas');
+      activeCtx = activeCanvasEl.getContext('2d');
+      createGrid(generateAndValidateBoard(), activeGridEl);
+      attachGridListeners(activeGridEl);
+      activeGridEl.style.pointerEvents = 'auto';
+  }
 }
 
 function resetGame() {
     clearInterval(timerInterval);
     endGameModal.classList.add('hidden');
     statsModal.classList.add('hidden');
-    gameContentEl.classList.add('hidden'); // This line fixes the "stuck" screen bug
-    document.getElementById('daily-challenge-content').classList.add('hidden');
+    
+    // ✅ FIX: Forcefully hide both content areas
+    gameContentEl.style.display = 'none';
+    document.getElementById('daily-challenge-content').style.display = 'none';
+
     score = 0;
     foundWords = [];
     updateScoreDisplay();
@@ -772,18 +854,57 @@ function resetGame() {
 
     topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${currentHighScore}</div>`;
     showWelcomeScreen();
-    loadAssets();
 }
 
- function setupDailyUI(challengeData) {
+ // ✅ ADD THIS ENTIRE NEW FUNCTION
+function attachGridListeners(gridEl) {
+    if (!gridEl) return;
+
+    const startInteraction = e => {
+        e.preventDefault();
+        isMouseDown = true;
+        clearSelection();
+        const tile = getTileFromEvent(e);
+        handleInteraction(tile);
+    };
+    
+    const moveInteraction = e => {
+        if (!isMouseDown) return;
+        e.preventDefault();
+        const tile = getTileFromEvent(e);
+        handleInteraction(tile);
+    };
+
+    const endInteraction = () => {
+        if (!isMouseDown) return;
+        submitWord();
+        isMouseDown = false;
+    };
+
+    // Remove old listeners to prevent duplicates, then add new ones
+    gridEl.removeEventListener('pointerdown', startInteraction);
+    gridEl.removeEventListener('pointermove', moveInteraction);
+    gridEl.removeEventListener('pointerup', endInteraction);
+    gridEl.removeEventListener('pointerleave', endInteraction);
+
+    gridEl.addEventListener('pointerdown', startInteraction);
+    gridEl.addEventListener('pointermove', moveInteraction);
+    gridEl.addEventListener('pointerup', endInteraction);
+    gridEl.addEventListener('pointerleave', endInteraction);
+
+    // Initial resize and setup listener for window resizing
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+}
+
+function setupDailyUI(challengeData) {
+    gameContentEl.style.display = 'none';
     const dailyChallengeContentEl = document.getElementById('daily-challenge-content');
-    gameContentEl.classList.add('hidden');
-    dailyChallengeContentEl.classList.remove('hidden');
+    dailyChallengeContentEl.style.display = 'block';
     menuContainer.classList.remove('hidden');
 
     const totalWords = challengeData.allWords.size;
     
-    // This injects the correct UI for the Daily Challenge
     dailyChallengeContentEl.innerHTML = `
         <div class="w-full max-w-sm mx-auto">
             <div class="flex items-center justify-between mb-3">
@@ -798,11 +919,11 @@ function resetGame() {
                 <div class="flex justify-between items-center">
                     <div class="text-left">
                         <div class="text-xs font-bold text-slate-500">WORDS</div>
-                        <div class="text-xl font-black text-slate-800">0 / ${totalWords}</div>
+                        <div id="daily-word-count" class="text-xl font-black text-slate-800">0 / ${totalWords}</div>
                     </div>
                     <div class="text-center">
                         <div class="text-xs font-bold text-slate-500">SCORE</div>
-                        <div class="text-xl font-black text-amber-500">0</div>
+                        <div id="daily-score" class="text-xl font-black text-amber-500">0</div>
                     </div>
                     <div class="pl-4">
                         <button id="done-button" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg text-sm shadow-md">
@@ -811,68 +932,133 @@ function resetGame() {
                     </div>
                 </div>
                 <div class="w-full bg-slate-200 rounded-full h-2 mt-2">
-                    <div class="bg-green-500 h-2 rounded-full" style="width: 0%;"></div>
+                    <div id="daily-progress-bar" class="bg-green-500 h-2 rounded-full" style="width: 0%;"></div>
                 </div>
             </div>
-            <div id="accordion-container" class="relative z-10">
-                <button id="accordion-trigger" class="w-full flex justify-between items-center p-2 text-left bg-white rounded-xl shadow-md">
-                    <div class="flex-grow overflow-hidden pr-2">
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-bold text-slate-500 shrink-0">FOUND:</span>
-                            <div id="recent-words-display" class="flex gap-2 flex-nowrap"></div>
-                        </div>
+
+            <div id="accordion-container" class="relative z-30 mb-3">
+                <button id="accordion-trigger" class="w-full flex justify-between items-center p-2 bg-white rounded-xl shadow-md">
+                    <div id="collapsed-view" class="flex-grow flex items-center gap-2 overflow-hidden pr-2">
+                        <span class="text-xs font-bold text-slate-500 shrink-0">LAST FOUND:</span>
+                        <div id="recent-words-display" class="flex gap-2 flex-nowrap"></div>
+                    </div>
+                    <div id="expanded-view" class="hidden flex-grow text-sm font-bold text-slate-700">
+                        <span id="accordion-summary-text">You've found 0/${totalWords} words!</span>
                     </div>
                     <svg id="accordion-arrow" class="w-4 h-4 text-slate-500 shrink-0 transition-transform" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
                 </button>
-                <div id="accordion-content" class="hidden absolute top-full left-0 w-full mt-1 bg-white shadow-lg rounded-xl p-3 border"></div>
+                
+                <div id="accordion-content" class="hidden absolute top-full left-0 w-full mt-1 bg-white shadow-lg rounded-xl p-4 border">
+                    <div id="daily-found-words-list" class="flex flex-wrap gap-2 max-h-32 overflow-y-auto mb-4 pb-4 border-b"></div>
+                    <div class="grid grid-cols-2 gap-x-4">
+                        <div class="mb-4">
+                            <div class="flex justify-between text-xs font-bold text-slate-500 mb-1">
+                                <span>3-letter</span><span id="count-3">0/0</span>
+                            </div>
+                            <div class="w-full bg-slate-200 rounded-full h-2"><div id="progress-3" class="bg-green-500 h-2 rounded-full" style="width: 0%"></div></div>
+                        </div>
+                        <div class="mb-4">
+                            <div class="flex justify-between text-xs font-bold text-slate-500 mb-1">
+                                <span>4-letter</span><span id="count-4">0/0</span>
+                            </div>
+                            <div class="w-full bg-slate-200 rounded-full h-2"><div id="progress-4" class="bg-green-500 h-2 rounded-full" style="width: 0%"></div></div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-xs font-bold text-slate-500 mb-1">
+                                <span>5-letter</span><span id="count-5">0/0</span>
+                            </div>
+                            <div class="w-full bg-slate-200 rounded-full h-2"><div id="progress-5" class="bg-green-500 h-2 rounded-full" style="width: 0%"></div></div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-xs font-bold text-slate-500 mb-1">
+                                <span>6+ letter</span><span id="count-6">0/0</span>
+                            </div>
+                            <div class="w-full bg-slate-200 rounded-full h-2"><div id="progress-6" class="bg-green-500 h-2 rounded-full" style="width: 0%"></div></div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div id="grid-container" class="relative mt-3">
-                <canvas id="line-canvas"></canvas>
-                <div id="grid" class="grid grid-cols-4 gap-2 select-none"></div>
+
+            <div class="relative z-10">
+                <canvas id="daily-line-canvas"></canvas>
+                <div id="daily-grid" class="grid grid-cols-4 gap-2 select-none"></div>
             </div>
         </div>
     `;
 
-    // Add event listeners for the new UI elements
     const accordionTrigger = dailyChallengeContentEl.querySelector('#accordion-trigger');
     const accordionContent = dailyChallengeContentEl.querySelector('#accordion-content');
     const accordionArrow = dailyChallengeContentEl.querySelector('#accordion-arrow');
+    // ✅ FIX: Get references to the two new views
+    const collapsedView = dailyChallengeContentEl.querySelector('#collapsed-view');
+    const expandedView = dailyChallengeContentEl.querySelector('#expanded-view');
 
     if(accordionTrigger) {
         accordionTrigger.addEventListener('click', () => {
             accordionContent.classList.toggle('hidden');
             accordionArrow.classList.toggle('rotate-180');
+            // ✅ FIX: Toggle the visibility of the two text views
+            collapsedView.classList.toggle('hidden');
+            expandedView.classList.toggle('hidden');
         });
     }
 
-    // Call createGrid, making sure to target the grid inside the new daily content
-    const dailyGridEl = dailyChallengeContentEl.querySelector('#grid');
-    createGrid(challengeData.board, dailyGridEl);
-}
-    
-    function endGame() {
-        clearInterval(timerInterval);
-        grid.style.pointerEvents = 'none';
-        menuContainer.classList.add('hidden');
-        
-        showEndGameScreen();
-
-        if (analytics) {
-          logEvent(analytics, 'game_end', {
-            game_mode: isPracticeMode ? 'practice' : 'timed',
-            final_score: score,
-            words_found_count: foundWords.length,
-            time_taken_seconds: isPracticeMode ? practiceTimeElapsed : (GAME_TIME - timer)
-              });
-            }
-
-        if (!isPracticeMode && db && userId) {
-            processEndOfGame(score, foundWords, userId);
-        } else if (isPracticeMode) {
-            const submissionContainer = document.getElementById('submission-container');
-            if(submissionContainer) submissionContainer.innerHTML = `<div class="text-slate-500 font-bold">Practice complete!</div>`;
-        }
+    activeGridEl = dailyChallengeContentEl.querySelector('#daily-grid');
+    activeCanvasEl = dailyChallengeContentEl.querySelector('#daily-line-canvas');
+    activeCtx = activeCanvasEl.getContext('2d');
+    if (activeCanvasEl) {
+        activeCanvasEl.style.position = 'absolute';
+        activeCanvasEl.style.top = '0';
+        activeCanvasEl.style.left = '0';
+        activeCanvasEl.style.pointerEvents = 'none';
+        activeCanvasEl.style.zIndex = '10';
     }
+    createGrid(challengeData.board, activeGridEl, challengeData.bonuses);
+    attachGridListeners(activeGridEl); 
+    updateDailyChallengeUI(); 
+}
+
+    function endGame() {
+    clearInterval(timerInterval);
+    if (activeGridEl) activeGridEl.style.pointerEvents = 'none'; // Use activeGridEl
+    menuContainer.classList.add('hidden');
+    
+    showEndGameScreen();
+
+    if (analytics) {
+      logEvent(analytics, 'game_end', {
+        game_mode: isPracticeMode ? 'practice' : 'timed',
+        final_score: score,
+        words_found_count: foundWords.length,
+        time_taken_seconds: isPracticeMode ? practiceTimeElapsed : (GAME_TIME - timer)
+        });
+      }
+
+    if (!isPracticeMode && db && userId) {
+        processEndOfGame(score, foundWords, userId);
+    } else if (isPracticeMode) {
+        const submissionContainer = document.getElementById('submission-container');
+        if(submissionContainer) submissionContainer.innerHTML = `<div class="text-slate-500 font-bold">Practice complete!</div>`;
+    }
+}
+
+function replaceSelectedTiles() {
+    if (!activeGridEl) return; // Add guard clause
+    let currentBoardLetters = Array.from(activeGridEl.children).map(t => t.dataset.letter);
+    selectedTiles.forEach(tile => { const index = parseInt(tile.dataset.id); currentBoardLetters[index] = null; });
+    const newBoard = generateAndValidateBoard(currentBoardLetters);
+    selectedTiles.forEach((tile) => {
+        const index = parseInt(tile.dataset.id); const letter = newBoard[index]; const points = letterConfig[letter].p;
+        tile.dataset.letter = letter; tile.dataset.points = points; tile.style.transform = 'scale(0)'; tile.dataset.bonus = '';
+        tile.classList.remove('bonus-DL', 'bonus-TL', 'bonus-DW', 'bonus-Time');
+        setTimeout(() => {
+            tile.innerHTML = `<span>${letter}<sub class="text-xs font-semibold ml-1">${points}</sub></span>`;
+            const bonusType = getBonusType();
+            if (bonusType) { tile.dataset.bonus = bonusType.type; tile.classList.add(bonusType.class); tile.innerHTML += `<div class="bonus-label">${bonusType.label}</div>`; }
+            tile.style.transform = 'scale(1)';
+        }, 200);
+    });
+}
     
     function handleInteraction(tile) {
         if (!tile || !isMouseDown) return;
@@ -896,64 +1082,196 @@ function resetGame() {
         return Math.abs(c1 - c2) <= 1 && Math.abs(r1 - r2) <= 1;
     }
 
-    function submitWord() {
+  function submitWord() {
     const word = selectedTiles.map(t => t.dataset.letter).join('');
-    if (word.length >= 3 && fullDictionaryTrie.search(word)) {
-        let baseScore = 0; let wordMultiplier = 1; let timeBonus = 0;
+    
+    // --- Daily Challenge Logic ---
+    if (currentGamemode === 'daily') {
+        const startTile = selectedTiles.length > 0 ? selectedTiles[0] : null;
+
+        if (word.length < 3) {
+            clearSelection();
+            return;
+        }
+        if (!allDailyWords.has(word)) {
+            // ✅ FIX: Pass the startTile to the message function
+            showGameMessage("Not a valid word", "error", startTile);
+            clearSelection();
+            return;
+        }
+        if (foundWords.some(fw => fw.word === word)) {
+            // ✅ FIX: Pass the startTile to the message function
+            showGameMessage("Already Found!", "info", startTile);
+            clearSelection();
+            return;
+        }
+        
+        let baseScore = 0;
+        let wordMultiplier = 1;
         selectedTiles.forEach(tile => {
             let letterScore = parseInt(tile.dataset.points);
-            switch(tile.dataset.bonus) {
-                case 'DL': letterScore *= 2; break; case 'TL': letterScore *= 3; break;
-                case 'DW': wordMultiplier *= 2; break; case 'Time': timeBonus += 5; break;
+            switch (tile.dataset.bonus) {
+                case 'DL': letterScore *= 2; break;
+                case 'TL': letterScore *= 3; break;
+                case 'DW': wordMultiplier *= 2; break;
             }
             baseScore += letterScore;
         });
-
         let finalScore = baseScore * wordMultiplier;
         if (word.length >= 7) finalScore += 20;
         else if (word.length === 6) finalScore += 10;
         else if (word.length === 5) finalScore += 5;
         else if (word.length === 4) finalScore += 2;
 
-        if (analytics) {
-            logEvent(analytics, 'submit_word', {
-                word_length: word.length,
-                score: finalScore,
-                game_mode: isPracticeMode ? 'practice' : 'timed'
-            });
-        }
-
-        if (timeBonus > 0 && !isPracticeMode) {
-            timer += timeBonus;
-            updateTimerUI();
-        }
-
         foundWords.push({ word, score: finalScore, length: word.length });
+        score += finalScore;
+        
+        updateDailyChallengeUI(); 
+        saveDailyProgress();
         createFlyingScore(finalScore, selectedTiles[0]);
         triggerConfetti(selectedTiles);
-        setTimeout(() => { score += finalScore; updateScoreDisplay(); }, 500);
-        replaceSelectedTiles();
+
+    } else { // --- Standard & Practice Mode Logic ---
+        if (word.length >= 3 && fullDictionaryTrie.search(word)) {
+            let baseScore = 0; let wordMultiplier = 1; let timeBonus = 0;
+            selectedTiles.forEach(tile => {
+                let letterScore = parseInt(tile.dataset.points);
+                switch(tile.dataset.bonus) {
+                    case 'DL': letterScore *= 2; break; case 'TL': letterScore *= 3; break;
+                    case 'DW': wordMultiplier *= 2; break; case 'Time': timeBonus += 5; break;
+                }
+                baseScore += letterScore;
+            });
+
+            let finalScore = baseScore * wordMultiplier;
+            if (word.length >= 7) finalScore += 20;
+            else if (word.length === 6) finalScore += 10;
+            else if (word.length === 5) finalScore += 5;
+            else if (word.length === 4) finalScore += 2;
+            
+            if (analytics) { logEvent(analytics, 'submit_word', { word_length: word.length, score: finalScore, game_mode: isPracticeMode ? 'practice' : 'timed' }); }
+            if (timeBonus > 0 && !isPracticeMode) { timer += timeBonus; updateTimerUI(); }
+
+            foundWords.push({ word, score: finalScore, length: word.length });
+            createFlyingScore(finalScore, selectedTiles[0]);
+            triggerConfetti(selectedTiles);
+            setTimeout(() => { score += finalScore; updateScoreDisplay(); }, 500);
+            replaceSelectedTiles();
+        }
     }
+    
     clearSelection();
 }
 
+function updateDailyChallengeUI() {
+    const dailyContent = document.getElementById('daily-challenge-content');
+    if (!dailyContent || !allDailyWords) return;
 
-    function replaceSelectedTiles() {
-        let currentBoardLetters = Array.from(grid.children).map(t => t.dataset.letter);
-        selectedTiles.forEach(tile => { const index = parseInt(tile.dataset.id); currentBoardLetters[index] = null; });
-        const newBoard = generateAndValidateBoard(currentBoardLetters);
-        selectedTiles.forEach((tile) => {
-            const index = parseInt(tile.dataset.id); const letter = newBoard[index]; const points = letterConfig[letter].p;
-            tile.dataset.letter = letter; tile.dataset.points = points; tile.style.transform = 'scale(0)'; tile.dataset.bonus = '';
-            tile.classList.remove('bonus-DL', 'bonus-TL', 'bonus-DW', 'bonus-Time');
-            setTimeout(() => {
-                tile.innerHTML = `<span>${letter}<sub class="text-xs font-semibold ml-1">${points}</sub></span>`;
-                const bonusType = getBonusType();
-                if (bonusType) { tile.dataset.bonus = bonusType.type; tile.classList.add(bonusType.class); tile.innerHTML += `<div class="bonus-label">${bonusType.label}</div>`; }
-                tile.style.transform = 'scale(1)';
-            }, 200);
-        });
+    // --- Update main scoreboard ---
+    const scoreEl = dailyContent.querySelector('#daily-score');
+    const wordsEl = dailyContent.querySelector('#daily-word-count');
+    const progressBar = dailyContent.querySelector('#daily-progress-bar');
+    
+    // ✅ FIX: Get references to both text displays in the accordion trigger
+    const recentWordsEl = dailyContent.querySelector('#recent-words-display'); 
+    const summaryTextEl = dailyContent.querySelector('#accordion-summary-text'); 
+
+    if (scoreEl) scoreEl.textContent = score;
+    if (wordsEl) wordsEl.textContent = `${foundWords.length} / ${allDailyWords.size}`;
+    if (progressBar) {
+        const progressPercent = allDailyWords.size > 0 ? (foundWords.length / allDailyWords.size) * 100 : 0;
+        progressBar.style.width = `${progressPercent}%`;
     }
+    
+    // ✅ FIX: Update BOTH text displays
+    if(recentWordsEl) {
+        const recent = [...foundWords].slice(-5).reverse();
+        recentWordsEl.innerHTML = recent.map(fw => `<span class="bg-blue-100 text-blue-700 font-semibold text-xs px-2 py-0.5 rounded-md">${fw.word.toUpperCase()}</span>`).join('');
+    }
+    if(summaryTextEl) {
+        summaryTextEl.textContent = `You've found ${foundWords.length}/${allDailyWords.size} words!`;
+    }
+
+    // --- Update the accordion content ---
+    const totalWordsByLength = { 3: 0, 4: 0, 5: 0, 6: 0 };
+    allDailyWords.forEach(word => {
+        const len = word.length;
+        if (len === 3) totalWordsByLength[3]++;
+        else if (len === 4) totalWordsByLength[4]++;
+        else if (len === 5) totalWordsByLength[5]++;
+        else if (len >= 6) totalWordsByLength[6]++;
+    });
+
+    const foundWordsByLength = { 3: 0, 4: 0, 5: 0, 6: 0 };
+    foundWords.forEach(fw => {
+        const len = fw.word.length;
+        if (len === 3) foundWordsByLength[3]++;
+        else if (len === 4) foundWordsByLength[4]++;
+        else if (len === 5) foundWordsByLength[5]++;
+        else if (len >= 6) foundWordsByLength[6]++;
+    });
+
+    const labels = { 3: '3', 4: '4', 5: '5', 6: '6'};
+    for (let len = 3; len <= 6; len++) {
+        const countEl = dailyContent.querySelector(`#count-${labels[len]}`);
+        const progressEl = dailyContent.querySelector(`#progress-${labels[len]}`);
+        const foundCount = foundWordsByLength[len];
+        const totalCount = totalWordsByLength[len];
+        
+        if (countEl) countEl.textContent = `${foundCount}/${totalCount}`;
+        if (progressEl) {
+            const percentage = totalCount > 0 ? (foundCount / totalCount) * 100 : 0;
+            progressEl.style.width = `${percentage}%`;
+        }
+    }
+
+    const listEl = dailyContent.querySelector('#daily-found-words-list');
+    if (listEl) {
+        const sortedWords = [...foundWords].map(fw => fw.word).sort((a, b) => a.localeCompare(b));
+        if (sortedWords.length > 0) {
+            listEl.innerHTML = sortedWords.map(word => `<span class="bg-blue-100 text-blue-800 font-semibold text-xs px-2 py-0.5 rounded-md">${word.toUpperCase()}</span>`).join('');
+        } else {
+            listEl.innerHTML = `<p class="w-full text-center text-sm text-slate-400">You haven't found any words yet!</p>`;
+        }
+    }
+}
+
+// ✅ ADD THIS ENTIRE NEW FUNCTION
+async function saveDailyProgress() {
+    if (!db || !userId || currentGamemode !== 'daily') return;
+
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    const dailyDocRef = doc(db, `players/${userId}/dailyChallenges`, todayStr);
+    
+    const progress = {
+        score: score,
+        foundWords: foundWords,
+        lastPlayed: serverTimestamp()
+    };
+
+    try {
+        await setDoc(dailyDocRef, progress, { merge: true });
+        console.log("Daily progress saved.");
+    } catch (e) {
+        console.error("Failed to save daily progress:", e);
+    }
+}
+
+// ✅ ADD THIS ENTIRE NEW FUNCTION
+function getTileFromEvent(e) {
+    if (!tilePositions.length) return null;
+    const x = e.clientX;
+    const y = e.clientY;
+
+    for (const tilePos of tilePositions) {
+        const dx = x - tilePos.center.x;
+        const dy = y - tilePos.center.y;
+        if (Math.sqrt(dx * dx + dy * dy) < tilePos.hitRadius) {
+            return tilePos.el;
+        }
+    }
+    return null;
+}
     
     function clearSelection() { selectedTiles.forEach(t => t.classList.remove('selected')); selectedTiles = []; updateCurrentWord(); drawLines(); }
     
@@ -1272,7 +1590,9 @@ function triggerConfetti(tiles) {
     setTimeout(() => wrapper.remove(), 1500);
 }
 
-    function updateCurrentWord() { currentWordLettersEl.innerHTML = selectedTiles.map(t => `<span class="current-letter bg-white text-blue-500 font-bold text-xl p-1 rounded-md shadow-sm">${t.dataset.letter}</span>`).join(''); }
+function updateCurrentWord() {
+    currentWordLettersEl.innerHTML = selectedTiles.map(t => `<span class="current-letter bg-white text-blue-500 font-bold text-xl p-1 rounded-md shadow-sm">${t.dataset.letter}</span>`).join('');
+}
 
    function showWelcomeScreen() {
     modalContent.innerHTML = `
@@ -1556,48 +1876,26 @@ function triggerConfetti(tiles) {
         }
     }
     
-   function setupEventListeners() {
-    // --- Grid interaction listeners (no change here) ---
-    const getTileFromEvent = (e) => { const touch = e.touches ? e.touches[0] : e; const point = { x: touch.clientX, y: touch.clientY }; let closestTile = null; let minDistance = Infinity; tilePositions.forEach(tilePos => { const distance = Math.sqrt((point.x - tilePos.center.x)**2 + (point.y - tilePos.center.y)**2); if (distance < minDistance && distance < tilePos.hitRadius) { minDistance = distance; closestTile = tilePos.el; } }); return closestTile; };
-    const startInteraction = e => { e.preventDefault(); isMouseDown = true; clearSelection(); const tile = getTileFromEvent(e); handleInteraction(tile); };
-    const moveInteraction = e => { if (!isMouseDown) return; e.preventDefault(); const tile = getTileFromEvent(e); handleInteraction(tile); };
-    const endInteraction = () => { if (!isMouseDown) return; submitWord(); isMouseDown = false; };
-    
-    grid.addEventListener('pointerdown', startInteraction);
-    grid.addEventListener('pointermove', moveInteraction);
-    grid.addEventListener('pointerup', endInteraction);
-    grid.addEventListener('pointerleave', endInteraction);
-    window.addEventListener('resize', resizeCanvas);
-
-    // --- New, Corrected Pause Menu Logic ---
+   // ✅ REPLACE your old function with this
+function setupEventListeners() {
+    // This function will now only handle non-grid events, like the pause menu
     const pauseModal = document.getElementById('pause-modal');
     const resumeButton = document.getElementById('resume-game-button');
     const restartButton = document.getElementById('restart-game-button');
     const quitButton = document.getElementById('quit-game-button');
     const closePauseButton = document.getElementById('close-pause-modal-button');
 
-    // Function to resume the game
     const resumeGame = () => {
         pauseModal.classList.add('hidden');
-        // Only restart timers if not in the untimed daily mode
         if (currentGamemode !== 'daily' && timer > 0) {
             if (isPracticeMode) {
-                timerInterval = setInterval(() => {
-                    practiceTimeElapsed++;
-                    updatePracticeUI();
-                }, 1000);
+                timerInterval = setInterval(() => { practiceTimeElapsed++; updatePracticeUI(); }, 1000);
             } else {
-                timerInterval = setInterval(() => {
-                    timer--;
-                    updateTimerUI();
-                    if (timer <= 0) endGame();
-                }, 1000);
+                timerInterval = setInterval(() => { timer--; updateTimerUI(); if (timer <= 0) endGame(); }, 1000);
             }
         }
     };
 
-    // Use event delegation for the menu button, attached to the body
-    // This ensures the button works even after the UI is redrawn for daily mode
     document.body.addEventListener('click', (e) => {
         if (e.target.closest('#menu-button')) {
             e.stopPropagation();
@@ -1606,88 +1904,80 @@ function triggerConfetti(tiles) {
         }
     });
 
-    // Assign actions to the buttons inside the pause modal
     resumeButton.addEventListener('click', resumeGame);
     closePauseButton.addEventListener('click', resumeGame);
-
-    // When "New Game" is clicked, start the correct mode
     restartButton.addEventListener('click', () => {
         pauseModal.classList.add('hidden');
-        if (currentGamemode === 'daily') {
-            startGame(false, 'daily');
-        } else {
-            startGame(isPracticeMode);
-        }
+        startGame(isPracticeMode, currentGamemode);
     });
-
-    // When "Quit" is clicked
     quitButton.addEventListener('click', () => {
         pauseModal.classList.add('hidden');
         resetGame();
     });
-
-    // Also allow clicking the backdrop to resume
     pauseModal.addEventListener('click', (e) => {
-        if (e.target === pauseModal) {
-            resumeGame();
-        }
+        if (e.target === pauseModal) { resumeGame(); }
     });
 }
     
-    function cacheTilePositions() {
-        tilePositions = [];
-        for (const tile of grid.children) {
-            const rect = tile.getBoundingClientRect();
-            tilePositions.push({
-                el: tile,
-                center: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
-                hitRadius: 0.45 * tile.offsetWidth
-            });
-        }
-    }
-
-    function resizeCanvas() {
-        const gridRect = grid.getBoundingClientRect();
-        lineCanvas.width = gridRect.width;
-        lineCanvas.height = gridRect.height;
-        cacheTilePositions();
-        drawLines();
-    }
-
-    function drawLines() {
-        clearLines();
-        if (selectedTiles.length < 2) {
-            return;
-        }
-        ctx.beginPath();
-        ctx.strokeStyle = "rgba(59, 130, 246, 0.8)";
-        ctx.lineWidth = 12;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-
-        selectedTiles.forEach((tile, index) => {
-            const center = getTileCenter(tile);
-            if (index === 0) {
-                ctx.moveTo(center.x, center.y);
-            } else {
-                ctx.lineTo(center.x, center.y);
-            }
+    function cacheTilePositions(gridEl) {
+    if (!gridEl) return;
+    tilePositions = [];
+    for (const tile of gridEl.children) {
+        const rect = tile.getBoundingClientRect();
+        tilePositions.push({
+            el: tile,
+            center: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+            hitRadius: 0.45 * tile.offsetWidth
         });
-        ctx.stroke();
     }
+}
 
-    function clearLines() {
-        ctx.clearRect(0, 0, lineCanvas.width, lineCanvas.height);
-    }
+function resizeCanvas() {
+    if (!activeGridEl || !activeCanvasEl) return;
+    const gridRect = activeGridEl.getBoundingClientRect();
+    activeCanvasEl.width = gridRect.width;
+    activeCanvasEl.height = gridRect.height;
+    cacheTilePositions(activeGridEl);
+    drawLines();
+}
 
-    function getTileCenter(tile) {
-        const gridRect = grid.getBoundingClientRect();
-        const tileRect = tile.getBoundingClientRect();
-        return {
-            x: tileRect.left + tileRect.width / 2 - gridRect.left,
-            y: tileRect.top + tileRect.height / 2 - gridRect.top
-        };
+function drawLines() {
+    if (!activeCtx || !activeCanvasEl) return;
+    clearLines();
+    if (selectedTiles.length < 2) return;
+
+    activeCtx.beginPath();
+    activeCtx.strokeStyle = "rgba(59, 130, 246, 0.8)";
+    activeCtx.lineWidth = 12;
+    activeCtx.lineCap = "round";
+    activeCtx.lineJoin = "round";
+
+    selectedTiles.forEach((tile, index) => {
+        const center = getTileCenter(tile);
+        if (index === 0) {
+            activeCtx.moveTo(center.x, center.y);
+        } else {
+            activeCtx.lineTo(center.x, center.y);
+        }
+    });
+    activeCtx.stroke();
+}
+
+function clearLines() {
+    if (activeCtx && activeCanvasEl) {
+        activeCtx.clearRect(0, 0, activeCanvasEl.width, activeCanvasEl.height);
     }
+}
+
+function getTileCenter(tile) {
+    if (!activeGridEl) return { x: 0, y: 0 };
+    const gridRect = activeGridEl.getBoundingClientRect();
+    const tileRect = tile.getBoundingClientRect();
+    return {
+        x: tileRect.left + tileRect.width / 2 - gridRect.left,
+        y: tileRect.top + tileRect.height / 2 - gridRect.top
+    };
+}
 
     function checkNoClumps(board) {
         for (let row = 0; row <= 2; row++) {
