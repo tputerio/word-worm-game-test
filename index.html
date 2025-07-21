@@ -69,6 +69,16 @@
         
         /* Animations */
 
+@keyframes shake-sm {
+    0%, 100% { transform: translate(-50%, -50%) translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translate(-50%, -50%) translateX(-5px); }
+    20%, 40%, 60%, 80% { transform: translate(-50%, -50%) translateX(5px); }
+}
+.animate-shake {
+    animation: shake-sm 0.5s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+
                 @keyframes fade-in-out {
             0%, 100% { opacity: 0; transform: translateY(10px); }
             10%, 90% { opacity: 1; transform: translateY(0); }
@@ -433,30 +443,57 @@ function mulberry32(seed) {
  * @returns {Object} An object containing the board array and the set of all possible words.
  */
 function createDailyChallengeBoard() {
-    const todayStr = new Date().toLocaleDateString('en-CA'); // e.g., "2025-07-16"
+    const todayStr = new Date().toLocaleDateString('en-CA');
     let attempt = 0;
 
-    while (attempt < 500) {
+    while (attempt < 2000) {
         const seed = stringToSeed(`${todayStr}-${attempt}`);
         const rng = mulberry32(seed);
-
         const board = new Array(GRID_SIZE).fill(null).map(() => getRandomLetterSeeded(rng));
 
-        if (!isBoardPlayable(board)) { 
+        // 1. Basic Board Health Checks
+        const vowelCount = board.filter(letter => VOWELS.includes(letter)).length;
+        if (vowelCount < 4 || vowelCount > 8) {
+            attempt++;
+            continue;
+        }
+        const hardConsonantCount = board.filter(letter => HARD_CONSONANTS.includes(letter)).length;
+        if (hardConsonantCount > 2) {
+            attempt++;
+            continue;
+        }
+        const qIndex = board.indexOf("Q");
+        if (qIndex !== -1 && !getNeighbors(qIndex, board).some(letter => letter === "U")) {
+            attempt++;
+            continue;
+        }
+        if (!checkNoClumps(board)) {
             attempt++;
             continue;
         }
 
-        const allWords = solveBoard(board, fullDictionaryTrie);
-        
-        if (allWords.size >= 25 && allWords.size <= 75) {
-            console.log(`Daily board found for ${todayStr} in ${attempt + 1} attempts.`);
-            
-            // ✅ FIX: Generate 6 deterministic bonus tiles
-            const indices = Array.from({length: 16}, (_, i) => i);
-            let bonusTypes = ['DW', 'DW', 'TL', 'DL', 'DL', 'DL']; // 2xDW, 1xTL, 3xDL
+        // ✅ 2. Solve the board using ONLY the common dictionary
+        const commonWords = solveBoard(board, validationTrie);
 
-            // Shuffle both arrays using the same seeded RNG (Fisher-Yates shuffle)
+        // ✅ 3. New Rule: We just need a good number of common words (e.g., 30 to 50).
+        if (commonWords.size >= 30 && commonWords.size <= 50) {
+            // We'll still check for a good variety of word lengths for puzzle quality
+            const threeLetterWords = Array.from(commonWords).filter(w => w.length === 3).length;
+            const fourLetterWords = Array.from(commonWords).filter(w => w.length === 4).length;
+            const fiveLetterWords = Array.from(commonWords).filter(w => w.length >= 5).length;
+            if (threeLetterWords < 4 || fourLetterWords < 3 || fiveLetterWords < 1) {
+                attempt++;
+                continue;
+            }
+
+            // --- If all checks pass, we have a valid board! ---
+            console.log(`Daily board found for ${todayStr} in ${attempt + 1} attempts.`);
+            console.log(`Board Stats: ${commonWords.size} total words (from common dictionary).`);
+            console.log("All possible daily words:", Array.from(commonWords).sort());
+            
+            const indices = Array.from({length: 16}, (_, i) => i);
+            let bonusTypes = ['DW', 'DW', 'TL', 'DL', 'DL', 'DL'];
+
             for (let i = indices.length - 1; i > 0; i--) {
                 const j = Math.floor(rng() * (i + 1));
                 [indices[i], indices[j]] = [indices[j], indices[i]];
@@ -473,10 +510,12 @@ function createDailyChallengeBoard() {
 
             return {
                 board: board,
-                allWords: allWords,
-                bonuses: bonuses // Return the generated bonuses
+                // ✅ We now return the commonWords list as the definitive list for the whole puzzle.
+                allWords: commonWords,
+                bonuses: bonuses
             };
         }
+        
         attempt++;
     }
 
@@ -608,30 +647,24 @@ function showGameMessage(message, type = 'info', startTile = null) {
         success: 'bg-green-500'
     };
 
-    // ✅ FIX: In daily mode, if a startTile is provided, create the message there.
-    if (currentGamemode === 'daily' && startTile) {
-        const messageEl = document.createElement('div');
-        // Base styles for the flying message
-        messageEl.className = `absolute px-4 py-2 rounded-full font-bold text-white shadow-lg z-50 ${colors[type]}`;
-        messageEl.textContent = message;
-        
-        // Use the same fly-up animation as the score
-        messageEl.style.animation = 'fly-to-score 1.5s ease-in-out forwards';
-        
-        // Get the position of the starting tile
-        const rect = startTile.getBoundingClientRect();
-        messageEl.style.left = `${rect.left + rect.width / 2}px`;
-        messageEl.style.top = `${rect.top + rect.height / 2}px`;
-        // Center the message on its coordinates and scale it down slightly
-        messageEl.style.transform = 'translate(-50%, -50%) scale(0.9)';
-
-        document.body.appendChild(messageEl);
-        // Remove the element after the animation finishes
-        setTimeout(() => messageEl.remove(), 1500);
-        return; // Exit the function here
+    // ✅ FIX: In daily mode, center the message over the grid and apply a shake animation.
+    if (currentGamemode === 'daily' && activeGridEl) {
+        const gridWrapper = activeGridEl.parentElement;
+        if (gridWrapper) {
+            gridWrapper.style.position = 'relative'; 
+            const messageEl = document.createElement('div');
+            // Add the new animate-shake class
+            messageEl.className = `animate-shake absolute top-1/2 left-1/2 ${colors[type]} text-white text-sm font-bold px-4 py-2 rounded-full shadow-lg z-20`;
+            messageEl.textContent = message;
+            
+            gridWrapper.appendChild(messageEl);
+            // The message will disappear after the animation (1s)
+            setTimeout(() => messageEl.remove(), 1000); 
+        }
+        return; 
     }
 
-    // --- Fallback for other game modes or if no startTile is given ---
+    // --- Fallback for other game modes ---
     const parentEl = document.body;
     const messageEl = document.createElement('div');
     messageEl.className = `game-message fixed bottom-20 left-1/2 -translate-x-1/2 text-white text-sm font-bold px-4 py-2 rounded-full shadow-lg ${colors[type]}`;
@@ -926,8 +959,9 @@ function setupDailyUI(challengeData) {
                         <div id="daily-score" class="text-xl font-black text-amber-500">0</div>
                     </div>
                     <div class="pl-4">
-                        <button id="done-button" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg text-sm shadow-md">
-                            I'm Done
+                        <button id="done-button" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg text-sm shadow-md flex items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4 mr-1.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                            <span>Submit</span>
                         </button>
                     </div>
                 </div>
@@ -939,11 +973,14 @@ function setupDailyUI(challengeData) {
             <div id="accordion-container" class="relative z-30 mb-3">
                 <button id="accordion-trigger" class="w-full flex justify-between items-center p-2 bg-white rounded-xl shadow-md">
                     <div id="collapsed-view" class="flex-grow flex items-center gap-2 overflow-hidden pr-2">
-                        <span class="text-xs font-bold text-slate-500 shrink-0">LAST FOUND:</span>
-                        <div id="recent-words-display" class="flex gap-2 flex-nowrap"></div>
+                        <div id="instruction-text" class="text-xs italic text-slate-500 w-full pr-2">Find words, then hit 'Submit' when done!</div>
+                        <div id="last-found-view" class="hidden flex-grow flex items-center gap-2 overflow-hidden">
+                            <span class="text-xs font-bold text-slate-500 shrink-0">LAST FOUND:</span>
+                            <div id="recent-words-display" class="flex gap-2 flex-nowrap"></div>
+                        </div>
                     </div>
                     <div id="expanded-view" class="hidden flex-grow text-sm font-bold text-slate-700">
-                        <span id="accordion-summary-text">You've found 0/${totalWords} words!</span>
+                        <span id="accordion-summary-text"></span>
                     </div>
                     <svg id="accordion-arrow" class="w-4 h-4 text-slate-500 shrink-0 transition-transform" fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
                 </button>
@@ -963,18 +1000,24 @@ function setupDailyUI(challengeData) {
                             </div>
                             <div class="w-full bg-slate-200 rounded-full h-2"><div id="progress-4" class="bg-green-500 h-2 rounded-full" style="width: 0%"></div></div>
                         </div>
-                        <div>
+                        <div class="mb-4">
                             <div class="flex justify-between text-xs font-bold text-slate-500 mb-1">
                                 <span>5-letter</span><span id="count-5">0/0</span>
                             </div>
                             <div class="w-full bg-slate-200 rounded-full h-2"><div id="progress-5" class="bg-green-500 h-2 rounded-full" style="width: 0%"></div></div>
                         </div>
-                        <div>
+                        <div class="mb-4">
                             <div class="flex justify-between text-xs font-bold text-slate-500 mb-1">
-                                <span>6+ letter</span><span id="count-6">0/0</span>
+                                <span>6-letter</span><span id="count-6">0/0</span>
                             </div>
                             <div class="w-full bg-slate-200 rounded-full h-2"><div id="progress-6" class="bg-green-500 h-2 rounded-full" style="width: 0%"></div></div>
                         </div>
+                    </div>
+                    <div id="progress-7-container" class="hidden">
+                        <div class="flex justify-between text-xs font-bold text-slate-500 mb-1">
+                            <span>7-letter</span><span id="count-7">0/0</span>
+                        </div>
+                        <div class="w-full bg-slate-200 rounded-full h-2"><div id="progress-7" class="bg-green-500 h-2 rounded-full" style="width: 0%"></div></div>
                     </div>
                 </div>
             </div>
@@ -989,7 +1032,6 @@ function setupDailyUI(challengeData) {
     const accordionTrigger = dailyChallengeContentEl.querySelector('#accordion-trigger');
     const accordionContent = dailyChallengeContentEl.querySelector('#accordion-content');
     const accordionArrow = dailyChallengeContentEl.querySelector('#accordion-arrow');
-    // ✅ FIX: Get references to the two new views
     const collapsedView = dailyChallengeContentEl.querySelector('#collapsed-view');
     const expandedView = dailyChallengeContentEl.querySelector('#expanded-view');
 
@@ -997,7 +1039,6 @@ function setupDailyUI(challengeData) {
         accordionTrigger.addEventListener('click', () => {
             accordionContent.classList.toggle('hidden');
             accordionArrow.classList.toggle('rotate-180');
-            // ✅ FIX: Toggle the visibility of the two text views
             collapsedView.classList.toggle('hidden');
             expandedView.classList.toggle('hidden');
         });
@@ -1167,14 +1208,13 @@ function updateDailyChallengeUI() {
     const dailyContent = document.getElementById('daily-challenge-content');
     if (!dailyContent || !allDailyWords) return;
 
-    // --- Update main scoreboard ---
     const scoreEl = dailyContent.querySelector('#daily-score');
     const wordsEl = dailyContent.querySelector('#daily-word-count');
     const progressBar = dailyContent.querySelector('#daily-progress-bar');
-    
-    // ✅ FIX: Get references to both text displays in the accordion trigger
-    const recentWordsEl = dailyContent.querySelector('#recent-words-display'); 
     const summaryTextEl = dailyContent.querySelector('#accordion-summary-text'); 
+    const instructionText = dailyContent.querySelector('#instruction-text');
+    const lastFoundView = dailyContent.querySelector('#last-found-view');
+    const recentWordsEl = dailyContent.querySelector('#recent-words-display'); 
 
     if (scoreEl) scoreEl.textContent = score;
     if (wordsEl) wordsEl.textContent = `${foundWords.length} / ${allDailyWords.size}`;
@@ -1183,38 +1223,41 @@ function updateDailyChallengeUI() {
         progressBar.style.width = `${progressPercent}%`;
     }
     
-    // ✅ FIX: Update BOTH text displays
+    if (foundWords.length > 0) {
+        if (instructionText) instructionText.classList.add('hidden');
+        if (lastFoundView) lastFoundView.classList.remove('hidden');
+    }
+    
     if(recentWordsEl) {
         const recent = [...foundWords].slice(-5).reverse();
         recentWordsEl.innerHTML = recent.map(fw => `<span class="bg-blue-100 text-blue-700 font-semibold text-xs px-2 py-0.5 rounded-md">${fw.word.toUpperCase()}</span>`).join('');
     }
     if(summaryTextEl) {
-        summaryTextEl.textContent = `You've found ${foundWords.length}/${allDailyWords.size} words!`;
+        const remaining = allDailyWords.size - foundWords.length;
+        summaryTextEl.textContent = `You have ${remaining} words remaining!`;
     }
 
     // --- Update the accordion content ---
-    const totalWordsByLength = { 3: 0, 4: 0, 5: 0, 6: 0 };
+    const totalWordsByLength = { 3: 0, 4: 0, 5: 0, 6: 0, 7: 0 };
     allDailyWords.forEach(word => {
         const len = word.length;
-        if (len === 3) totalWordsByLength[3]++;
-        else if (len === 4) totalWordsByLength[4]++;
-        else if (len === 5) totalWordsByLength[5]++;
-        else if (len >= 6) totalWordsByLength[6]++;
+        if (len >= 3 && len <= 7) {
+             totalWordsByLength[len]++;
+        }
     });
 
-    const foundWordsByLength = { 3: 0, 4: 0, 5: 0, 6: 0 };
+    const foundWordsByLength = { 3: 0, 4: 0, 5: 0, 6: 0, 7: 0 };
     foundWords.forEach(fw => {
         const len = fw.word.length;
-        if (len === 3) foundWordsByLength[3]++;
-        else if (len === 4) foundWordsByLength[4]++;
-        else if (len === 5) foundWordsByLength[5]++;
-        else if (len >= 6) foundWordsByLength[6]++;
+        if (len >= 3 && len <= 7) {
+            foundWordsByLength[len]++;
+        }
     });
 
-    const labels = { 3: '3', 4: '4', 5: '5', 6: '6'};
-    for (let len = 3; len <= 6; len++) {
-        const countEl = dailyContent.querySelector(`#count-${labels[len]}`);
-        const progressEl = dailyContent.querySelector(`#progress-${labels[len]}`);
+    // Loop through all possible lengths (3 to 7)
+    for (let len = 3; len <= 7; len++) {
+        const countEl = dailyContent.querySelector(`#count-${len}`);
+        const progressEl = dailyContent.querySelector(`#progress-${len}`);
         const foundCount = foundWordsByLength[len];
         const totalCount = totalWordsByLength[len];
         
@@ -1222,6 +1265,16 @@ function updateDailyChallengeUI() {
         if (progressEl) {
             const percentage = totalCount > 0 ? (foundCount / totalCount) * 100 : 0;
             progressEl.style.width = `${percentage}%`;
+        }
+    }
+    
+    // ✅ FIX: Logic to show or hide the 7-letter progress bar
+    const progress7Container = dailyContent.querySelector('#progress-7-container');
+    if (progress7Container) {
+        if (totalWordsByLength[7] > 0) {
+            progress7Container.classList.remove('hidden');
+        } else {
+            progress7Container.classList.add('hidden');
         }
     }
 
