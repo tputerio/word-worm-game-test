@@ -31,7 +31,7 @@
   <link rel="preconnect" href="https://word-rush-game-9010a.firebaseapp.com">
   <link rel="preconnect" href="https://firestore.googleapis.com">
 
-<link rel="stylesheet" href="./dist/style.css?v=1.3">
+<link rel="stylesheet" href="./dist/style.css?v=1.6">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=block" media="print" onload="this.media='all'">
@@ -340,10 +340,9 @@
                     <span>New Game</span>
                 </button>
                 <button id="quit-game-button" class="w-full flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors border border-slate-200">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 mr-2 text-orange-500">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" />
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 mr-2 text-orange-500">                    <path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h7.5" />
                     </svg>
-                    <span>Quit Game</span>
+                    <span>Return Home</span>
                 </button>
             </div>
         </div>
@@ -353,7 +352,7 @@
 
 <script type="module" defer>
     // --- Firebase SDKs ---
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
+    import { getApps, initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
     import { getFirestore, collection, addDoc, getDocs, query, where, orderBy, limit, doc, getDoc, setDoc, updateDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
@@ -451,45 +450,27 @@ function createDailyChallengeBoard() {
         const rng = mulberry32(seed);
         const board = new Array(GRID_SIZE).fill(null).map(() => getRandomLetterSeeded(rng));
 
-        // 1. Basic Board Health Checks
+        // --- 1. Basic Board Health Checks ---
         const vowelCount = board.filter(letter => VOWELS.includes(letter)).length;
-        if (vowelCount < 4 || vowelCount > 8) {
-            attempt++;
-            continue;
-        }
+        if (vowelCount < 4 || vowelCount > 8) { attempt++; continue; }
         const hardConsonantCount = board.filter(letter => HARD_CONSONANTS.includes(letter)).length;
-        if (hardConsonantCount > 2) {
-            attempt++;
-            continue;
-        }
+        if (hardConsonantCount > 2) { attempt++; continue; }
         const qIndex = board.indexOf("Q");
-        if (qIndex !== -1 && !getNeighbors(qIndex, board).some(letter => letter === "U")) {
-            attempt++;
-            continue;
-        }
-        if (!checkNoClumps(board)) {
-            attempt++;
-            continue;
-        }
+        if (qIndex !== -1 && !getNeighbors(qIndex, board).some(letter => letter === "U")) { attempt++; continue; }
+        if (!checkNoClumps(board)) { attempt++; continue; }
 
-        // ✅ 2. Solve the board using ONLY the common dictionary
+        // --- 2. Word-Based Validation ---
         const commonWords = solveBoard(board, validationTrie);
+        const allWords = solveBoard(board, fullDictionaryTrie);
 
-        // ✅ 3. New Rule: We just need a good number of common words (e.g., 30 to 50).
-        if (commonWords.size >= 30 && commonWords.size <= 50) {
-            // We'll still check for a good variety of word lengths for puzzle quality
-            const threeLetterWords = Array.from(commonWords).filter(w => w.length === 3).length;
-            const fourLetterWords = Array.from(commonWords).filter(w => w.length === 4).length;
-            const fiveLetterWords = Array.from(commonWords).filter(w => w.length >= 5).length;
-            if (threeLetterWords < 4 || fourLetterWords < 3 || fiveLetterWords < 1) {
-                attempt++;
-                continue;
-            }
+        // ✅ FIX: The rule is now simpler: just require at least one word that is 6+ letters long.
+        const hasLongWord = Array.from(allWords).some(w => w.length >= 6);
 
-            // --- If all checks pass, we have a valid board! ---
+        // Check our main rules plus the new long word rule.
+        if (commonWords.size >= 30 && allWords.size <= 60 && hasLongWord) {
             console.log(`Daily board found for ${todayStr} in ${attempt + 1} attempts.`);
-            console.log(`Board Stats: ${commonWords.size} total words (from common dictionary).`);
-            console.log("All possible daily words:", Array.from(commonWords).sort());
+            console.log(`Board Stats: ${commonWords.size} common, ${allWords.size - commonWords.size} non-common. Total: ${allWords.size}.`);
+            console.log("All possible daily words:", Array.from(allWords).sort());
             
             const indices = Array.from({length: 16}, (_, i) => i);
             let bonusTypes = ['DW', 'DW', 'TL', 'DL', 'DL', 'DL'];
@@ -510,8 +491,7 @@ function createDailyChallengeBoard() {
 
             return {
                 board: board,
-                // ✅ We now return the commonWords list as the definitive list for the whole puzzle.
-                allWords: commonWords,
+                allWords: allWords,
                 bonuses: bonuses
             };
         }
@@ -549,93 +529,281 @@ function createDailyChallengeBoard() {
         showWelcomeScreen();
         loadAssets(); 
     }
+
+// ✅ REPLACE THIS FUNCTION
+async function endDailyChallenge() {
+    if (activeGridEl) {
+        activeGridEl.style.pointerEvents = 'none'; // Lock the grid
+    }
+
+    await submitDailyScoreToLeaderboard(score);
+
+    // ✅ FIX: Mark the challenge as completed for today in the player's progress doc
+    if (db && userId) {
+        try {
+            const todayStr = new Date().toLocaleDateString('en-CA');
+            const dailyDocRef = doc(db, `players/${userId}/dailyChallenges`, todayStr);
+            await setDoc(dailyDocRef, { completed: true }, { merge: true });
+        } catch (error) {
+            console.error("Error marking daily challenge as complete:", error);
+        }
+    }
+
+    const finalStats = {
+        score: score,
+        foundWords: foundWords,
+        totalCount: allDailyWords.size,
+    };
     
-    async function loadAssets() {
-        const playGameModeButton = document.getElementById('play-game-mode-button');
-        const playPracticeButton = document.getElementById('play-practice-button');
-        const loadingErrorEl = document.getElementById('loading-error');
-        const globalPlayCountSpan = document.getElementById('global-play-count');
+    showDailyEndScreen(finalStats);
+}
 
-        const initializeFirebase = async () => {
-            try {
-                const firebaseConfig = { apiKey: "AIzaSyBa2DPRjwaI-G5mz-OmHVXEDJ4_MzBAZgA",
-                                        authDomain: "word-rush-game-9010a.firebaseapp.com",
-                                        projectId: "word-rush-game-9010a",
-                                        storageBucket: "word-rush-game-9010a.appspot.com",
-                                        messagingSenderId: "551838491871",
-                                        appId: "1:551838491871:web:757325be04daab9289b56a",
-                                        measurementId: "G-D0TSQFY1XS"};
-                const app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
-                analytics = getAnalytics(app);
+// ✅ ADD THIS ENTIRE NEW FUNCTION
+function showDailyEndScreen(stats, isNewSubmission = true) {
+    endGameModal.classList.remove('hidden');
 
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        if (analytics && userId) {
-                              setUserId(analytics, userId);
-                                }
-                        console.log("Firebase connected. User ID:", userId);
-                        await checkAndResetDailyLeaderboard();
-                        fetchGlobalStats();
-                        fetchPlayerStats(userId);
-                    } else {
-                        signInAnonymously(auth).catch(err => console.error("Anonymous sign-in failed:", err));
-                    }
-                });
-            } catch (firebaseError) {
-                console.warn("Firebase features failed to load, continuing in offline mode:", firebaseError);
-                if (globalPlayCountSpan) globalPlayCountSpan.textContent = "N/A";
+    const foundWordsSet = new Set(stats.foundWords.map(fw => fw.word));
+    const allWordsSorted = Array.from(allDailyWords).sort();
+
+    const allWordsHTML = allWordsSorted.map(word => {
+        const isFound = foundWordsSet.has(word);
+        const tileClasses = isFound ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+        return `<span class="${tileClasses} font-semibold text-xs px-2 py-1 rounded-md shadow-sm">${word.toUpperCase()}</span>`;
+    }).join('');
+
+    const foundCount = stats.foundWords.length;
+    const totalCount = stats.totalCount;
+    const percentage = totalCount > 0 ? Math.round((foundCount / totalCount) * 100) : 0;
+
+    endGameModalContent.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
+            <h2 class="text-2xl font-black text-green-500">Daily Challenge Complete!</h2>
+            <p class="text-slate-600 mb-2 mt-2">Your final score is:</p>
+            <p id="final-score-display" class="text-6xl font-black text-slate-800 mb-3">${stats.score}</p>
+            <div id="daily-summary-container" class="h-14 flex items-center justify-center"></div>
+            <hr class="my-4">
+            <div class="text-left w-full">
+                <h3 class="text-lg font-bold text-slate-700 mb-2">All Possible Words (${foundCount}/${totalCount})</h3>
+                <div class="flex flex-wrap gap-2 max-h-24 overflow-y-auto pr-2">${allWordsHTML}</div>
+            </div>
+            <div id="share-link-container" class="h-10 flex items-center justify-center mt-4"></div>
+            <div class="flex space-x-2 mt-2">
+                <button id="endgame-leaderboard-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-base flex-1">Leaderboard</button>
+                <button id="return-home-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex-1">Return Home</button>
+            </div>
+            <div class="text-center text-xs text-slate-400 mt-4">
+                <p>&copy; 2025 Word Worm</p>
+                <p>
+                    <a href="/about.html" class="hover:underline">About</a> &bull;
+                    <a href="/contact.html" class="hover:underline">Contact</a> &bull;
+                    <a href="/privacy.html" class="hover:underline">Privacy Policy</a> &bull;
+                    <a href="/terms.html" class="hover:underline">Terms of Use</a>
+                </p>
+            </div>
+        </div>`;
+    
+    const summaryContainer = document.getElementById('daily-summary-container');
+    const showSummaryText = () => {
+        const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>`;
+        summaryContainer.innerHTML = `<p class="text-base font-bold text-green-600 flex items-center justify-center">${checkIcon}<span>You found ${foundCount} / ${totalCount} words (${percentage}%)</span></p>`;
+    };
+
+    const playerName = localStorage.getItem('wordRushPlayerName');
+    if (!playerName || playerName === 'Anonymous') {
+        summaryContainer.innerHTML = `
+            <div class="w-full">
+                <div class="flex space-x-2">
+                    <input type="text" id="player-name-daily" placeholder="Enter your name" class="w-full px-3 py-2 border border-slate-300 rounded-lg" maxlength="10">
+                    <button id="submit-name-daily" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Submit</button>
+                </div>
+            </div>`;
+        
+        const nameInput = document.getElementById('player-name-daily');
+        const submitBtn = document.getElementById('submit-name-daily');
+        
+        submitBtn.onclick = async () => {
+            const newPlayerName = nameInput.value.trim();
+            if (newPlayerName) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = '...';
+                localStorage.setItem('wordRushPlayerName', newPlayerName);
+                
+                if (userId && db) {
+                    const playerDocRef = doc(db, "players", userId);
+                    await setDoc(playerDocRef, { name: newPlayerName, hasSubmittedName: true }, { merge: true });
+                }
+                
+                await submitDailyScoreToLeaderboard(stats.score);
+                showSummaryText();
             }
         };
-        
-   const loadDictionaryAndEnableButtons = async () => {
-            if (playGameModeButton) {
-                playGameModeButton.disabled = true;
-                playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
-            }
-            if (playPracticeButton) {
-                playPracticeButton.disabled = true;
-                playPracticeButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
-            }
+    } else {
+        // ✅ FIX: Only submit the score if this is a new submission.
+        if (isNewSubmission) {
+            submitDailyScoreToLeaderboard(stats.score);
+        }
+        showSummaryText();
+    }
+    
+    const scoreDisplay = document.getElementById('final-score-display');
+    if (scoreDisplay) {
+        triggerEndGameConfetti(scoreDisplay);
+    }
+    
+    document.getElementById('return-home-button').onclick = resetGame;
+    document.getElementById('endgame-leaderboard-button').onclick = showLeaderboardModal;
+
+    const shareLinkContainer = document.getElementById('share-link-container');
+    if (navigator.share || navigator.clipboard) {
+        const shareIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5 mr-1"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" /></svg>`;
+        shareLinkContainer.innerHTML = `<a href="#" id="share-score-link" class="flex items-center text-blue-500 hover:underline font-bold">${shareIcon} Share Score</a>`;
+        document.getElementById('share-score-link').onclick = (e) => { e.preventDefault(); shareScore(); };
+    }
+}
+
+// ✅ ADD THIS ENTIRE NEW FUNCTION
+function showSubmitConfirmation() {
+    const modal = document.getElementById('message-modal');
+    const content = document.getElementById('modal-content');
+
+    if (!modal || !content) return;
+
+    content.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-xs mx-auto modal-enter">
+            <div class="flex justify-center items-center mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <h3 class="text-xl font-bold text-slate-800">You've found ${foundWords.length}/${allDailyWords.size} words!</h3>
             
-            try {
-            // Fetch both dictionaries at the same time
-            const [commonRes, fullRes] = await Promise.all([
-                fetch('assets/common-dictionary.json'),      // The new, smaller dictionary
-                fetch('assets/scrabble-dictionary.json') // The renamed, full dictionary
-            ]);
+            <p class="text-sm text-slate-500 mt-2 mb-6">Ready to submit? You can only submit the daily challenge once per day.</p>
+            
+            <div class="flex space-x-2">
+                        <button id="cancel-submit-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-base flex-1">Cancel</button>
+                <button id="confirm-submit-button" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base flex-1">Submit</button>
+            </div>
+        </div>
+    `;
 
-            if (!commonRes.ok || !fullRes.ok) {
-                throw new Error(`Dictionary download failed`);
+    const confirmBtn = document.getElementById('confirm-submit-button');
+    const cancelBtn = document.getElementById('cancel-submit-button');
+
+    const hideModal = () => {
+        modal.classList.add('hidden');
+        modal.style.zIndex = ''; 
+        content.innerHTML = ''; 
+    };
+
+    confirmBtn.onclick = () => {
+        hideModal();
+        endDailyChallenge();
+    };
+
+    cancelBtn.onclick = hideModal;
+    
+    modal.onclick = (e) => {
+        if (e.target === modal) {
+            hideModal();
+        }
+    };
+
+    modal.style.zIndex = '40';
+    modal.classList.remove('hidden');
+}
+    
+    async function loadAssets() {
+    const playGameModeButton = document.getElementById('play-game-mode-button');
+    const playPracticeButton = document.getElementById('play-practice-button');
+    const dailyChallengeButton = document.getElementById('play-daily-button');
+    const loadingErrorEl = document.getElementById('loading-error');
+    const globalPlayCountSpan = document.getElementById('global-play-count');
+
+    const initializeFirebase = async () => {
+        try {
+            // ✅ FIX: Check if Firebase is already initialized to prevent errors
+            if (getApps().length > 0) {
+                return; // If it is, don't do anything.
             }
 
-            const commonTrieData = await commonRes.json();
-            const fullTrieData = await fullRes.json();
+            const firebaseConfig = { apiKey: "AIzaSyBa2DPRjwaI-G5mz-OmHVXEDJ4_MzBAZgA",
+                                     authDomain: "word-rush-game-9010a.firebaseapp.com",
+                                     projectId: "word-rush-game-9010a",
+                                     storageBucket: "word-rush-game-9010a.appspot.com",
+                                     messagingSenderId: "551838491871",
+                                     appId: "1:551838491871:web:757325be04daab9289b56a",
+                                     measurementId: "G-D0TSQFY1XS"};
+            const app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+            analytics = getAnalytics(app);
 
-            // Create two separate Trie objects
-            validationTrie = new Trie(commonTrieData);
-            fullDictionaryTrie = new Trie(fullTrieData);
-
-            console.log("Both dictionaries loaded. Game is playable.");
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    userId = user.uid;
+                    if (analytics && userId) {
+                        setUserId(analytics, userId);
+                    }
+                    console.log("Firebase connected. User ID:", userId);
+                    await checkAndResetDailyLeaderboard();
+                    fetchGlobalStats();
+                    fetchPlayerStats(userId);
+                } else {
+                    signInAnonymously(auth).catch(err => console.error("Anonymous sign-in failed:", err));
+                }
+            });
+        } catch (firebaseError) {
+            console.warn("Firebase features failed to load, continuing in offline mode:", firebaseError);
+            if (globalPlayCountSpan) globalPlayCountSpan.textContent = "N/A";
+        }
+    };
+    
+    const loadDictionaryAndEnableButtons = async () => {
+        if (playGameModeButton && playGameModeButton.disabled) return; // Don't re-run if already loaded
+        
+        if (playGameModeButton) {
+            playGameModeButton.disabled = true;
+            playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
+        }
+        if (playPracticeButton) { playPracticeButton.disabled = true; }
+        if (dailyChallengeButton) {
+            dailyChallengeButton.disabled = true;
+            dailyChallengeButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
+        }
+        
+        try {
+            if (fullDictionaryTrie) { // Dictionaries are already loaded
+                console.log("Dictionaries already loaded.");
+            } else {
+                const [commonRes, fullRes] = await Promise.all([
+                    fetch('assets/common-dictionary.json'),
+                    fetch('assets/scrabble-dictionary.json')
+                ]);
+                if (!commonRes.ok || !fullRes.ok) throw new Error(`Dictionary download failed`);
+                validationTrie = new Trie(await commonRes.json());
+                fullDictionaryTrie = new Trie(await fullRes.json());
+                console.log("Both dictionaries loaded. Game is playable.");
+            }
 
             if (playGameModeButton) {
                 playGameModeButton.disabled = false;
                 playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg><span>Play</span></div>`;
             }
-            if (playPracticeButton) {
-                playPracticeButton.disabled = false;
-                playPracticeButton.innerHTML = `<div class="flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg><span>Practice</span></div>`;
+            if (playPracticeButton) { playPracticeButton.disabled = false; }
+            if (dailyChallengeButton) {
+                dailyChallengeButton.disabled = false;
+                dailyChallengeButton.innerHTML = `<div class="flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.25 6.087c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003 0-1.036-1.007-1.875-2.25-1.875s-2.25.84-2.25 1.875c0 .369.128.713.349 1.003.215.283.401.604.401.959v0a.64.64 0 0 1-.657.643 48.39 48.39 0 0 1-4.163-.3c.186 1.613.293 3.25.315 4.907a.656.656 0 0 1-.658.663v0c-.355 0-.676-.186-.959-.401a1.647 1.647 0 0 0-1.003-.349c-1.036 0-1.875 1.007-1.875 2.25s.84 2.25 1.875 2.25c.369 0 .713-.128 1.003-.349.283-.215.604-.401.959-.401v0c.31 0 .555.26.532.57a48.039 48.039 0 0 1-.642 5.056c1.518.19 3.058.309 4.616.354a.64.64 0 0 0 .657-.643v0c0-.355-.186-.676-.401-.959a1.647 1.647 0 0 1-.349-1.003c0-1.035 1.008-1.875 2.25-1.875 1.243 0 2.25.84 2.25 1.875 0 .369-.128.713-.349 1.003-.215.283-.4.604-.4.959v0c0 .333.277.599.61.58a48.1 48.1 0 0 0 5.427-.63 48.05 48.05 0 0 0 .582-4.717.532.532 0 0 0-.533-.57v0c-.355 0-.676.186-.959.401-.29.221-.634.349-1.003.349-1.035 0-1.875-1.007-1.875-2.25s.84-2.25 1.875-2.25c.37 0 .713.128 1.003.349.283.215.604.401.96.401v0a.656.656 0 0 0 .658-.663 48.422 48.422 0 0 0-.37-5.36c-1.886.342-3.81.574-5.766.689a.578.578 0 0 1-.61-.58v0Z" /></svg><span>Daily Challenge</span></div>`;
             }
+
         } catch (e) {
             console.error("Critical Asset loading failed (Dictionaries):", e);
             if (loadingErrorEl) loadingErrorEl.textContent = "Error: Could not load game dictionaries.";
             if (playGameModeButton) { playGameModeButton.innerHTML = `<span>Error</span>`; playGameModeButton.classList.add('bg-red-500'); }
             if (playPracticeButton) { playPracticeButton.innerHTML = `<span>Error</span>`; playPracticeButton.classList.add('bg-red-500'); }
+            if (dailyChallengeButton) { dailyChallengeButton.innerHTML = `<span>Error</span>`; dailyChallengeButton.classList.add('bg-red-500'); }
         }
     };
-
+    
     initializeFirebase();
     loadDictionaryAndEnableButtons();
 }
@@ -703,6 +871,9 @@ function showGameMessage(message, type = 'info', startTile = null) {
             highScore = playerData.highScore || 0;
             playerName = playerData.name && playerData.name !== 'Anonymous' ? playerData.name : 'Anonymous';
         }
+
+           // ✅ FIX: Sync the official name from Firebase to Local Storage
+        localStorage.setItem('wordRushPlayerName', playerName);
 
         const highScoreEl = document.getElementById('high-score');
         if (highScoreEl) highScoreEl.textContent = highScore;
@@ -796,88 +967,102 @@ function showGameMessage(message, type = 'info', startTile = null) {
     return null;
 }
 
-  async function startGame(practiceMode = false, gameMode = 'standard') {
-  if (gameMode === 'daily') {
-      currentGamemode = 'daily';
-      messageModal.classList.add('hidden');
-      
-      // ✅ FIX: This now returns { board, allWords, bonuses }
-      const challengeBoardData = createDailyChallengeBoard(); 
-      allDailyWords = challengeBoardData.allWords;
+ async function startGame(practiceMode = false, gameMode = 'standard') {
+    if (gameMode === 'daily') {
+        const challengeBoardData = createDailyChallengeBoard();
+        allDailyWords = challengeBoardData.allWords;
 
-      if (db && userId) {
-          const todayStr = new Date().toLocaleDateString('en-CA');
-          const dailyDocRef = doc(db, `players/${userId}/dailyChallenges`, todayStr);
-          try {
-              const docSnap = await getDoc(dailyDocRef);
-              if (docSnap.exists()) {
-                  const data = docSnap.data();
-                  score = data.score || 0;
-                  foundWords = data.foundWords || [];
-              } else {
-                  score = 0;
-                  foundWords = [];
-              }
-          } catch (e) {
-              console.error("Error loading daily progress:", e);
-              score = 0;
-              foundWords = [];
-          }
-      } else {
-          score = 0;
-          foundWords = [];
-      }
-      
-      // Pass the whole data object, including bonuses
-      setupDailyUI(challengeBoardData); 
-      return;
+        if (db && userId) {
+            const todayStr = new Date().toLocaleDateString('en-CA');
+            const dailyDocRef = doc(db, `players/${userId}/dailyChallenges`, todayStr);
+            try {
+                const docSnap = await getDoc(dailyDocRef);
 
-  } else { 
-      document.getElementById('daily-challenge-content').style.display = 'none';
-      gameContentEl.style.display = 'block';
-      currentGamemode = practiceMode ? 'practice' : 'standard';
-      isPracticeMode = practiceMode;
-      menuContainer.classList.remove('hidden');
-      clearInterval(timerInterval);
-      score = 0;
-      foundWords = [];
-      updateScoreDisplay();
+                if (docSnap.exists() && docSnap.data().completed === true) {
+                    console.log("Daily challenge already completed. Showing results.");
+                    const savedData = docSnap.data();
+                    
+                    const finalStats = {
+                        score: savedData.score || 0,
+                        foundWords: savedData.foundWords || [],
+                        totalCount: allDailyWords.size
+                    };
+                    
+                    messageModal.classList.add('hidden');
+                    showDailyEndScreen(finalStats, false);
+                    return;
+                
+                } else if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    score = data.score || 0;
+                    foundWords = data.foundWords || [];
+                } else {
+                    score = 0;
+                    foundWords = [];
+                }
+            } catch (e) {
+                console.error("Error loading daily progress:", e);
+                score = 0;
+                foundWords = [];
+            }
+        } else {
+            score = 0;
+            foundWords = [];
+        }
 
-      if (isPracticeMode) {
-          practiceTimeElapsed = 0;
-          topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-blue-500 uppercase tracking-wider">Pace</div><div id="pace-score" class="text-3xl font-black text-blue-400">0</div>`;
-          updatePracticeUI();
-          timerInterval = setInterval(() => { practiceTimeElapsed++; updatePracticeUI(); }, 1000);
-      } else {
-          const highScoreEl = document.getElementById('high-score');
-          const currentHighScore = highScoreEl ? highScoreEl.textContent : '0';
-          topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${currentHighScore}</div>`;
-          timer = GAME_TIME;
-          updateTimerUI();
-          if (db) { const statsRef = doc(db, "gameStats", "stats"); updateDoc(statsRef, { playCount: increment(1) }).catch(console.warn); }
-          timerInterval = setInterval(() => { timer--; updateTimerUI(); if (timer <= 0) endGame(); }, 1000);
-      }
+        currentGamemode = 'daily';
+        messageModal.classList.add('hidden');
+        setupDailyUI(challengeBoardData);
+        return;
 
-      messageModal.classList.add('hidden');
-      clearInterval(animationInterval);
-      activeGridEl = document.getElementById('grid');
-      activeCanvasEl = document.getElementById('line-canvas');
-      activeCtx = activeCanvasEl.getContext('2d');
-      createGrid(generateAndValidateBoard(), activeGridEl);
-      attachGridListeners(activeGridEl);
-      activeGridEl.style.pointerEvents = 'auto';
-  }
+    } else { // --- Standard & Practice Mode Logic ---
+        document.getElementById('daily-challenge-content').style.display = 'none';
+        gameContentEl.style.display = 'block';
+        
+        // ✅ FIX: Corrected the spelling of 'currentGamemode' here
+        currentGamemode = practiceMode ? 'practice' : 'standard';
+        
+        isPracticeMode = practiceMode;
+        menuContainer.classList.remove('hidden');
+        
+        clearInterval(timerInterval);
+        score = 0;
+        foundWords = [];
+        updateScoreDisplay();
+
+        if (isPracticeMode) {
+            practiceTimeElapsed = 0;
+            topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-blue-500 uppercase tracking-wider">Pace</div><div id="pace-score" class="text-3xl font-black text-blue-400">0</div>`;
+            updatePracticeUI();
+            timerInterval = setInterval(() => { practiceTimeElapsed++; updatePracticeUI(); }, 1000);
+        } else {
+            const highScoreEl = document.getElementById('high-score');
+            const currentHighScore = highScoreEl ? highScoreEl.textContent : '0';
+            topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${currentHighScore}</div>`;
+            timer = GAME_TIME;
+            updateTimerUI();
+            if (db) { const statsRef = doc(db, "gameStats", "stats"); updateDoc(statsRef, { playCount: increment(1) }).catch(console.warn); }
+            timerInterval = setInterval(() => { timer--; updateTimerUI(); if (timer <= 0) endGame(); }, 1000);
+        }
+
+        messageModal.classList.add('hidden');
+        clearInterval(animationInterval);
+        
+        activeGridEl = document.getElementById('grid');
+        activeCanvasEl = document.getElementById('line-canvas');
+        activeCtx = activeCanvasEl.getContext('2d');
+        createGrid(generateAndValidateBoard(), activeGridEl);
+        attachGridListeners(activeGridEl);
+        activeGridEl.style.pointerEvents = 'auto';
+    }
 }
 
 function resetGame() {
     clearInterval(timerInterval);
     endGameModal.classList.add('hidden');
     statsModal.classList.add('hidden');
-    
-    // ✅ FIX: Forcefully hide both content areas
     gameContentEl.style.display = 'none';
     document.getElementById('daily-challenge-content').style.display = 'none';
-
     score = 0;
     foundWords = [];
     updateScoreDisplay();
@@ -886,7 +1071,12 @@ function resetGame() {
     const currentHighScore = highScoreEl ? highScoreEl.textContent : '0';
 
     topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${currentHighScore}</div>`;
+    
     showWelcomeScreen();
+    // ✅ FIX: Manually re-fetch player stats to update the welcome screen
+    if (userId) {
+        fetchPlayerStats(userId);
+    }
 }
 
  // ✅ ADD THIS ENTIRE NEW FUNCTION
@@ -937,6 +1127,8 @@ function setupDailyUI(challengeData) {
     menuContainer.classList.remove('hidden');
 
     const totalWords = challengeData.allWords.size;
+    const today = new Date();
+    const dateString = `${today.getMonth() + 1}/${today.getDate()}/${String(today.getFullYear()).slice(-2)}`;
     
     dailyChallengeContentEl.innerHTML = `
         <div class="w-full max-w-sm mx-auto">
@@ -948,18 +1140,19 @@ function setupDailyUI(challengeData) {
                     </h1>
                 </div>
             </div>
+            
             <div class="bg-white rounded-xl shadow-md p-3 mb-3">
-                <div class="flex justify-between items-center">
+                <div class="flex items-center">
                     <div class="text-left">
                         <div class="text-xs font-bold text-slate-500">WORDS</div>
-                        <div id="daily-word-count" class="text-xl font-black text-slate-800">0 / ${totalWords}</div>
+                        <div id="daily-word-count" class="text-3xl font-black text-slate-800">0 / ${totalWords}</div>
                     </div>
-                    <div class="text-center">
+                    <div class="flex-1 text-center px-2">
                         <div class="text-xs font-bold text-slate-500">SCORE</div>
-                        <div id="daily-score" class="text-xl font-black text-amber-500">0</div>
+                        <div id="daily-score" class="text-3xl font-black text-amber-500">0</div>
                     </div>
-                    <div class="pl-4">
-                        <button id="done-button" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg text-sm shadow-md flex items-center">
+                    <div class="text-right">
+                        <button id="done-button" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg text-sm shadow-md flex items-center ml-auto">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4 mr-1.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
                             <span>Submit</span>
                         </button>
@@ -971,9 +1164,9 @@ function setupDailyUI(challengeData) {
             </div>
 
             <div id="accordion-container" class="relative z-30 mb-3">
-                <button id="accordion-trigger" class="w-full flex justify-between items-center p-2 bg-white rounded-xl shadow-md">
+                <button id="accordion-trigger" class="w-full flex justify-between items-center p-3 bg-white rounded-xl shadow-md">
                     <div id="collapsed-view" class="flex-grow flex items-center gap-2 overflow-hidden pr-2">
-                        <div id="instruction-text" class="text-xs italic text-slate-500 w-full pr-2">Find words, then hit 'Submit' when done!</div>
+                        <div id="instruction-text" class="text-xs text-slate-500 w-full pr-2"><strong>Daily Challenge (${dateString}):</strong> Find words, then hit Submit when done!</div>
                         <div id="last-found-view" class="hidden flex-grow flex items-center gap-2 overflow-hidden">
                             <span class="text-xs font-bold text-slate-500 shrink-0">LAST FOUND:</span>
                             <div id="recent-words-display" class="flex gap-2 flex-nowrap"></div>
@@ -1034,6 +1227,7 @@ function setupDailyUI(challengeData) {
     const accordionArrow = dailyChallengeContentEl.querySelector('#accordion-arrow');
     const collapsedView = dailyChallengeContentEl.querySelector('#collapsed-view');
     const expandedView = dailyChallengeContentEl.querySelector('#expanded-view');
+    const doneButton = dailyChallengeContentEl.querySelector('#done-button');
 
     if(accordionTrigger) {
         accordionTrigger.addEventListener('click', () => {
@@ -1042,6 +1236,10 @@ function setupDailyUI(challengeData) {
             collapsedView.classList.toggle('hidden');
             expandedView.classList.toggle('hidden');
         });
+    }
+
+    if (doneButton) {
+        doneButton.addEventListener('click', showSubmitConfirmation);
     }
 
     activeGridEl = dailyChallengeContentEl.querySelector('#daily-grid');
@@ -1084,18 +1282,39 @@ function setupDailyUI(challengeData) {
 }
 
 function replaceSelectedTiles() {
-    if (!activeGridEl) return; // Add guard clause
-    let currentBoardLetters = Array.from(activeGridEl.children).map(t => t.dataset.letter);
-    selectedTiles.forEach(tile => { const index = parseInt(tile.dataset.id); currentBoardLetters[index] = null; });
-    const newBoard = generateAndValidateBoard(currentBoardLetters);
+    // ✅ FIX: Get the word that was just found so we can avoid re-creating it.
+    const foundWordString = selectedTiles.map(t => t.dataset.letter).join('');
+
+    let currentBoardLetters = Array.from(grid.children).map(t => t.dataset.letter);
+    selectedTiles.forEach(tile => {
+        const index = parseInt(tile.dataset.id);
+        currentBoardLetters[index] = null;
+    });
+
+    // ✅ FIX: Pass the found word to the generator.
+    const newBoard = generateAndValidateBoard(currentBoardLetters, isBoardPlayable, foundWordString);
+    
     selectedTiles.forEach((tile) => {
-        const index = parseInt(tile.dataset.id); const letter = newBoard[index]; const points = letterConfig[letter].p;
-        tile.dataset.letter = letter; tile.dataset.points = points; tile.style.transform = 'scale(0)'; tile.dataset.bonus = '';
+        const index = parseInt(tile.dataset.id);
+        const letter = newBoard[index];
+        const points = letterConfig[letter].p;
+
+        tile.dataset.bonus = '';
         tile.classList.remove('bonus-DL', 'bonus-TL', 'bonus-DW', 'bonus-Time');
+        tile.style.transform = 'scale(0)';
+
         setTimeout(() => {
+            tile.dataset.letter = letter;
+            tile.dataset.points = points;
             tile.innerHTML = `<span>${letter}<sub class="text-xs font-semibold ml-1">${points}</sub></span>`;
+            
             const bonusType = getBonusType();
-            if (bonusType) { tile.dataset.bonus = bonusType.type; tile.classList.add(bonusType.class); tile.innerHTML += `<div class="bonus-label">${bonusType.label}</div>`; }
+            if (bonusType) {
+                tile.dataset.bonus = bonusType.type;
+                tile.classList.add(bonusType.class);
+                tile.innerHTML += `<div class="bonus-label">${bonusType.label}</div>`;
+            }
+
             tile.style.transform = 'scale(1)';
         }, 200);
     });
@@ -1135,13 +1354,11 @@ function replaceSelectedTiles() {
             return;
         }
         if (!allDailyWords.has(word)) {
-            // ✅ FIX: Pass the startTile to the message function
             showGameMessage("Not a valid word", "error", startTile);
             clearSelection();
             return;
         }
         if (foundWords.some(fw => fw.word === word)) {
-            // ✅ FIX: Pass the startTile to the message function
             showGameMessage("Already Found!", "info", startTile);
             clearSelection();
             return;
@@ -1168,7 +1385,10 @@ function replaceSelectedTiles() {
         score += finalScore;
         
         updateDailyChallengeUI(); 
-        saveDailyProgress();
+        
+        // ✅ FIX: We "catch" the expected Firebase error so it doesn't break the game.
+        saveDailyProgress().catch(err => console.warn("Failed to save progress (expected during testing):", err));
+        
         createFlyingScore(finalScore, selectedTiles[0]);
         triggerConfetti(selectedTiles);
 
@@ -1208,6 +1428,7 @@ function updateDailyChallengeUI() {
     const dailyContent = document.getElementById('daily-challenge-content');
     if (!dailyContent || !allDailyWords) return;
 
+    // --- References to UI elements ---
     const scoreEl = dailyContent.querySelector('#daily-score');
     const wordsEl = dailyContent.querySelector('#daily-word-count');
     const progressBar = dailyContent.querySelector('#daily-progress-bar');
@@ -1215,67 +1436,86 @@ function updateDailyChallengeUI() {
     const instructionText = dailyContent.querySelector('#instruction-text');
     const lastFoundView = dailyContent.querySelector('#last-found-view');
     const recentWordsEl = dailyContent.querySelector('#recent-words-display'); 
+    const collapsedView = dailyContent.querySelector('#collapsed-view');
 
+    // --- Update main scoreboard ---
     if (scoreEl) scoreEl.textContent = score;
     if (wordsEl) wordsEl.textContent = `${foundWords.length} / ${allDailyWords.size}`;
     if (progressBar) {
         const progressPercent = allDailyWords.size > 0 ? (foundWords.length / allDailyWords.size) * 100 : 0;
         progressBar.style.width = `${progressPercent}%`;
     }
-    
+
+    // --- Update accordion trigger bar ---
+    if (collapsedView) {
+        collapsedView.style.minHeight = '24px';
+    }
     if (foundWords.length > 0) {
         if (instructionText) instructionText.classList.add('hidden');
         if (lastFoundView) lastFoundView.classList.remove('hidden');
-    }
-    
-    if(recentWordsEl) {
-        const recent = [...foundWords].slice(-5).reverse();
-        recentWordsEl.innerHTML = recent.map(fw => `<span class="bg-blue-100 text-blue-700 font-semibold text-xs px-2 py-0.5 rounded-md">${fw.word.toUpperCase()}</span>`).join('');
+    } else {
+        if (instructionText) instructionText.classList.remove('hidden');
+        if (lastFoundView) lastFoundView.classList.add('hidden');
     }
     if(summaryTextEl) {
         const remaining = allDailyWords.size - foundWords.length;
         summaryTextEl.textContent = `You have ${remaining} words remaining!`;
     }
+    
+    if(recentWordsEl && lastFoundView) {
+        const recent = [...foundWords].slice(-5).reverse();
+        const container = recentWordsEl;
+        container.innerHTML = '';
 
-    // --- Update the accordion content ---
+        lastFoundView.style.visibility = 'hidden';
+        lastFoundView.classList.remove('hidden');
+
+        for (const fw of recent) {
+            const wordSpan = document.createElement('span');
+            wordSpan.className = "bg-blue-100 text-blue-700 font-semibold text-xs px-2 py-0.5 rounded-md";
+            wordSpan.textContent = fw.word.toUpperCase();
+            container.appendChild(wordSpan);
+
+            if (container.scrollWidth > container.clientWidth && container.clientWidth > 0) {
+                wordSpan.remove();
+                break;
+            }
+        }
+        lastFoundView.style.visibility = 'visible';
+        if (foundWords.length === 0) {
+            lastFoundView.classList.add('hidden');
+        }
+    }
+    
+    // --- Update the accordion dropdown content ---
     const totalWordsByLength = { 3: 0, 4: 0, 5: 0, 6: 0, 7: 0 };
     allDailyWords.forEach(word => {
         const len = word.length;
-        if (len >= 3 && len <= 7) {
-             totalWordsByLength[len]++;
-        }
+        if (len >= 3 && len <= 7) totalWordsByLength[len]++;
     });
 
     const foundWordsByLength = { 3: 0, 4: 0, 5: 0, 6: 0, 7: 0 };
     foundWords.forEach(fw => {
         const len = fw.word.length;
-        if (len >= 3 && len <= 7) {
-            foundWordsByLength[len]++;
-        }
+        if (len >= 3 && len <= 7) foundWordsByLength[len]++;
     });
 
-    // Loop through all possible lengths (3 to 7)
     for (let len = 3; len <= 7; len++) {
         const countEl = dailyContent.querySelector(`#count-${len}`);
         const progressEl = dailyContent.querySelector(`#progress-${len}`);
+        if (!countEl || !progressEl) continue;
         const foundCount = foundWordsByLength[len];
         const totalCount = totalWordsByLength[len];
+        countEl.textContent = `${foundCount}/${totalCount}`;
         
-        if (countEl) countEl.textContent = `${foundCount}/${totalCount}`;
-        if (progressEl) {
-            const percentage = totalCount > 0 ? (foundCount / totalCount) * 100 : 0;
-            progressEl.style.width = `${percentage}%`;
-        }
+        // ✅ FIX: If the total count is 0, make the bar 100% full (green).
+        const percentage = totalCount > 0 ? (foundCount / totalCount) * 100 : 100;
+        progressEl.style.width = `${percentage}%`;
     }
     
-    // ✅ FIX: Logic to show or hide the 7-letter progress bar
     const progress7Container = dailyContent.querySelector('#progress-7-container');
     if (progress7Container) {
-        if (totalWordsByLength[7] > 0) {
-            progress7Container.classList.remove('hidden');
-        } else {
-            progress7Container.classList.add('hidden');
-        }
+        progress7Container.classList.toggle('hidden', totalWordsByLength[7] === 0);
     }
 
     const listEl = dailyContent.querySelector('#daily-found-words-list');
@@ -1286,6 +1526,53 @@ function updateDailyChallengeUI() {
         } else {
             listEl.innerHTML = `<p class="w-full text-center text-sm text-slate-400">You haven't found any words yet!</p>`;
         }
+    }
+}
+
+// ✅ ADD THIS ENTIRE NEW FUNCTION
+async function submitDailyScoreToLeaderboard(finalScore) {
+    if (!db || !userId) {
+        console.warn("Firebase not ready, can't submit daily score.");
+        return;
+    }
+    const playerName = localStorage.getItem('wordRushPlayerName') || 'Anonymous';
+    if (playerName === 'Anonymous') {
+        console.log("Player is Anonymous, not submitting to daily leaderboard.");
+        return;
+    }
+
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    const leaderboardRef = doc(db, "leaderboards", "dailyChallenge");
+
+    // ✅ FIX: Add wordsFound and totalWords to the data we're saving.
+    const newScore = {
+        userId: userId,
+        name: playerName,
+        score: finalScore,
+        wordsFound: foundWords.length,
+        totalWords: allDailyWords.size
+    };
+
+    try {
+        await runTransaction(db, async (transaction) => {
+            const leaderboardDoc = await transaction.get(leaderboardRef);
+            
+            const savedDate = leaderboardDoc.exists() ? leaderboardDoc.data().date : null;
+            const currentScores = (leaderboardDoc.exists() && savedDate === todayStr) ? leaderboardDoc.data().topScores : [];
+            
+            // Remove any previous score from this user before adding the new one
+            const filteredScores = currentScores.filter(s => s.userId !== userId);
+            filteredScores.push(newScore);
+            
+            const newTopScores = filteredScores
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 10);
+            
+            transaction.set(leaderboardRef, { topScores: newTopScores, date: todayStr });
+        });
+        console.log("Daily score submitted successfully!");
+    } catch (error) {
+        console.error("Error submitting daily score:", error);
     }
 }
 
@@ -1533,7 +1820,9 @@ function getTileFromEvent(e) {
         const minutes = Math.floor(practiceTimeElapsed / 60);
         const seconds = practiceTimeElapsed % 60;
         timerEl.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-        timerEl.classList.remove('text-yellow-500', 'text-red-500', 'animate-pulse');
+
+        timerEl.classList.remove('text-yellow-500', 'text-red-500', 'animate-pulse', 'timer-warning');
+
         timerEl.classList.add('text-green-500');
         
         const pace = Math.round((score / Math.max(1, practiceTimeElapsed)) * 60);
@@ -1560,27 +1849,29 @@ function triggerConfetti(tiles) {
     });
 }
 
-    function triggerEndGameConfetti() {
-        const modalContent = document.getElementById('end-game-modal-content');
-        if (!modalContent) return;
-        const rect = modalContent.getBoundingClientRect();
-        const originX = rect.left + rect.width / 2;
-        const originY = rect.top + 30;
+   function triggerEndGameConfetti(originEl) {
+    // ✅ FIX: If no specific element is provided, do nothing.
+    // This prevents accidental, un-centered confetti.
+    if (!originEl) return;
 
-        for (let i = 0; i < 60; i++) {
-            const p = document.createElement('div');
-            p.className = 'particle';
-            const angle = Math.random() * Math.PI * 2;
-            const dist = Math.random() * 120 + 50; 
-            p.style.setProperty('--transform-end', `translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px)`);
-            p.style.left = `${originX - 4}px`;
-            p.style.top = `${originY - 4}px`;
-            const colors = ['#facc15', '#f59e0b', '#60a5fa', '#3b82f6', '#22c55e'];
-            p.style.background = colors[Math.floor(Math.random() * colors.length)];
-            document.body.appendChild(p);
-            setTimeout(() => p.remove(), 1200);
-        }
+    const rect = originEl.getBoundingClientRect();
+    const originX = rect.left + rect.width / 2;
+    const originY = rect.top + rect.height / 2;
+
+    for (let i = 0; i < 60; i++) {
+        const p = document.createElement('div');
+        p.className = 'particle';
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * 120 + 50; 
+        p.style.setProperty('--transform-end', `translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px)`);
+        p.style.left = `${originX - 4}px`;
+        p.style.top = `${originY - 4}px`;
+        const colors = ['#facc15', '#f59e0b', '#60a5fa', '#3b82f6', '#22c55e'];
+        p.style.background = colors[Math.floor(Math.random() * colors.length)];
+        document.body.appendChild(p);
+        setTimeout(() => p.remove(), 1200);
     }
+}
     
    function createFlyingScore(points, startTile) {
     const scale = 1; // All popups are now the same size
@@ -1732,41 +2023,65 @@ function updateCurrentWord() {
     document.getElementById('play-daily-button').onclick = () => startGame(false, 'daily');
 }
 
-    async function showLeaderboardModal() {
-        leaderboardModal.classList.remove('hidden');
-        leaderboardModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-xs mx-auto modal-enter">
-    <div class="flex justify-between items-center mb-4">
-        <h2 class="text-2xl font-bold text-slate-800 flex items-center">
-            Leaderboard 
-            <span class="inline-block w-6 h-6 ml-2">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="m6.115 5.19.319 1.913A6 6 0 0 0 8.11 10.36L9.75 12l-.387.775c-.217.433-.132.956.21 1.298l1.348 1.348c.21.21.329.497.329.795v1.089c0 .426.24.815.622 1.006l.153.076c.433.217.956.132 1.298-.21l.723-.723a8.7 8.7 0 0 0 2.288-4.042 1.087 1.087 0 0 0-.358-1.099l-1.33-1.108c-.251-.21-.582-.299-.905-.245l-1.17.195a1.125 1.125 0 0 1-.98-.314l-.295-.295a1.125 1.125 0 0 1 0-1.591l.13-.132a1.125 1.125 0 0 1 1.3-.21l.603.302a.809.809 0 0 0 1.086-1.086L14.25 7.5l1.256-.837a4.5 4.5 0 0 0 1.528-1.732l.146-.292M6.115 5.19A9 9 0 1 0 17.18 4.64M6.115 5.19A8.965 8.965 0 0 1 12 3c1.929 0 3.716.607 5.18 1.64" /></svg>
-            </span>
-        </h2>
-        <button id="close-leaderboard-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
-    </div>
-    <div class="flex p-1 bg-slate-200 rounded-lg mb-4">
-        <button id="daily-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">Daily</button>
-        <button id="all-time-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">All-Time</button>
-    </div>
-    <div id="leaderboard-loading-secondary" class="text-slate-500 p-2">Fetching Scores...</div>
-    <div id="leaderboard-scroll-container" class="relative max-h-[20rem] overflow-y-auto">
-        <div id="leaderboard-list-simple" class="space-y-2 text-left"></div>
-    </div>
-</div>`;
-        const dailyTab = document.getElementById('daily-tab');
-        const allTimeTab = document.getElementById('all-time-tab');
-        const listEl = document.getElementById('leaderboard-list-simple');
-        const loadingEl = document.getElementById('leaderboard-loading-secondary');
-        const displayTab = (type) => {
-            if (!db) { listEl.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard is offline.</p>`; if (loadingEl) loadingEl.style.display = 'none'; return; }
-            if(type === 'daily') { dailyTab.classList.add('active'); allTimeTab.classList.remove('active'); fetchAndDisplayLeaderboard('daily', listEl, loadingEl); } 
-            else { allTimeTab.classList.add('active'); dailyTab.classList.remove('active'); fetchAndDisplayLeaderboard('all-time', listEl, loadingEl); }
-        };
-        dailyTab.onclick = () => displayTab('daily');
-        allTimeTab.onclick = () => displayTab('all-time');
-        displayTab('daily'); 
-        document.getElementById('close-leaderboard-button').onclick = () => { leaderboardModal.classList.add('hidden'); };
-    }
+   async function showLeaderboardModal() {
+    leaderboardModal.classList.remove('hidden');
+    leaderboardModalContent.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-xs mx-auto modal-enter">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-slate-800 flex items-center">
+                    Leaderboard 
+                    <span class="inline-block w-6 h-6 ml-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="m6.115 5.19.319 1.913A6 6 0 0 0 8.11 10.36L9.75 12l-.387.775c-.217.433-.132.956.21 1.298l1.348 1.348c.21.21.329.497.329.795v1.089c0 .426.24.815.622 1.006l.153.076c.433.217.956.132 1.298-.21l.723-.723a8.7 8.7 0 0 0 2.288-4.042 1.087 1.087 0 0 0-.358-1.099l-1.33-1.108c-.251-.21-.582-.299-.905-.245l-1.17.195a1.125 1.125 0 0 1-.98-.314l-.295-.295a1.125 1.125 0 0 1 0-1.591l.13-.132a1.125 1.125 0 0 1 1.3-.21l.603.302a.809.809 0 0 0 1.086-1.086L14.25 7.5l1.256-.837a4.5 4.5 0 0 0 1.528-1.732l.146-.292M6.115 5.19A9 9 0 1 0 17.18 4.64M6.115 5.19A8.965 8.965 0 0 1 12 3c1.929 0 3.716.607 5.18 1.64" /></svg>
+                    </span>
+                </h2>
+                <button id="close-leaderboard-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
+            </div>
+            <div class="flex p-1 bg-slate-200 rounded-lg mb-4">
+                <button id="challenge-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">Challenge</button>
+                <button id="daily-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">Daily</button>
+                <button id="all-time-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">All-Time</button>
+            </div>
+            <div id="leaderboard-loading-secondary" class="text-slate-500 p-2">Fetching Scores...</div>
+            <div id="leaderboard-scroll-container" class="relative max-h-[20rem] overflow-y-auto">
+                <div id="leaderboard-list-simple" class="space-y-2 text-left"></div>
+            </div>
+        </div>`;
+
+    const challengeTab = document.getElementById('challenge-tab');
+    const dailyTab = document.getElementById('daily-tab');
+    const allTimeTab = document.getElementById('all-time-tab');
+    const listEl = document.getElementById('leaderboard-list-simple');
+    const loadingEl = document.getElementById('leaderboard-loading-secondary');
+    
+    const displayTab = (type) => {
+        if (!db) { listEl.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard is offline.</p>`; if (loadingEl) loadingEl.style.display = 'none'; return; }
+        
+        challengeTab.classList.remove('active');
+        dailyTab.classList.remove('active'); 
+        allTimeTab.classList.remove('active');
+
+        // ✅ FIX: Added logic to handle the new 'challenge' type
+        if(type === 'challenge') {
+            challengeTab.classList.add('active');
+            fetchAndDisplayLeaderboard('challenge', listEl, loadingEl);
+        } else if(type === 'daily') {
+            dailyTab.classList.add('active');
+            fetchAndDisplayLeaderboard('daily', listEl, loadingEl);
+        } else {
+            allTimeTab.classList.add('active');
+            fetchAndDisplayLeaderboard('all-time', listEl, loadingEl);
+        }
+    };
+
+    challengeTab.onclick = () => displayTab('challenge');
+    dailyTab.onclick = () => displayTab('daily');
+    allTimeTab.onclick = () => displayTab('all-time');
+    
+    // Default to showing the 'Challenge' leaderboard first
+    displayTab('challenge'); 
+    
+    document.getElementById('close-leaderboard-button').onclick = () => { leaderboardModal.classList.add('hidden'); };
+}
 
     async function showStatsModal() {
         statsModal.classList.remove('hidden');
@@ -1828,110 +2143,113 @@ function updateCurrentWord() {
         };
     }
     
-    async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
-        if (!listElement) return;
-        if (loadingElement) loadingElement.style.display = 'block';
-        listElement.innerHTML = '';
-        if (!db) {
-            listElement.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard is offline.</p>`;
-            if (loadingElement) loadingElement.style.display = 'none';
-            return;
-        }
-        try {
-            let html = '';
-            const icons = {
-                highScore: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg>',
-                totalPoints: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg>',
-                bestWord: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg>'
-            };
+ async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
+    if (!listElement) return;
+    if (loadingElement) loadingElement.style.display = 'block';
+    listElement.innerHTML = '';
+    if (!db) {
+        listElement.innerHTML = `<p class="text-red-500 text-center p-4">Leaderboard is offline.</p>`;
+        if (loadingElement) loadingElement.style.display = 'none';
+        return;
+    }
 
-            if (type === 'all-time') {
-                const leaderboardRef = doc(db, "leaderboards", "allTime");
-                const docSnap = await getDoc(leaderboardRef);
+    try {
+        let html = '';
+        const icons = {
+            highScore: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg>',
+            totalPoints: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg>',
+            bestWord: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg>'
+        };
 
-                if (!docSnap.exists() || !docSnap.data()) {
-                    html = `<p class="text-slate-500 text-center text-sm p-2">All-Time leaderboard is not available.</p>`;
-                } else {
-                    const data = docSnap.data();
-                    const categories = [
-                        { key: 'topByHighScore',   title: `${icons.highScore} High Score` },
-                        { key: 'topByTotalPoints', title: `${icons.totalPoints} Total Points` },
-                        { key: 'topByBestWord',    title: `${icons.bestWord} Best Word` }
-                    ];
+        if (type === 'challenge') {
+            const todayStr = new Date().toLocaleDateString('en-CA');
+            const leaderboardRef = doc(db, "leaderboards", "dailyChallenge");
+            const docSnap = await getDoc(leaderboardRef);
 
-                    for (const cat of categories) {
-                        html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center gap-2">${cat.title}</h3>`;
-                        const players = data[cat.key] || [];
+            // ✅ FIX: Added the header back, with the correct text and icon.
+            html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center gap-2">${icons.highScore} Score / Words Found</h3>`;
 
-                        if (players.length === 0) {
-                            html += `<p class="text-slate-500 text-center text-sm p-2">No players yet.</p>`;
-                        } else {
-                            const scores = players.map((player, i) => {
-                                let value;
-                                if (cat.key === 'topByBestWord') {
-                                    value = player.bestWord && player.bestWord.word ? `${player.bestWord.word.toUpperCase()} (${player.bestWord.score})` : 'N/A';
-                                } else if (cat.key === 'topByTotalPoints') {
-                                    value = player.totalPoints?.toLocaleString() || 0;
-                                } else {
-                                    value = player.score?.toLocaleString() || 0;
-                                }
-                                const isCurrentUser = player.userID === userId;
-                                return `<li class="flex items-center p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${player.name}</span><span class="font-bold text-green-500">${value}</span></li>`;
-                            }).join('');
-                            html += `<ol class="space-y-1">${scores}</ol>`;
-                        }
-                    }
-                }
-            } else { // Daily logic
-                const leaderboardRef = doc(db, "leaderboards", "daily");
-                const docSnap = await getDoc(leaderboardRef);
-
-                if (!docSnap.exists() || !docSnap.data().topScores || docSnap.data().topScores.length === 0) {
-                    html += `<p class="text-slate-500 text-center text-sm p-2">No scores yet today. Be the first!</p>`;
-                } else {
-                    const dailyPlayers = docSnap.data().topScores;
-                    const categories = [
-                        { key: 'dailyHighScore',  title: `${icons.highScore} High Score` },
-                        { key: 'dailyTotalScore', title: `${icons.totalPoints} Total Points` },
-                        { key: 'dailyBestWord',   title: `${icons.bestWord} Best Word` }
-                    ];
-
-                    for (const cat of categories) {
-                        html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center gap-2">${cat.title}</h3>`;
-                        
-                        const sortedPlayers = [...dailyPlayers].sort((a, b) => {
-                            if (cat.key === 'dailyBestWord') {
-                                return (b.dailyBestWord?.score || 0) - (a.dailyBestWord?.score || 0);
-                            }
-                            return (b[cat.key] || 0) - (a[cat.key] || 0);
-                        });
-
-                        const scores = sortedPlayers.map((player, i) => {
-                            let value;
-                            if (cat.key === 'dailyBestWord') {
-                                value = player.dailyBestWord && player.dailyBestWord.word ? `${player.dailyBestWord.word.toUpperCase()} (${player.dailyBestWord.score})` : 'N/A';
-                            } else {
-                                value = player[cat.key]?.toLocaleString() || 0;
-                            }
+            if (!docSnap.exists() || docSnap.data().date !== todayStr || !docSnap.data().topScores || docSnap.data().topScores.length === 0) {
+                html += `<p class="text-slate-500 text-center text-sm p-2">No scores yet today. Be the first!</p>`;
+            } else {
+                const players = docSnap.data().topScores;
+                // ✅ FIX: Reverted to the 3-part layout that matches the other leaderboards.
+                const scores = players.map((player, i) => {
+                    const isCurrentUser = player.userId === userId;
+                    return `
+                        <li class="flex items-center p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}">
+                            <span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span>
+                            <span class="font-semibold text-slate-800 flex-grow truncate mr-4">${player.name}</span>
+                            <div class="text-right">
+                                <span class="font-bold text-green-500">${player.score.toLocaleString()} pts</span>
+                                <span class="font-medium text-slate-500 text-xs ml-2">(${player.wordsFound}/${player.totalWords})</span>
+                            </div>
+                        </li>`;
+                }).join('');
+                html += `<ol class="space-y-1">${scores}</ol>`;
+            }
+        } else if (type === 'all-time') {
+            const leaderboardRef = doc(db, "leaderboards", "allTime");
+            const docSnap = await getDoc(leaderboardRef);
+            if (!docSnap.exists() || !docSnap.data()) {
+                 html = `<p class="text-slate-500 text-center text-sm p-2">All-Time leaderboard is not available.</p>`;
+            } else {
+                const data = docSnap.data();
+                const categories = [
+                    { key: 'topByHighScore', title: `${icons.highScore} High Score`, valueKey: 'score' },
+                    { key: 'topByTotalPoints', title: `${icons.totalPoints} Total Points`, valueKey: 'totalPoints' },
+                    { key: 'topByBestWord', title: `${icons.bestWord} Best Word`, valueKey: 'bestWord', nestedKey: 'score' }
+                ];
+                for (const cat of categories) {
+                    html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center gap-2">${cat.title}</h3>`;
+                    const players = data[cat.key] || [];
+                    if (players.length === 0) {
+                        html += `<p class="text-slate-500 text-center text-sm p-2">No players yet.</p>`;
+                    } else {
+                        const scores = players.map((player, i) => {
                             const isCurrentUser = player.userID === userId;
+                            let value = cat.nestedKey ? (player[cat.valueKey] ? `${player[cat.valueKey].word.toUpperCase()} (${player[cat.valueKey].score})` : 'N/A') : (player[cat.valueKey]?.toLocaleString() || 0);
                             return `<li class="flex items-center p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${player.name}</span><span class="font-bold text-green-500">${value}</span></li>`;
                         }).join('');
                         html += `<ol class="space-y-1">${scores}</ol>`;
                     }
                 }
             }
-            listElement.innerHTML = html;
-        } catch (e) {
-            console.error(`Could not fetch ${type} leaderboard`, e);
-            listElement.innerHTML = `<p class="text-red-500 text-center p-4">Could not load leaderboard.</p>`;
-        } finally {
-            if (loadingElement) loadingElement.style.display = 'none';
+        } else { // Daily logic for the timed game
+            const leaderboardRef = doc(db, "leaderboards", "daily");
+            const docSnap = await getDoc(leaderboardRef);
+            if (!docSnap.exists() || !docSnap.data().topScores || docSnap.data().topScores.length === 0) {
+                html += `<p class="text-slate-500 text-center text-sm p-2">No scores yet today. Be the first!</p>`;
+            } else {
+                const dailyPlayers = docSnap.data().topScores;
+                const categories = [
+                    { key: 'dailyHighScore', title: `${icons.highScore} High Score` },
+                    { key: 'dailyTotalScore', title: `${icons.totalPoints} Total Points` },
+                    { key: 'dailyBestWord', title: `${icons.bestWord} Best Word` }
+                ];
+                for (const cat of categories) {
+                    html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center gap-2">${cat.title}</h3>`;
+                    const sortedPlayers = [...dailyPlayers].sort((a, b) => (cat.key === 'dailyBestWord') ? (b.dailyBestWord?.score || 0) - (a.dailyBestWord?.score || 0) : (b[cat.key] || 0) - (a[cat.key] || 0));
+                    const scores = sortedPlayers.map((player, i) => {
+                        const isCurrentUser = player.userID === userId;
+                        let value = (cat.key === 'dailyBestWord') ? (player.dailyBestWord && player.dailyBestWord.word ? `${player.dailyBestWord.word.toUpperCase()} (${player.dailyBestWord.score})` : 'N/A') : (player[cat.key]?.toLocaleString() || 0);
+                        return `<li class="flex items-center p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${player.name}</span><span class="font-bold text-green-500">${value}</span></li>`;
+                    }).join('');
+                    html += `<ol class="space-y-1">${scores}</ol>`;
+                }
+            }
         }
+        listElement.innerHTML = html;
+    } catch (e) {
+        console.error(`Could not fetch ${type} leaderboard`, e);
+        listElement.innerHTML = `<p class="text-red-500 text-center p-4">Could not load leaderboard.</p>`;
+    } finally {
+        if (loadingElement) loadingElement.style.display = 'none';
     }
+}
     
    // ✅ REPLACE your old function with this
 function setupEventListeners() {
-    // This function will now only handle non-grid events, like the pause menu
     const pauseModal = document.getElementById('pause-modal');
     const resumeButton = document.getElementById('resume-game-button');
     const restartButton = document.getElementById('restart-game-button');
@@ -1953,6 +2271,10 @@ function setupEventListeners() {
         if (e.target.closest('#menu-button')) {
             e.stopPropagation();
             clearInterval(timerInterval);
+            
+            // ✅ FIX: Hides the 'New Game' button if the mode is 'daily', and shows it otherwise.
+            restartButton.classList.toggle('hidden', currentGamemode === 'daily');
+            
             pauseModal.classList.remove('hidden');
         }
     });
@@ -2052,7 +2374,7 @@ function getTileCenter(tile) {
         return true;
     }
     
-    function generateAndValidateBoard(existingBoard = null) {
+    function generateAndValidateBoard(existingBoard = null, validatorFn = isBoardPlayable, wordToAvoid = null) {
     const MAX_ATTEMPTS = 200;
 
     for (let i = 0; i < MAX_ATTEMPTS; i++) {
@@ -2064,24 +2386,26 @@ function getTileCenter(tile) {
             }
         });
 
-        // Check if the dictionaries have been loaded. If so, validate the board.
-        if (validationTrie && isBoardPlayable(board)) {
-            // --- THIS IS WHERE YOU ADD THE CONSOLE LOG ---
+        if (validatorFn(board)) {
+            if (wordToAvoid) {
+                const newWords = solveBoard(board, fullDictionaryTrie);
+                if (newWords.has(wordToAvoid)) {
+                    continue; 
+                }
+            }
+            // ✅ FIX: The console message has been added back.
             console.log(`Generated a valid board in ${i + 1} attempts.`);
-            return board;
-        }
-
-        // If dictionaries haven't loaded yet, just return the random board to avoid errors.
-        if (!validationTrie) {
             return board;
         }
     }
 
-    // This part runs ONLY if the loop fails 10,000 times.
     console.error(`FAILED to generate a valid board after ${MAX_ATTEMPTS} attempts.`);
     
-    // It returns a safe, pre-defined board to prevent errors.
-    return ['W', 'O', 'R', 'D', 'W', 'O', 'R', 'M', 'G', 'A', 'M', 'E', 'P', 'L', 'A', 'Y'];
+    let fallbackBoard = existingBoard ? [...existingBoard] : new Array(GRID_SIZE).fill(null);
+    fallbackBoard.forEach((tile, index) => {
+        if (tile === null) fallbackBoard[index] = getRandomLetter();
+    });
+    return fallbackBoard;
 }
     
    function isBoardPlayable(board) {
@@ -2196,60 +2520,64 @@ function getTileCenter(tile) {
     }
 
     function showEndGameScreen() {
-        endGameModal.classList.remove('hidden');
-        triggerEndGameConfetti();
-        
-        const sortedWords = [...foundWords].sort((a,b)=>b.score-a.score);
-        const foundWordsHTML = sortedWords.length ? sortedWords.map(fw => `<div class="flex justify-between text-sm p-1 ${sortedWords.indexOf(fw) % 2 === 0 ? 'bg-slate-50' : ''} rounded"><span class="font-semibold">${fw.word.toUpperCase()}</span><span>+${fw.score}</span></div>`).join('') : '<p class="text-sm text-slate-500 text-center py-4">No words found.</p>';
+    endGameModal.classList.remove('hidden');
+    // We will call the confetti function later, so it's removed from here.
+    
+    const sortedWords = [...foundWords].sort((a,b)=>b.score-a.score);
+    const foundWordsHTML = sortedWords.length ? sortedWords.map(fw => `<div class="flex justify-between text-sm p-1 ${sortedWords.indexOf(fw) % 2 === 0 ? 'bg-slate-50' : ''} rounded"><span class="font-semibold">${fw.word.toUpperCase()}</span><span>+${fw.score}</span></div>`).join('') : '<p class="text-sm text-slate-500 text-center py-4">No words found.</p>';
 
-        endGameModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
-            <h2 class="text-3xl font-black text-green-500">Great Game!</h2>
-            <p class="text-slate-600 mb-2">Your final score is:</p>
-            <p class="text-6xl font-black text-slate-800 mb-3">${score}</p>
-            <div id="submission-container" class="h-8 flex items-center justify-center">
-                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
+    endGameModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
+        <h2 class="text-3xl font-black text-green-500">Great Game!</h2>
+        <p class="text-slate-600 mb-2">Your final score is:</p>
+        <p id="final-score-display" class="text-6xl font-black text-slate-800 mb-3">${score}</p>
+        <div id="submission-container" class="h-8 flex items-center justify-center">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
+        </div>
+        <hr class="my-4">
+        <div class="text-left w-full">
+            <div class="flex justify-between items-baseline mb-2">
+                <h3 class="text-xl font-bold text-slate-700">Your Words (${foundWords.length})</h3>
+                <button id="endgame-stats-button" class="flex items-center text-base font-bold text-blue-500 hover:text-blue-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg>
+                    <span class="ml-1">Your Stats</span>
+                </button>
             </div>
-            <hr class="my-4">
-            <div class="text-left w-full">
-                <div class="flex justify-between items-baseline mb-2">
-                    <h3 class="text-xl font-bold text-slate-700">Your Words (${foundWords.length})</h3>
-                    <button id="endgame-stats-button" class="flex items-center text-base font-bold text-blue-500 hover:text-blue-600">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg>
-                        <span class="ml-1">Your Stats</span>
-                    </button>
-                </div>
-                <div class="space-y-1 max-h-48 overflow-y-auto pr-2">${foundWordsHTML}</div>
-            </div>
-            <div id="share-link-container" class="h-10 flex items-center justify-center"></div>
-            <div class="flex space-x-2 mt-3">
-                <button id="endgame-leaderboard-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-base flex-1">Leaderboard</button>
-                <button id="play-again-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex-1">Play Again</button>
-            </div>
-        
-
+            <div class="space-y-1 max-h-48 overflow-y-auto pr-2">${foundWordsHTML}</div>
+        </div>
+        <div id="share-link-container" class="h-10 flex items-center justify-center"></div>
+        <div class="flex space-x-2 mt-3">
+            <button id="endgame-leaderboard-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-base flex-1">Leaderboard</button>
+            <button id="play-again-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex-1">Play Again</button>
+        </div>
         <div class="text-center text-xs text-slate-400 mt-4">
-  <p>&copy; 2025 Word Worm</p>
-  <p>
-    <a href="/about.html" class="hover:underline">About</a> &bull;
-    <a href="/contact.html" class="hover:underline">Contact</a> &bull;
-    <a href="/privacy.html" class="hover:underline">Privacy Policy</a> &bull;
-    <a href="/terms.html" class="hover:underline">Terms of Use</a>
-  </p>
-</div>
+            <p>&copy; 2025 Word Worm</p>
+            <p>
+                <a href="/about.html" class="hover:underline">About</a> &bull;
+                <a href="/contact.html" class="hover:underline">Contact</a> &bull;
+                <a href="/privacy.html" class="hover:underline">Privacy Policy</a> &bull;
+                <a href="/terms.html" class="hover:underline">Terms of Use</a>
+            </p>
+        </div>
+    </div>`;
 
-        </div>`;
-
-        document.getElementById('play-again-button').onclick = resetGame;
-        document.getElementById('endgame-leaderboard-button').onclick = showLeaderboardModal;
-        document.getElementById('endgame-stats-button').onclick = showStatsModal;
-        
-        const shareLinkContainer = document.getElementById('share-link-container');
-        if (navigator.share || navigator.clipboard) {
-            const shareIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5 mr-1"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" /></svg>`;
-            shareLinkContainer.innerHTML = `<a href="#" id="share-score-link" class="flex items-center text-blue-500 hover:underline font-bold">${shareIcon} Share Score</a>`;
-            document.getElementById('share-score-link').onclick = (e) => { e.preventDefault(); shareScore(); };
-        }
+    // ✅ 2. Find the score element we just created
+    const scoreDisplay = document.getElementById('final-score-display');
+    // ✅ 3. Call the confetti function with the score element as the origin
+    if (scoreDisplay) {
+        triggerEndGameConfetti(scoreDisplay);
     }
+
+    document.getElementById('play-again-button').onclick = resetGame;
+    document.getElementById('endgame-leaderboard-button').onclick = showLeaderboardModal;
+    document.getElementById('endgame-stats-button').onclick = showStatsModal;
+    
+    const shareLinkContainer = document.getElementById('share-link-container');
+    if (navigator.share || navigator.clipboard) {
+        const shareIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5 mr-1"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.5 0 0 0-3.933 2.185Z" /></svg>`;
+        shareLinkContainer.innerHTML = `<a href="#" id="share-score-link" class="flex items-center text-blue-500 hover:underline font-bold">${shareIcon} Share Score</a>`;
+        document.getElementById('share-score-link').onclick = (e) => { e.preventDefault(); shareScore(); };
+    }
+}
     
     function updateEndGameSubmissionUI(playerName, rankInfo) {
         const submissionContainer = document.getElementById('submission-container');
@@ -2321,6 +2649,12 @@ function getTileCenter(tile) {
                   <div><strong class="font-semibold text-slate-700">Letter Point Values:</strong>
                       <div id="letter-values-container" class="flex flex-wrap gap-1 mt-1"></div>
                   </div>
+
+                  <div class="pt-2 mt-2 border-t">
+                    <strong class="font-semibold text-slate-700">Daily Challenge Mode:</strong>
+                    <p class="mt-1">The Daily Challenge is a static board that resets every day. Find as many words as you can, and the hit 'Submit' when done to be added to the leaderboard!</p>
+                </div>
+
                   <!-- NEW PRACTICE BUTTON ADDED HERE -->
                  <div class="pt-4 mt-4 border-t border-slate-200">
                 <p class="text-center text-sm font-semibold text-slate-600 mb-2">Practice without the timer here!</p>
