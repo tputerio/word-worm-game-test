@@ -492,7 +492,7 @@ function createDailyChallengeBoard() {
             return {
                 board: board,
                 allWords: allWords,
-                bonuses: bonuses
+                bonuses: []
             };
         }
         
@@ -925,13 +925,15 @@ function showGameMessage(message, type = 'info', startTile = null) {
                 tile.dataset.bonus = bonusInfo.type;
             }
         } else {
-            // Fallback to random bonuses for standard/practice modes
-            const randomBonus = getBonusType();
-            if (randomBonus) {
-                bonusType = randomBonus;
-                tile.dataset.bonus = randomBonus.type;
-            }
+             // ✅ FIX: Add a check to prevent bonus tiles in the daily challenge
+            if (currentGamemode !== 'daily') {
+                const randomBonus = getBonusType();
+                if (randomBonus) {
+                    bonusType = randomBonus;
+                    tile.dataset.bonus = randomBonus.type;
+                }
         }
+    }
 
         if (bonusType) {
             tile.classList.add(bonusType.class);
@@ -1321,18 +1323,25 @@ function replaceSelectedTiles() {
 }
     
     function handleInteraction(tile) {
-        if (!tile || !isMouseDown) return;
-        const lastSelected = selectedTiles[selectedTiles.length - 1];
-        if (selectedTiles.length > 1 && tile === selectedTiles[selectedTiles.length - 2]) {
-            const lastTile = selectedTiles.pop();
-            lastTile.classList.remove('selected');
-        } else if (!selectedTiles.includes(tile) && (!lastSelected || isAdjacent(tile, lastSelected))) {
-            selectedTiles.push(tile);
-            tile.classList.add('selected');
-        }
-        updateCurrentWord();
-        drawLines();
+    if (!tile || !isMouseDown) return;
+    const lastSelected = selectedTiles[selectedTiles.length - 1];
+
+    // ✅ FIX: If the finger is still over the same tile, do nothing.
+    // This prevents the rapid add/remove "flicker" in the word builder.
+    if (tile === lastSelected) {
+        return;
     }
+
+    if (selectedTiles.length > 1 && tile === selectedTiles[selectedTiles.length - 2]) {
+        const lastTile = selectedTiles.pop();
+        lastTile.classList.remove('selected');
+    } else if (!selectedTiles.includes(tile) && (!lastSelected || isAdjacent(tile, lastSelected))) {
+        selectedTiles.push(tile);
+        tile.classList.add('selected');
+    }
+    updateCurrentWord();
+    drawLines();
+}
     
     function isAdjacent(t1, t2) {
         if (!t1 || !t2) return false;
@@ -1376,10 +1385,10 @@ function replaceSelectedTiles() {
             baseScore += letterScore;
         });
         let finalScore = baseScore * wordMultiplier;
-        if (word.length >= 7) finalScore += 20;
-        else if (word.length === 6) finalScore += 10;
-        else if (word.length === 5) finalScore += 5;
-        else if (word.length === 4) finalScore += 2;
+        if (word.length >= 7) finalScore += 40;
+        else if (word.length === 6) finalScore += 20;
+        else if (word.length === 5) finalScore += 10;
+        else if (word.length === 4) finalScore += 5;
 
         foundWords.push({ word, score: finalScore, length: word.length });
         score += finalScore;
@@ -2641,8 +2650,8 @@ function getTileCenter(tile) {
                  <div><strong class="font-semibold text-slate-700">Long Word Bonus:</strong>
                      <table class="w-full mt-1 text-left text-xs">
                          <tbody>
-                             <tr><td class="py-0.5 pr-2">4 Letters: <span class="font-medium">+2 pts</span></td><td class="py-0.5">6 Letters: <span class="font-medium">+10 pts</span></td></tr>
-                             <tr><td class="py-0.5 pr-2">5 Letters: <span class="font-medium">+5 pts</span></td><td class="py-0.5">7+ Letters: <span class="font-medium">+20 pts</span></td></tr>
+                             <tr><td class="py-0.5 pr-2">4 Letters: <span class="font-medium">+5 pts</span></td><td class="py-0.5">6 Letters: <span class="font-medium">+200 pts</span></td></tr>
+                             <tr><td class="py-0.5 pr-2">5 Letters: <span class="font-medium">+10 pts</span></td><td class="py-0.5">7+ Letters: <span class="font-medium">+40 pts</span></td></tr>
                          </tbody>
                      </table>
                  </div>
