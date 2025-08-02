@@ -503,25 +503,6 @@ function createDailyChallengeBoard() {
     return { board: ['W','O','R','D','W','O','R','M','G','A','M','E','P','L','A','Y'], allWords: new Set(), bonuses: [] };
 }
 
-    async function checkAndResetDailyLeaderboard() {
-        if (!db) return;
-        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-        const leaderboardRef = doc(db, "leaderboards", "daily");
-
-        try {
-            const docSnap = await getDoc(leaderboardRef);
-            if (!docSnap.exists() || docSnap.data().lastReset !== todayStr) {
-                console.log(`Resetting daily leaderboard for ${todayStr}...`);
-                await setDoc(leaderboardRef, {
-                    lastReset: todayStr,
-                    topScores: []
-                });
-            }
-        } catch (e) {
-            console.error("Could not check or reset daily leaderboard:", e);
-        }
-    }
-
     // --- Init ---
     function main() {
         setupEventListeners();
@@ -745,7 +726,6 @@ function showSubmitConfirmation() {
                         setUserId(analytics, userId);
                     }
                     console.log("Firebase connected. User ID:", userId);
-                    await checkAndResetDailyLeaderboard();
                     fetchGlobalStats();
                     fetchPlayerStats(userId);
                 } else {
@@ -970,68 +950,93 @@ function showGameMessage(message, type = 'info', startTile = null) {
 }
 
  async function startGame(practiceMode = false, gameMode = 'standard') {
+    // This check prevents any game mode from starting before Firebase is ready.
+    if (!db) {
+        showGameMessage("Connecting...");
+        return;
+    }
+
     if (gameMode === 'daily') {
-        const challengeBoardData = createDailyChallengeBoard();
-        allDailyWords = challengeBoardData.allWords;
+        const dailyButton = document.getElementById('play-daily-button');
+        if (!dailyButton || dailyButton.disabled) return;
+        const originalButtonHTML = dailyButton.innerHTML;
+        dailyButton.disabled = true;
+        dailyButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
+
+        let challengeBoardData = null;
+        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+        
+        // ✅ This loop tries to fetch the puzzle for up to 10 seconds.
+        const startTime = Date.now();
+        while (Date.now() - startTime < 10000) { // 10 second timeout
+            try {
+                // 1. Try to get from local browser cache
+                const cachedPuzzleJSON = localStorage.getItem(`dailyPuzzle-${todayStr}`);
+                if (cachedPuzzleJSON) {
+                    console.log("Loaded daily puzzle from cache.");
+                    challengeBoardData = JSON.parse(cachedPuzzleJSON);
+                    break; // Found it, exit the loop
+                }
+                // 2. If not in cache, try to get from Firebase
+                if (db) {
+                    const puzzleRef = doc(db, "dailyPuzzles", todayStr);
+                    const docSnap = await getDoc(puzzleRef);
+                    if (docSnap.exists()) {
+                        console.log("Fetched pre-made daily puzzle from Firestore.");
+                        challengeBoardData = docSnap.data();
+                        localStorage.setItem(`dailyPuzzle-${todayStr}`, JSON.stringify(challengeBoardData));
+                        break; // Found it, exit the loop
+                    }
+                }
+            } catch (e) { console.error("Error fetching puzzle:", e); }
+            
+            // If not found, wait 2 seconds before trying again
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+
+        if (!challengeBoardData) {
+            showGameMessage("Today's puzzle isn't ready. Please try again later.", "error");
+            dailyButton.disabled = false;
+            dailyButton.innerHTML = originalButtonHTML;
+            return;
+        }
+        
+        allDailyWords = new Set(challengeBoardData.allWords);
 
         if (db && userId) {
-            const todayStr = new Date().toLocaleDateString('en-CA');
             const dailyDocRef = doc(db, `players/${userId}/dailyChallenges`, todayStr);
             try {
                 const docSnap = await getDoc(dailyDocRef);
-
                 if (docSnap.exists() && docSnap.data().completed === true) {
-                    console.log("Daily challenge already completed. Showing results.");
                     const savedData = docSnap.data();
-                    
-                    const finalStats = {
-                        score: savedData.score || 0,
-                        foundWords: savedData.foundWords || [],
-                        totalCount: allDailyWords.size
-                    };
-                    
-                    messageModal.classList.add('hidden');
+                    const finalStats = { score: savedData.score || 0, foundWords: savedData.foundWords || [], totalCount: allDailyWords.size };
                     showDailyEndScreen(finalStats, false);
                     return;
-                
                 } else if (docSnap.exists()) {
                     const data = docSnap.data();
                     score = data.score || 0;
                     foundWords = data.foundWords || [];
-                } else {
-                    score = 0;
-                    foundWords = [];
                 }
-            } catch (e) {
-                console.error("Error loading daily progress:", e);
-                score = 0;
-                foundWords = [];
-            }
-        } else {
-            score = 0;
-            foundWords = [];
+            } catch (e) { console.error("Error loading daily progress:", e); }
         }
-
-        currentGamemode = 'daily';
+        
         messageModal.classList.add('hidden');
+        score = score || 0;
+        foundWords = foundWords || [];
+        currentGamemode = 'daily';
         setupDailyUI(challengeBoardData);
         return;
 
     } else { // --- Standard & Practice Mode Logic ---
         document.getElementById('daily-challenge-content').style.display = 'none';
         gameContentEl.style.display = 'block';
-        
-        // ✅ FIX: Corrected the spelling of 'currentGamemode' here
         currentGamemode = practiceMode ? 'practice' : 'standard';
-        
         isPracticeMode = practiceMode;
         menuContainer.classList.remove('hidden');
-        
         clearInterval(timerInterval);
         score = 0;
         foundWords = [];
         updateScoreDisplay();
-
         if (isPracticeMode) {
             practiceTimeElapsed = 0;
             topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-blue-500 uppercase tracking-wider">Pace</div><div id="pace-score" class="text-3xl font-black text-blue-400">0</div>`;
@@ -1046,10 +1051,8 @@ function showGameMessage(message, type = 'info', startTile = null) {
             if (db) { const statsRef = doc(db, "gameStats", "stats"); updateDoc(statsRef, { playCount: increment(1) }).catch(console.warn); }
             timerInterval = setInterval(() => { timer--; updateTimerUI(); if (timer <= 0) endGame(); }, 1000);
         }
-
         messageModal.classList.add('hidden');
         clearInterval(animationInterval);
-        
         activeGridEl = document.getElementById('grid');
         activeCanvasEl = document.getElementById('line-canvas');
         activeCtx = activeCanvasEl.getContext('2d');
