@@ -1,15 +1,8 @@
 {
   "projects": {
-    "default": "word-rush-game-9010a"
+    "default": "wordworm-test-c7f3a",
+    "test": "wordworm-test-c7f3a"
   },
-  "targets": {
-    "word-rush-game-9010a": {
-      "hosting": {
-        "staging": [
-          "wordworm-test"
-        ]
-      }
-    }
-  },
+  "targets": {},
   "etags": {}
 }

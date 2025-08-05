@@ -138,4 +138,40 @@ exports.generateDailyPuzzle = onSchedule({
     } else {
         logger.error(`Failed to generate a suitable puzzle for ${todayStr}.`);
     }
+    });
+
+    // ✅ NEW: This single function resets BOTH daily leaderboards at midnight.
+exports.resetDailyLeaderboards = onSchedule({
+    schedule: "every day 00:00",
+    timeZone: "America/New_York"
+}, async (event) => {
+    logger.info("Resetting all daily leaderboards...");
+    const db = getFirestore();
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
+    // 1. Reference to the TIMED daily leaderboard
+    const timedLeaderboardRef = db.collection('leaderboards').doc('daily');
+
+    // 2. Reference to the CHALLENGE daily leaderboard
+    const challengeLeaderboardRef = db.collection('leaderboards').doc('dailyChallenge');
+
+    try {
+        // Reset the timed board to its 3-category structure
+        await timedLeaderboardRef.set({
+            date: todayStr,
+            topByHighScore: [],
+            topByTotalScore: [],
+            topByBestWord: []
+        });
+        
+        // Reset the challenge board to its simple structure
+        await challengeLeaderboardRef.set({
+            date: todayStr,
+            topScores: []
+        });
+
+        logger.info("Both daily leaderboards have been reset successfully.");
+    } catch (error) {
+        logger.error("Error resetting daily leaderboards:", error);
+    }
 });

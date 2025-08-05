@@ -511,41 +511,33 @@ function createDailyChallengeBoard() {
         loadAssets(); 
     }
 
-// ✅ REPLACE THIS FUNCTION
-async function endDailyChallenge() {
-    if (activeGridEl) {
-        activeGridEl.style.pointerEvents = 'none'; // Lock the grid
-    }
+async function showDailyEndScreen(stats, isNewSubmission = true) {
+    endGameModal.classList.remove('hidden');
+    endGameModalContent.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
+            <h2 class="text-2xl font-black text-green-500">Daily Challenge Complete!</h2>
+            <p class="text-slate-600 my-4">Calculating your final results...</p>
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mx-auto"></div>
+        </div>`;
 
-    await submitDailyScoreToLeaderboard(score);
+    if (isNewSubmission) {
+        if (activeGridEl) activeGridEl.style.pointerEvents = 'none';
+        
+        await submitDailyScoreToLeaderboard(stats.score);
 
-    // ✅ FIX: Mark the challenge as completed for today in the player's progress doc
-    if (db && userId) {
-        try {
-            const todayStr = new Date().toLocaleDateString('en-CA');
-            const dailyDocRef = doc(db, `players/${userId}/dailyChallenges`, todayStr);
-            await setDoc(dailyDocRef, { completed: true }, { merge: true });
-        } catch (error) {
-            console.error("Error marking daily challenge as complete:", error);
+        if (db && userId) {
+            try {
+                const todayStr = new Date().toLocaleDateString('en-CA');
+                const dailyDocRef = doc(db, `players/${userId}/dailyChallenges`, todayStr);
+                await setDoc(dailyDocRef, { completed: true, score: stats.score, foundWords: stats.foundWords }, { merge: true });
+            } catch (error) {
+                console.error("Error marking daily challenge as complete:", error);
+            }
         }
     }
-
-    const finalStats = {
-        score: score,
-        foundWords: foundWords,
-        totalCount: allDailyWords.size,
-    };
     
-    showDailyEndScreen(finalStats);
-}
-
-// ✅ ADD THIS ENTIRE NEW FUNCTION
-function showDailyEndScreen(stats, isNewSubmission = true) {
-    endGameModal.classList.remove('hidden');
-
     const foundWordsSet = new Set(stats.foundWords.map(fw => fw.word));
     const allWordsSorted = Array.from(allDailyWords).sort();
-
     const allWordsHTML = allWordsSorted.map(word => {
         const isFound = foundWordsSet.has(word);
         const tileClasses = isFound ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
@@ -558,7 +550,7 @@ function showDailyEndScreen(stats, isNewSubmission = true) {
 
     endGameModalContent.innerHTML = `
         <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
-            <h2 class="text-2xl font-black text-green-500">Daily Challenge Complete!</h2>
+             <h2 class="text-2xl font-black text-green-500">Daily Challenge Complete!</h2>
             <p class="text-slate-600 mb-2 mt-2">Your final score is:</p>
             <p id="final-score-display" class="text-6xl font-black text-slate-800 mb-3">${stats.score}</p>
             <div id="daily-summary-container" class="h-14 flex items-center justify-center"></div>
@@ -574,12 +566,7 @@ function showDailyEndScreen(stats, isNewSubmission = true) {
             </div>
             <div class="text-center text-xs text-slate-400 mt-4">
                 <p>&copy; 2025 Word Worm</p>
-                <p>
-                    <a href="/about.html" class="hover:underline">About</a> &bull;
-                    <a href="/contact.html" class="hover:underline">Contact</a> &bull;
-                    <a href="/privacy.html" class="hover:underline">Privacy Policy</a> &bull;
-                    <a href="/terms.html" class="hover:underline">Terms of Use</a>
-                </p>
+                <p><a href="/about.html" class="hover:underline">About</a> &bull; <a href="/contact.html" class="hover:underline">Contact</a> &bull; <a href="/privacy.html" class="hover:underline">Privacy Policy</a> &bull; <a href="/terms.html" class="hover:underline">Terms of Use</a></p>
             </div>
         </div>`;
     
@@ -590,7 +577,7 @@ function showDailyEndScreen(stats, isNewSubmission = true) {
     };
 
     const playerName = localStorage.getItem('wordRushPlayerName');
-    if (!playerName || playerName === 'Anonymous') {
+    if ((!playerName || playerName === 'Anonymous') && isNewSubmission) {
         summaryContainer.innerHTML = `
             <div class="w-full">
                 <div class="flex space-x-2">
@@ -619,10 +606,6 @@ function showDailyEndScreen(stats, isNewSubmission = true) {
             }
         };
     } else {
-        // ✅ FIX: Only submit the score if this is a new submission.
-        if (isNewSubmission) {
-            submitDailyScoreToLeaderboard(stats.score);
-        }
         showSummaryText();
     }
     
@@ -636,17 +619,14 @@ function showDailyEndScreen(stats, isNewSubmission = true) {
 
     const shareLinkContainer = document.getElementById('share-link-container');
     if (navigator.share || navigator.clipboard) {
-        const shareIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5 mr-1"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" /></svg>`;
-        shareLinkContainer.innerHTML = `<a href="#" id="share-score-link" class="flex items-center text-blue-500 hover:underline font-bold">${shareIcon} Share Score</a>`;
+        const shareIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-1"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" /></svg>`;        shareLinkContainer.innerHTML = `<a href="#" id="share-score-link" class="flex items-center text-blue-500 hover:underline font-bold">${shareIcon} Share Score</a>`;
         document.getElementById('share-score-link').onclick = (e) => { e.preventDefault(); shareScore(); };
     }
 }
 
-// ✅ ADD THIS ENTIRE NEW FUNCTION
 function showSubmitConfirmation() {
     const modal = document.getElementById('message-modal');
     const content = document.getElementById('modal-content');
-
     if (!modal || !content) return;
 
     content.innerHTML = `
@@ -657,11 +637,9 @@ function showSubmitConfirmation() {
                 </svg>
             </div>
             <h3 class="text-xl font-bold text-slate-800">You've found ${foundWords.length}/${allDailyWords.size} words!</h3>
-            
-            <p class="text-sm text-slate-500 mt-2 mb-6">Ready to submit? You can only submit the daily challenge once per day.</p>
-            
+            <p class="text-sm text-slate-500 mt-2 mb-6">Ready to submit? You can only play the daily challenge once per day.</p>
             <div class="flex space-x-2">
-                        <button id="cancel-submit-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-base flex-1">Cancel</button>
+                <button id="cancel-submit-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-base flex-1">Cancel</button>
                 <button id="confirm-submit-button" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base flex-1">Submit</button>
             </div>
         </div>
@@ -677,18 +655,25 @@ function showSubmitConfirmation() {
     };
 
     confirmBtn.onclick = () => {
+        // ✅ FIX: 1. Immediately hide the confirmation and show the loading screen.
         hideModal();
-        endDailyChallenge();
+        const stats = { score: score, foundWords: foundWords, totalCount: allDailyWords.size };
+        endGameModal.classList.remove('hidden');
+        endGameModalContent.innerHTML = `
+            <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
+                <h2 class="text-2xl font-black text-green-500">Daily Challenge Complete!</h2>
+                <p class="text-slate-600 my-4">Submitting your score...</p>
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mx-auto"></div>
+            </div>`;
+
+        // ✅ FIX: 2. Use a timeout to run the slow database logic AFTER the screen updates.
+        setTimeout(() => {
+            showDailyEndScreen(stats, true);
+        }, 100); // A tiny delay is all that's needed
     };
 
     cancelBtn.onclick = hideModal;
-    
-    modal.onclick = (e) => {
-        if (e.target === modal) {
-            hideModal();
-        }
-    };
-
+    modal.onclick = (e) => { if (e.target === modal) hideModal(); };
     modal.style.zIndex = '40';
     modal.classList.remove('hidden');
 }
@@ -707,13 +692,15 @@ function showSubmitConfirmation() {
                 return; // If it is, don't do anything.
             }
 
-            const firebaseConfig = { apiKey: "AIzaSyBa2DPRjwaI-G5mz-OmHVXEDJ4_MzBAZgA",
-                                     authDomain: "word-rush-game-9010a.firebaseapp.com",
-                                     projectId: "word-rush-game-9010a",
-                                     storageBucket: "word-rush-game-9010a.appspot.com",
-                                     messagingSenderId: "551838491871",
-                                     appId: "1:551838491871:web:757325be04daab9289b56a",
-                                     measurementId: "G-D0TSQFY1XS"};
+            const firebaseConfig = {
+                apiKey: "AIzaSyC_DYC4l4DxZNBpOF-1tWlTJj0pG8910F0",
+                authDomain: "wordworm-test-c7f3a.firebaseapp.com",
+                projectId: "wordworm-test-c7f3a",
+                storageBucket: "wordworm-test-c7f3a.firebasestorage.app",
+                messagingSenderId: "912527691093",
+                appId: "1:912527691093:web:bd22a2205b39f009e1b3dc"
+                };
+
             const app = initializeApp(firebaseConfig);
             auth = getAuth(app);
             db = getFirestore(app);
@@ -949,8 +936,45 @@ function showGameMessage(message, type = 'info', startTile = null) {
     return null;
 }
 
+async function getDailyPuzzleWithTimeout() {
+    const startTime = Date.now();
+    const timeout = 10000; // 10 seconds in milliseconds
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
+    while (Date.now() - startTime < timeout) {
+        try {
+            // First, try to get from cache
+            const cachedPuzzleJSON = localStorage.getItem(`dailyPuzzle-${todayStr}`);
+            if (cachedPuzzleJSON) {
+                console.log("Loaded daily puzzle from cache.");
+                return JSON.parse(cachedPuzzleJSON);
+            }
+
+            // If not in cache, try to get from Firestore
+            if (db) {
+                const puzzleRef = doc(db, "dailyPuzzles", todayStr);
+                const docSnap = await getDoc(puzzleRef);
+                if (docSnap.exists()) {
+                    console.log("Fetched pre-made daily puzzle from Firestore.");
+                    const puzzle = docSnap.data();
+                    // Save to cache for next time
+                    localStorage.setItem(`dailyPuzzle-${todayStr}`, JSON.stringify(puzzle));
+                    return puzzle;
+                }
+            }
+        } catch (e) {
+            console.error("Error during puzzle fetch attempt:", e);
+        }
+        
+        // If not found, wait 1.5 seconds before the next attempt
+        await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+
+    // If the while loop finishes, it means we timed out
+    return null;
+}
+
  async function startGame(practiceMode = false, gameMode = 'standard') {
-    // This check prevents any game mode from starting before Firebase is ready.
     if (!db) {
         showGameMessage("Connecting...");
         return;
@@ -963,68 +987,61 @@ function showGameMessage(message, type = 'info', startTile = null) {
         dailyButton.disabled = true;
         dailyButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
 
-        let challengeBoardData = null;
-        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-        
-        // ✅ This loop tries to fetch the puzzle for up to 10 seconds.
-        const startTime = Date.now();
-        while (Date.now() - startTime < 10000) { // 10 second timeout
-            try {
-                // 1. Try to get from local browser cache
-                const cachedPuzzleJSON = localStorage.getItem(`dailyPuzzle-${todayStr}`);
-                if (cachedPuzzleJSON) {
-                    console.log("Loaded daily puzzle from cache.");
-                    challengeBoardData = JSON.parse(cachedPuzzleJSON);
-                    break; // Found it, exit the loop
-                }
-                // 2. If not in cache, try to get from Firebase
-                if (db) {
-                    const puzzleRef = doc(db, "dailyPuzzles", todayStr);
-                    const docSnap = await getDoc(puzzleRef);
-                    if (docSnap.exists()) {
-                        console.log("Fetched pre-made daily puzzle from Firestore.");
-                        challengeBoardData = docSnap.data();
-                        localStorage.setItem(`dailyPuzzle-${todayStr}`, JSON.stringify(challengeBoardData));
-                        break; // Found it, exit the loop
-                    }
-                }
-            } catch (e) { console.error("Error fetching puzzle:", e); }
-            
-            // If not found, wait 2 seconds before trying again
-            await new Promise(resolve => setTimeout(resolve, 2000));
-        }
+        const puzzleData = await getDailyPuzzleWithTimeout();
 
-        if (!challengeBoardData) {
+        if (!puzzleData) {
             showGameMessage("Today's puzzle isn't ready. Please try again later.", "error");
             dailyButton.disabled = false;
             dailyButton.innerHTML = originalButtonHTML;
             return;
         }
         
-        allDailyWords = new Set(challengeBoardData.allWords);
+        allDailyWords = new Set(puzzleData.allWords);
+        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+        
+        let hasCompleted = false;
+        let finalSavedData = null;
 
+        // ✅ 1. First, check Firebase ONLY to see if the challenge is already completed.
         if (db && userId) {
             const dailyDocRef = doc(db, `players/${userId}/dailyChallenges`, todayStr);
             try {
                 const docSnap = await getDoc(dailyDocRef);
                 if (docSnap.exists() && docSnap.data().completed === true) {
-                    const savedData = docSnap.data();
-                    const finalStats = { score: savedData.score || 0, foundWords: savedData.foundWords || [], totalCount: allDailyWords.size };
-                    showDailyEndScreen(finalStats, false);
-                    return;
-                } else if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    score = data.score || 0;
-                    foundWords = data.foundWords || [];
+                    hasCompleted = true;
+                    finalSavedData = docSnap.data();
                 }
-            } catch (e) { console.error("Error loading daily progress:", e); }
+            } catch (e) { console.error("Error loading daily completion status from Firebase:", e); }
+        }
+
+        if (hasCompleted) {
+            // If completed, show the end screen with final data from Firebase.
+            const finalStats = { score: finalSavedData.score || 0, foundWords: finalSavedData.foundWords || [], totalCount: allDailyWords.size };
+            showDailyEndScreen(finalStats, false);
+            return;
+        }
+
+        // ✅ 2. If not completed, try to load the IN-PROGRESS game from Local Storage.
+        try {
+            const savedProgressJSON = localStorage.getItem(`dailyProgress-${todayStr}`);
+            if (savedProgressJSON) {
+                const savedData = JSON.parse(savedProgressJSON);
+                score = savedData.score || 0;
+                foundWords = savedData.foundWords || [];
+                console.log("Loaded in-progress game from Local Storage.");
+            } else {
+                score = 0;
+                foundWords = [];
+            }
+        } catch (e) {
+            console.error("Failed to load progress from Local Storage:", e);
+            score = 0;
+            foundWords = [];
         }
         
         messageModal.classList.add('hidden');
-        score = score || 0;
-        foundWords = foundWords || [];
         currentGamemode = 'daily';
-        setupDailyUI(challengeBoardData);
+        setupDailyUI({ ...puzzleData, allWords: allDailyWords });
         return;
 
     } else { // --- Standard & Practice Mode Logic ---
@@ -1048,7 +1065,10 @@ function showGameMessage(message, type = 'info', startTile = null) {
             topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${currentHighScore}</div>`;
             timer = GAME_TIME;
             updateTimerUI();
-            if (db) { const statsRef = doc(db, "gameStats", "stats"); updateDoc(statsRef, { playCount: increment(1) }).catch(console.warn); }
+            if (db) { 
+                const statsRef = doc(db, "gameStats", "stats");
+                setDoc(statsRef, { playCount: increment(1) }, { merge: true }).catch(console.warn);
+            }
             timerInterval = setInterval(() => { timer--; updateTimerUI(); if (timer <= 0) endGame(); }, 1000);
         }
         messageModal.classList.add('hidden');
@@ -1264,25 +1284,22 @@ function setupDailyUI(challengeData) {
 
     function endGame() {
     clearInterval(timerInterval);
-    if (activeGridEl) activeGridEl.style.pointerEvents = 'none'; // Use activeGridEl
+    grid.style.pointerEvents = 'none';
     menuContainer.classList.add('hidden');
     
+    // ✅ FIX: No delay needed. Show the end screen immediately.
     showEndGameScreen();
 
     if (analytics) {
-      logEvent(analytics, 'game_end', {
-        game_mode: isPracticeMode ? 'practice' : 'timed',
-        final_score: score,
-        words_found_count: foundWords.length,
-        time_taken_seconds: isPracticeMode ? practiceTimeElapsed : (GAME_TIME - timer)
+        logEvent(analytics, 'game_end', {
+            game_mode: isPracticeMode ? 'practice' : 'timed',
+            final_score: score,
+            words_found_count: foundWords.length,
+            time_taken_seconds: isPracticeMode ? practiceTimeElapsed : GAME_TIME
         });
-      }
-
+    }
     if (!isPracticeMode && db && userId) {
         processEndOfGame(score, foundWords, userId);
-    } else if (isPracticeMode) {
-        const submissionContainer = document.getElementById('submission-container');
-        if(submissionContainer) submissionContainer.innerHTML = `<div class="text-slate-500 font-bold">Practice complete!</div>`;
     }
 }
 
@@ -1327,13 +1344,8 @@ function replaceSelectedTiles() {
     
     function handleInteraction(tile) {
     if (!tile || !isMouseDown) return;
+    
     const lastSelected = selectedTiles[selectedTiles.length - 1];
-
-    // ✅ FIX: If the finger is still over the same tile, do nothing.
-    // This prevents the rapid add/remove "flicker" in the word builder.
-    if (tile === lastSelected) {
-        return;
-    }
 
     if (selectedTiles.length > 1 && tile === selectedTiles[selectedTiles.length - 2]) {
         const lastTile = selectedTiles.pop();
@@ -1342,6 +1354,7 @@ function replaceSelectedTiles() {
         selectedTiles.push(tile);
         tile.classList.add('selected');
     }
+
     updateCurrentWord();
     drawLines();
 }
@@ -1398,8 +1411,7 @@ function replaceSelectedTiles() {
         
         updateDailyChallengeUI(); 
         
-        // ✅ FIX: We "catch" the expected Firebase error so it doesn't break the game.
-        saveDailyProgress().catch(err => console.warn("Failed to save progress (expected during testing):", err));
+        saveDailyProgress();
         
         createFlyingScore(finalScore, selectedTiles[0]);
         triggerConfetti(selectedTiles);
@@ -1417,10 +1429,10 @@ function replaceSelectedTiles() {
             });
 
             let finalScore = baseScore * wordMultiplier;
-            if (word.length >= 7) finalScore += 20;
-            else if (word.length === 6) finalScore += 10;
-            else if (word.length === 5) finalScore += 5;
-            else if (word.length === 4) finalScore += 2;
+            if (word.length >= 7) finalScore += 40;
+            else if (word.length === 6) finalScore += 20;
+            else if (word.length === 5) finalScore += 10;
+            else if (word.length === 4) finalScore += 5;
             
             if (analytics) { logEvent(analytics, 'submit_word', { word_length: word.length, score: finalScore, game_mode: isPracticeMode ? 'practice' : 'timed' }); }
             if (timeBonus > 0 && !isPracticeMode) { timer += timeBonus; updateTimerUI(); }
@@ -1428,7 +1440,8 @@ function replaceSelectedTiles() {
             foundWords.push({ word, score: finalScore, length: word.length });
             createFlyingScore(finalScore, selectedTiles[0]);
             triggerConfetti(selectedTiles);
-            setTimeout(() => { score += finalScore; updateScoreDisplay(); }, 500);
+             score += finalScore;
+            updateScoreDisplay();
             replaceSelectedTiles();
         }
     }
@@ -1541,7 +1554,41 @@ function updateDailyChallengeUI() {
     }
 }
 
-// ✅ ADD THIS ENTIRE NEW FUNCTION
+async function endDailyChallenge() {
+    if (activeGridEl) {
+        activeGridEl.style.pointerEvents = 'none';
+    }
+
+    // This still submits the score to the public leaderboard
+    await submitDailyScoreToLeaderboard(score);
+
+    // This saves the final results to the player's personal profile in Firebase
+    if (db && userId) {
+        try {
+            const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            const dailyDocRef = doc(db, `players/${userId}/dailyChallenges`, todayStr);
+            
+            await setDoc(dailyDocRef, { 
+                completed: true,
+                score: score,
+                foundWords: foundWords 
+            }, { merge: true });
+            
+            // Clean up the local storage for today now that the game is submitted
+            localStorage.removeItem(`dailyProgress-${todayStr}`);
+
+        } catch (error) {
+            console.error("Error finalizing daily challenge:", error);
+        }
+    }
+
+    showDailyEndScreen({
+        score: score,
+        foundWords: foundWords,
+        totalCount: allDailyWords.size,
+    });
+}
+
 async function submitDailyScoreToLeaderboard(finalScore) {
     if (!db || !userId) {
         console.warn("Firebase not ready, can't submit daily score.");
@@ -1556,7 +1603,6 @@ async function submitDailyScoreToLeaderboard(finalScore) {
     const todayStr = new Date().toLocaleDateString('en-CA');
     const leaderboardRef = doc(db, "leaderboards", "dailyChallenge");
 
-    // ✅ FIX: Add wordsFound and totalWords to the data we're saving.
     const newScore = {
         userId: userId,
         name: playerName,
@@ -1569,10 +1615,9 @@ async function submitDailyScoreToLeaderboard(finalScore) {
         await runTransaction(db, async (transaction) => {
             const leaderboardDoc = await transaction.get(leaderboardRef);
             
-            const savedDate = leaderboardDoc.exists() ? leaderboardDoc.data().date : null;
-            const currentScores = (leaderboardDoc.exists() && savedDate === todayStr) ? leaderboardDoc.data().topScores : [];
+            // ✅ FIX: This logic is now simpler. It assumes the board has been reset by the server.
+            const currentScores = leaderboardDoc.exists() ? leaderboardDoc.data().topScores : [];
             
-            // Remove any previous score from this user before adding the new one
             const filteredScores = currentScores.filter(s => s.userId !== userId);
             filteredScores.push(newScore);
             
@@ -1588,24 +1633,18 @@ async function submitDailyScoreToLeaderboard(finalScore) {
     }
 }
 
-// ✅ ADD THIS ENTIRE NEW FUNCTION
-async function saveDailyProgress() {
-    if (!db || !userId || currentGamemode !== 'daily') return;
-
-    const todayStr = new Date().toLocaleDateString('en-CA');
-    const dailyDocRef = doc(db, `players/${userId}/dailyChallenges`, todayStr);
-    
-    const progress = {
-        score: score,
-        foundWords: foundWords,
-        lastPlayed: serverTimestamp()
-    };
-
+function saveDailyProgress() {
+    // This function is now synchronous and only saves to local storage.
+    if (currentGamemode !== 'daily') return;
     try {
-        await setDoc(dailyDocRef, progress, { merge: true });
-        console.log("Daily progress saved.");
+        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+        const progress = {
+            score: score,
+            foundWords: foundWords
+        };
+        localStorage.setItem(`dailyProgress-${todayStr}`, JSON.stringify(progress));
     } catch (e) {
-        console.error("Failed to save daily progress:", e);
+        console.error("Error saving progress to Local Storage:", e);
     }
 }
 
@@ -1627,175 +1666,152 @@ function getTileFromEvent(e) {
     
     function clearSelection() { selectedTiles.forEach(t => t.classList.remove('selected')); selectedTiles = []; updateCurrentWord(); drawLines(); }
     
-    async function processEndOfGame(finalScore, words, uId) {
-        if (!db || !uId || isPracticeMode) return;
+   async function processEndOfGame(finalScore, words, uId) {
+    if (!db || !uId || isPracticeMode) return;
 
-        const playerDocRef = doc(db, "players", uId);
-        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const playerDocRef = doc(db, "players", uId);
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 
-        const gameData = {
-            score: finalScore,
-            timestamp: serverTimestamp(),
-            words: words.map(w => ({ word: w.word, score: w.score, length: w.length }))
-        };
-        try {
+    const gameData = {
+        score: finalScore,
+        timestamp: serverTimestamp(),
+        words: words.map(w => ({ word: w.word, score: w.score, length: w.length }))
+    };
+    try {
         await addDoc(collection(db, `players/${uId}/games`), gameData);
-        } catch(e) { console.error("Failed to save game history:", e); }
+    } catch(e) { console.error("Failed to save game history:", e); }
 
-        const { updatedStats, didBeatDailyHighScore } = await runTransaction(db, async (transaction) => {
-            const playerDoc = await transaction.get(playerDocRef);
-            const oldData = playerDoc.exists() ? playerDoc.data() : {};
+    const { updatedStats, didBeatDailyHighScore } = await runTransaction(db, async (transaction) => {
+        const playerDoc = await transaction.get(playerDocRef);
+        const oldData = playerDoc.exists() ? playerDoc.data() : {};
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+        let newPlayStreak = 1;
+        if (oldData.lastPlayDate === yesterdayStr) newPlayStreak = (oldData.playStreak || 0) + 1;
+        else if (oldData.lastPlayDate === todayStr) newPlayStreak = oldData.playStreak || 1;
 
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            const yesterdayStr = yesterday.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-            let newPlayStreak = 1;
-            if (oldData.lastPlayDate === yesterdayStr) newPlayStreak = (oldData.playStreak || 0) + 1;
-            else if (oldData.lastPlayDate === todayStr) newPlayStreak = oldData.playStreak || 1;
-
-            let dailyHighScoreBeaten = false;
-            let newDailyHighScore = finalScore;
-            if (oldData.dailyHighScoreLastUpdated === todayStr) {
-                if(finalScore > (oldData.dailyHighScore || 0)) {
-                    dailyHighScoreBeaten = true;
-                } else {
-                    newDailyHighScore = oldData.dailyHighScore;
-                }
-            } else {
+        let dailyHighScoreBeaten = false;
+        let newDailyHighScoreForProfile = finalScore;
+        if (oldData.dailyHighScoreLastUpdated === todayStr) {
+            if(finalScore > (oldData.dailyHighScore || 0)) {
                 dailyHighScoreBeaten = true;
-            }
-
-            const newHighScore = Math.max(finalScore, oldData.highScore || 0);
-            const gameBestWord = words.length > 0 ? words.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: '' };
-            const newBestWordForProfile = gameBestWord.score > (oldData.bestWord?.score || 0) ? { word: gameBestWord.word, score: gameBestWord.score } : (oldData.bestWord || { word: '', score: 0 });
-            const lettersThisGame = words.reduce((sum, w) => sum + w.length, 0);
-            const newTop5Scores = [...(oldData.top5Scores || []), { score: finalScore, date: todayStr }].sort((a,b)=>b.score-a.score).slice(0,5);
-            const newTop5LongestWords = [...new Map([...(oldData.top5LongestWords || []), ...words.map(w=>({word:w.word,length:w.length}))].map(item=>[item.word,item])).values()].sort((a,b)=>b.length-a.length).slice(0,5);
-            
-            const updateData = {
-                totalGamesPlayed: increment(1),
-                totalPoints: increment(finalScore),
-                lastPlayed: serverTimestamp(),
-                highScore: newHighScore,
-                bestWord: newBestWordForProfile,
-                totalWordsFound: increment(words.length),
-                totalLettersFound: increment(lettersThisGame),
-                top5Scores: newTop5Scores,
-                top5LongestWords: newTop5LongestWords,
-                dailyHighScore: newDailyHighScore,
-                dailyHighScoreLastUpdated: todayStr,
-                playStreak: newPlayStreak,
-                lastPlayDate: todayStr,
-                name: oldData.name || localStorage.getItem('wordRushPlayerName') || 'Anonymous',
-                hasSubmittedName: oldData.hasSubmittedName || false
-            };
-            
-            const fullUpdatedData = {
-                ...oldData, 
-                ...updateData,
-                totalGamesPlayed: (oldData.totalGamesPlayed || 0) + 1,
-                totalPoints: (oldData.totalPoints || 0) + finalScore,
-                totalWordsFound: (oldData.totalWordsFound || 0) + words.length,
-                totalLettersFound: (oldData.totalLettersFound || 0) + lettersThisGame,
-            };
-            
-            if (playerDoc.exists()) {
-                transaction.update(playerDocRef, updateData);
             } else {
-                transaction.set(playerDocRef, updateData);
+                newDailyHighScoreForProfile = oldData.dailyHighScore;
             }
-
-            return { updatedStats: fullUpdatedData, didBeatDailyHighScore: dailyHighScoreBeaten };
-        });
-
-        let finalPlayerName = updatedStats.name;
-        if (!updatedStats.hasSubmittedName || updatedStats.name === 'Anonymous') {
-            const submissionContainer = document.getElementById('submission-container');
-            submissionContainer.innerHTML = `<div id="submit-score-form" class="w-full"><div class="flex space-x-2"><input type="text" id="player-name" placeholder="Enter your name" class="w-full px-3 py-2 border border-slate-300 rounded-lg" maxlength="10"><button id="submit-global-score" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Submit</button></div></div>`;
-            
-            const nameInput = document.getElementById('player-name');
-            nameInput.value = localStorage.getItem('wordRushPlayerName') || '';
-
-            await new Promise(resolve => {
-                document.getElementById('submit-global-score').onclick = async (e) => {
-                    const button = e.target;
-                    button.disabled = true; button.innerHTML = '...';
-                    const newPlayerName = nameInput.value.trim();
-                    if (newPlayerName) {
-                        finalPlayerName = newPlayerName;
-                        localStorage.setItem('wordRushPlayerName', finalPlayerName);
-                        await setDoc(playerDocRef, { name: finalPlayerName, hasSubmittedName: true }, { merge: true });
-                        updatedStats.name = finalPlayerName;
-                        resolve();
-                    } else {
-                        button.disabled = false; button.textContent = 'Submit';
-                    }
-                }
-            });
+        } else {
+            dailyHighScoreBeaten = true;
         }
-        
-        const gameBestWordForDay = words.length > 0 ? words.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: '' };
-        
-        const dailyRankInfo = await runTransaction(db, async (transaction) => {
-            const dailyRef = doc(db, "leaderboards", "daily");
-            const leaderboardDoc = await transaction.get(dailyRef);
-            if (!leaderboardDoc.exists()) return null;
 
-            let currentScores = leaderboardDoc.data().topScores || [];
-            const oldEntry = currentScores.find(s => s.userID === uId);
-            
-            const updatedEntry = {
-                userID: uId,
-                name: finalPlayerName,
-                dailyHighScore: Math.max(oldEntry?.dailyHighScore || 0, finalScore),
-                dailyTotalScore: (oldEntry?.dailyTotalScore || 0) + finalScore,
-                dailyBestWord: (gameBestWordForDay.score > (oldEntry?.dailyBestWord?.score || 0)) ? gameBestWordForDay : (oldEntry?.dailyBestWord || gameBestWordForDay)
-            };
-            
-            let newTopScores = [...currentScores.filter(s => s.userID !== uId), updatedEntry]
-                .sort((a,b) => b.dailyHighScore - a.dailyHighScore)
-                .slice(0,10);
-                
-            transaction.update(dailyRef, { topScores: newTopScores });
-            
-            const rank = newTopScores.findIndex(entry => entry.userID === uId) + 1;
-            return { rank, didBeatDailyHighScore };
+        const newHighScore = Math.max(finalScore, oldData.highScore || 0);
+        const gameBestWord = words.length > 0 ? words.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: '' };
+        const newBestWordForProfile = gameBestWord.score > (oldData.bestWord?.score || 0) ? { word: gameBestWord.word, score: gameBestWord.score } : (oldData.bestWord || { word: '', score: 0 });
+        const lettersThisGame = words.reduce((sum, w) => sum + w.length, 0);
+        const newTop5Scores = [...(oldData.top5Scores || []), { score: finalScore, date: todayStr }].sort((a,b)=>b.score-a.score).slice(0,5);
+        const newTop5LongestWords = [...new Map([...(oldData.top5LongestWords || []), ...words.map(w=>({word:w.word,length:w.length}))].map(item=>[item.word,item])).values()].sort((a,b)=>b.length-a.length).slice(0,5);
+        
+        const updateData = {
+            totalGamesPlayed: increment(1),
+            totalPoints: increment(finalScore),
+            lastPlayed: serverTimestamp(),
+            highScore: newHighScore,
+            bestWord: newBestWordForProfile,
+            totalWordsFound: increment(words.length),
+            totalLettersFound: increment(lettersThisGame),
+            top5Scores: newTop5Scores,
+            top5LongestWords: newTop5LongestWords,
+            dailyHighScore: newDailyHighScoreForProfile,
+            dailyHighScoreLastUpdated: todayStr,
+            playStreak: newPlayStreak,
+            lastPlayDate: todayStr,
+            name: oldData.name || localStorage.getItem('wordRushPlayerName') || 'Anonymous',
+            hasSubmittedName: oldData.hasSubmittedName || false
+        };
+        const fullUpdatedData = { ...oldData, ...updateData, totalGamesPlayed: (oldData.totalGamesPlayed || 0) + 1, totalPoints: (oldData.totalPoints || 0) + finalScore, totalWordsFound: (oldData.totalWordsFound || 0) + words.length, totalLettersFound: (oldData.totalLettersFound || 0) + lettersThisGame, };
+        if (playerDoc.exists()) { transaction.update(playerDocRef, updateData); } else { transaction.set(playerDocRef, updateData); }
+        return { updatedStats: fullUpdatedData, didBeatDailyHighScore: dailyHighScoreBeaten };
+    });
+
+    let finalPlayerName = updatedStats.name;
+    if (!updatedStats.hasSubmittedName || updatedStats.name === 'Anonymous') {
+        const submissionContainer = document.getElementById('submission-container');
+        // This replaces the spinner with the input form
+        submissionContainer.innerHTML = `<div id="submit-score-form" class="w-full"><div class="flex space-x-2"><input type="text" id="player-name" placeholder="Enter your name" class="w-full px-3 py-2 border border-slate-300 rounded-lg" maxlength="10"><button id="submit-global-score" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Submit</button></div></div>`;
+        
+         // ✅ FIX: Only pre-fill the name if it's saved and not 'Anonymous'.
+        // Otherwise, leave it blank for the placeholder text to show.
+        const savedName = localStorage.getItem('wordRushPlayerName');
+        if (savedName && savedName !== 'Anonymous') {
+            nameInput.value = savedName;
+        }
+
+        await new Promise(resolve => {
+            document.getElementById('submit-global-score').onclick = async (e) => {
+                // ✅ FIX: Revert to the simple button disable logic.
+                const button = e.target;
+                button.disabled = true;
+                button.innerHTML = '...';
+
+                const newPlayerName = nameInput.value.trim();
+                if (newPlayerName) {
+                    finalPlayerName = newPlayerName;
+                    localStorage.setItem('wordRushPlayerName', finalPlayerName);
+                    await setDoc(playerDocRef, { name: finalPlayerName, hasSubmittedName: true }, { merge: true });
+                    updatedStats.name = finalPlayerName;
+                    resolve();
+                } else {
+                    button.disabled = false;
+                    button.innerHTML = 'Submit';
+                }
+            }
         });
-
-        const allTimeRef = doc(db, "leaderboards", "allTime");
-        try {
-            await runTransaction(db, async (transaction) => {
-                const allTimeDoc = await transaction.get(allTimeRef);
-                let data = allTimeDoc.exists() ? allTimeDoc.data() : { topByHighScore: [], topByTotalPoints: [], topByBestWord: [] };
-
-                const updateCategory = (list, newEntry, sortKey, nestedKey = null) => {
-                    const isAlreadyOnList = list.some(e => e.userID === uId);
-                    const lastPlaceValue = list.length < 10 ? 0 : (nestedKey ? list[9][sortKey]?.[nestedKey] : list[9][sortKey] || 0);
-                    const playerBestValue = nestedKey ? newEntry[sortKey]?.[nestedKey] : newEntry[sortKey];
-
-                    if (isAlreadyOnList || playerBestValue >= lastPlaceValue) {
-                        let updatedList = list.filter(u => u.userID !== uId);
-                        updatedList.push(newEntry);
-                        updatedList.sort((a, b) => {
-                            const valA = nestedKey ? (a[sortKey] || {})[nestedKey] || 0 : a[sortKey] || 0;
-                            const valB = nestedKey ? (b[sortKey] || {})[nestedKey] || 0 : b[sortKey] || 0;
-                            return valB - valA;
-                        });
-                        return updatedList.slice(0, 10);
-                    }
-                    return list;
-                };
-                
-                data.topByHighScore = updateCategory(data.topByHighScore, { userID: uId, name: finalPlayerName, score: updatedStats.highScore }, 'score');
-                data.topByTotalPoints = updateCategory(data.topByTotalPoints, { userID: uId, name: finalPlayerName, totalPoints: updatedStats.totalPoints }, 'totalPoints');
-                data.topByBestWord = updateCategory(data.topByBestWord, { userID: uId, name: finalPlayerName, bestWord: updatedStats.bestWord }, 'bestWord', 'score');
-
-                transaction.set(allTimeRef, data);
-            });
-        } catch(e) { console.error("Failed to update all-time leaderboard:", e); }
-        
-        updateEndGameSubmissionUI(finalPlayerName, dailyRankInfo);
     }
+    
+    // --- Update Timed Daily Leaderboard ---
+    let dailyRank = null;
+    const dailyRef = doc(db, "leaderboards", "daily");
+    try {
+        await runTransaction(db, async (transaction) => {
+            const leaderboardDoc = await transaction.get(dailyRef);
+            let data = leaderboardDoc.exists() ? leaderboardDoc.data() : { topByHighScore: [], topByTotalScore: [], topByBestWord: [] };
+            const oldTotalEntry = (data.topByTotalScore || []).find(e => e.userID === uId);
+            const oldBestWordEntry = (data.topByBestWord || []).find(e => e.userID === uId);
+            const gameBestWord = words.length > 0 ? words.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: '' };
+            const newTotalScore = (oldTotalEntry?.dailyTotalScore || 0) + finalScore;
+            const newBestWord = gameBestWord.score > (oldBestWordEntry?.dailyBestWord?.score || 0) ? gameBestWord : (oldBestWordEntry?.dailyBestWord || gameBestWord);
+            data.topByHighScore = updateLeaderboardList(data.topByHighScore || [], { userID: uId, name: finalPlayerName, dailyHighScore: updatedStats.dailyHighScore }, 'dailyHighScore');
+            data.topByTotalScore = updateLeaderboardList(data.topByTotalScore || [], { userID: uId, name: finalPlayerName, dailyTotalScore: newTotalScore }, 'dailyTotalScore');
+            data.topByBestWord = updateLeaderboardList(data.topByBestWord || [], { userID: uId, name: finalPlayerName, dailyBestWord: newBestWord }, 'dailyBestWord', 'score');
+            transaction.set(dailyRef, data);
+        });
+        
+        // ✅ FIX: After the transaction, read the leaderboard back to find the player's new rank.
+        const updatedLeaderboardDoc = await getDoc(dailyRef);
+        if (updatedLeaderboardDoc.exists()) {
+            const topHighScores = updatedLeaderboardDoc.data().topByHighScore || [];
+            const rankIndex = topHighScores.findIndex(p => p.userID === uId);
+            if (rankIndex !== -1) {
+                dailyRank = rankIndex + 1; // It's 0-indexed, so add 1
+            }
+        }
+    } catch (e) { console.error("Failed to update daily (timed) leaderboard:", e); }
+    
+    // --- Update All-Time Leaderboard ---
+    const allTimeRef = doc(db, "leaderboards", "allTime");
+    try {
+        await runTransaction(db, async (transaction) => {
+            const allTimeDoc = await transaction.get(allTimeRef);
+            let data = allTimeDoc.exists() ? allTimeDoc.data() : { topByHighScore: [], topByTotalPoints: [], topByBestWord: [] };
+            data.topByHighScore = updateLeaderboardList(data.topByHighScore, { userID: uId, name: finalPlayerName, score: updatedStats.highScore }, 'score');
+            data.topByTotalPoints = updateLeaderboardList(data.topByTotalPoints, { userID: uId, name: finalPlayerName, totalPoints: updatedStats.totalPoints }, 'totalPoints');
+            data.topByBestWord = updateLeaderboardList(data.topByBestWord, { userID: uId, name: finalPlayerName, bestWord: updatedStats.bestWord }, 'bestWord', 'score');
+            transaction.set(allTimeRef, data);
+        });
+    } catch(e) { console.error("Failed to update all-time leaderboard:", e); }
+    
+    // ✅ FIX: Pass the newly calculated rank to the UI update function.
+    updateEndGameSubmissionUI(finalPlayerName, { didBeatDailyHighScore, rank: dailyRank });
+}
     
     function updateScoreDisplay() {
         scoreEl.textContent = score;
@@ -1947,7 +1963,25 @@ function triggerConfetti(tiles) {
 }
 
 function updateCurrentWord() {
-    currentWordLettersEl.innerHTML = selectedTiles.map(t => `<span class="current-letter bg-white text-blue-500 font-bold text-xl p-1 rounded-md shadow-sm">${t.dataset.letter}</span>`).join('');
+    const newWordHTML = selectedTiles.map(t => `<span class="current-letter bg-white text-blue-500 font-bold text-xl p-1 rounded-md shadow-sm">${t.dataset.letter}</span>`).join('');
+    
+    // ✅ FIX: Only update the display if the word has actually changed. This prevents the flicker.
+    if (currentWordLettersEl.innerHTML !== newWordHTML) {
+        currentWordLettersEl.innerHTML = newWordHTML;
+    }
+}
+
+function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
+    const filteredList = list.filter(item => item.userID !== newEntry.userID);
+    const newList = [...filteredList, newEntry];
+    
+    newList.sort((a, b) => {
+        const valA = nestedKey ? (a[sortKey] || {})[nestedKey] || 0 : a[sortKey] || 0;
+        const valB = nestedKey ? (b[sortKey] || {})[nestedKey] || 0 : b[sortKey] || 0;
+        return valB - valA;
+    });
+
+    return newList.slice(0, 10);
 }
 
    function showWelcomeScreen() {
@@ -2178,14 +2212,11 @@ function updateCurrentWord() {
             const leaderboardRef = doc(db, "leaderboards", "dailyChallenge");
             const docSnap = await getDoc(leaderboardRef);
 
-            // ✅ FIX: Added the header back, with the correct text and icon.
-            html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center gap-2">${icons.highScore} Score / Words Found</h3>`;
-
             if (!docSnap.exists() || docSnap.data().date !== todayStr || !docSnap.data().topScores || docSnap.data().topScores.length === 0) {
-                html += `<p class="text-slate-500 text-center text-sm p-2">No scores yet today. Be the first!</p>`;
+                html += `<p class="text-slate-500 text-center text-sm p-2">No scores yet for today's challenge. Be the first!</p>`;
             } else {
+                html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center gap-2">${icons.highScore} Score / Words Found</h3>`;
                 const players = docSnap.data().topScores;
-                // ✅ FIX: Reverted to the 3-part layout that matches the other leaderboards.
                 const scores = players.map((player, i) => {
                     const isCurrentUser = player.userId === userId;
                     return `
@@ -2227,27 +2258,31 @@ function updateCurrentWord() {
                     }
                 }
             }
-        } else { // Daily logic for the timed game
+        } else { // ✅ FIX: This is the corrected logic for the timed 'daily' leaderboard
             const leaderboardRef = doc(db, "leaderboards", "daily");
             const docSnap = await getDoc(leaderboardRef);
-            if (!docSnap.exists() || !docSnap.data().topScores || docSnap.data().topScores.length === 0) {
+            if (!docSnap.exists() || !docSnap.data().topByHighScore) { // Check for the new data structure
                 html += `<p class="text-slate-500 text-center text-sm p-2">No scores yet today. Be the first!</p>`;
             } else {
-                const dailyPlayers = docSnap.data().topScores;
+                const data = docSnap.data();
                 const categories = [
-                    { key: 'dailyHighScore', title: `${icons.highScore} High Score` },
-                    { key: 'dailyTotalScore', title: `${icons.totalPoints} Total Points` },
-                    { key: 'dailyBestWord', title: `${icons.bestWord} Best Word` }
+                    { key: 'topByHighScore', title: `${icons.highScore} High Score`, valueKey: 'dailyHighScore' },
+                    { key: 'topByTotalScore', title: `${icons.totalPoints} Total Points`, valueKey: 'dailyTotalScore' },
+                    { key: 'topByBestWord', title: `${icons.bestWord} Best Word`, valueKey: 'dailyBestWord', nestedKey: 'score' }
                 ];
                 for (const cat of categories) {
                     html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center gap-2">${cat.title}</h3>`;
-                    const sortedPlayers = [...dailyPlayers].sort((a, b) => (cat.key === 'dailyBestWord') ? (b.dailyBestWord?.score || 0) - (a.dailyBestWord?.score || 0) : (b[cat.key] || 0) - (a[cat.key] || 0));
-                    const scores = sortedPlayers.map((player, i) => {
-                        const isCurrentUser = player.userID === userId;
-                        let value = (cat.key === 'dailyBestWord') ? (player.dailyBestWord && player.dailyBestWord.word ? `${player.dailyBestWord.word.toUpperCase()} (${player.dailyBestWord.score})` : 'N/A') : (player[cat.key]?.toLocaleString() || 0);
-                        return `<li class="flex items-center p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${player.name}</span><span class="font-bold text-green-500">${value}</span></li>`;
-                    }).join('');
-                    html += `<ol class="space-y-1">${scores}</ol>`;
+                    const players = data[cat.key] || [];
+                    if (players.length === 0) {
+                        html += `<p class="text-slate-500 text-center text-sm p-2">No players yet.</p>`;
+                    } else {
+                        const scores = players.map((player, i) => {
+                            const isCurrentUser = player.userID === userId;
+                            let value = cat.nestedKey ? (player[cat.valueKey] ? `${player[cat.valueKey].word.toUpperCase()} (${player[cat.valueKey].score})` : 'N/A') : (player[cat.valueKey]?.toLocaleString() || 0);
+                            return `<li class="flex items-center p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${player.name}</span><span class="font-bold text-green-500">${value}</span></li>`;
+                        }).join('');
+                        html += `<ol class="space-y-1">${scores}</ol>`;
+                    }
                 }
             }
         }
@@ -2531,9 +2566,8 @@ function getTileCenter(tile) {
         }
     }
 
-    function showEndGameScreen() {
+   function showEndGameScreen() {
     endGameModal.classList.remove('hidden');
-    // We will call the confetti function later, so it's removed from here.
     
     const sortedWords = [...foundWords].sort((a,b)=>b.score-a.score);
     const foundWordsHTML = sortedWords.length ? sortedWords.map(fw => `<div class="flex justify-between text-sm p-1 ${sortedWords.indexOf(fw) % 2 === 0 ? 'bg-slate-50' : ''} rounded"><span class="font-semibold">${fw.word.toUpperCase()}</span><span>+${fw.score}</span></div>`).join('') : '<p class="text-sm text-slate-500 text-center py-4">No words found.</p>';
@@ -2542,9 +2576,11 @@ function getTileCenter(tile) {
         <h2 class="text-3xl font-black text-green-500">Great Game!</h2>
         <p class="text-slate-600 mb-2">Your final score is:</p>
         <p id="final-score-display" class="text-6xl font-black text-slate-800 mb-3">${score}</p>
+        
         <div id="submission-container" class="h-8 flex items-center justify-center">
             <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
         </div>
+
         <hr class="my-4">
         <div class="text-left w-full">
             <div class="flex justify-between items-baseline mb-2">
@@ -2563,20 +2599,19 @@ function getTileCenter(tile) {
         </div>
         <div class="text-center text-xs text-slate-400 mt-4">
             <p>&copy; 2025 Word Worm</p>
-            <p>
-                <a href="/about.html" class="hover:underline">About</a> &bull;
-                <a href="/contact.html" class="hover:underline">Contact</a> &bull;
-                <a href="/privacy.html" class="hover:underline">Privacy Policy</a> &bull;
-                <a href="/terms.html" class="hover:underline">Terms of Use</a>
-            </p>
+            <p><a href="/about.html" class="hover:underline">About</a> &bull; <a href="/contact.html" class="hover:underline">Contact</a> &bull; <a href="/privacy.html" class="hover:underline">Privacy Policy</a> &bull; <a href="/terms.html" class="hover:underline">Terms of Use</a></p>
         </div>
     </div>`;
-
-    // ✅ 2. Find the score element we just created
+    
     const scoreDisplay = document.getElementById('final-score-display');
-    // ✅ 3. Call the confetti function with the score element as the origin
     if (scoreDisplay) {
         triggerEndGameConfetti(scoreDisplay);
+    }
+    
+    // This call happens after the modal is shown. processEndOfGame will
+    // then replace the spinner with the name input if needed.
+    if (!isPracticeMode && db && userId) {
+        processEndOfGame(score, foundWords, userId);
     }
 
     document.getElementById('play-again-button').onclick = resetGame;
@@ -2585,31 +2620,33 @@ function getTileCenter(tile) {
     
     const shareLinkContainer = document.getElementById('share-link-container');
     if (navigator.share || navigator.clipboard) {
-        const shareIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5 mr-1"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.5 0 0 0-3.933 2.185Z" /></svg>`;
+        const shareIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-1"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" /></svg>`;        shareLinkContainer.innerHTML = `<a href="#" id="share-score-link" class="flex items-center text-blue-500 hover:underline font-bold">${shareIcon} Share Score</a>`;
         shareLinkContainer.innerHTML = `<a href="#" id="share-score-link" class="flex items-center text-blue-500 hover:underline font-bold">${shareIcon} Share Score</a>`;
         document.getElementById('share-score-link').onclick = (e) => { e.preventDefault(); shareScore(); };
     }
 }
     
     function updateEndGameSubmissionUI(playerName, rankInfo) {
-        const submissionContainer = document.getElementById('submission-container');
-        if (!submissionContainer) return;
-        
-        let finalMessageHtml = '';
-        if (rankInfo && rankInfo.didBeatDailyHighScore) {
-            const trophyIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg>`;
-            let leaderboardMessage = `New daily high: <strong>${score}</strong>!`; 
-            if (rankInfo.rank && rankInfo.rank <= 10) {
-                leaderboardMessage = `You placed&nbsp;<strong>#${rankInfo.rank}</strong>&nbsp;on today's leaderboard!`;
-            }
-            finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${trophyIcon} ${leaderboardMessage}</div>`;
-        } else {
-            const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>`;
-            const standardMessage = `Score submitted as&nbsp;<strong>${playerName}</strong>!`;
-            finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${checkIcon} ${standardMessage}</div>`;
-        }
-        submissionContainer.innerHTML = finalMessageHtml;
+    const submissionContainer = document.getElementById('submission-container');
+    if (!submissionContainer) return;
+
+    let finalMessageHtml = '';
+    const trophyIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg>`;
+    const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>`;
+
+    // ✅ FIX: This new logic prioritizes showing your rank first.
+    if (rankInfo && rankInfo.rank && rankInfo.rank <= 10) {
+        const leaderboardMessage = `You placed&nbsp;<strong>#${rankInfo.rank}</strong>&nbsp;on today's leaderboard!`;
+        finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${trophyIcon} ${leaderboardMessage}</div>`;
+    } else if (rankInfo && rankInfo.didBeatDailyHighScore) {
+        const leaderboardMessage = `New daily high: <strong>${score}</strong>!`;
+        finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${trophyIcon} ${leaderboardMessage}</div>`;
+    } else {
+        const standardMessage = `Score submitted as&nbsp;<strong>${playerName}</strong>!`;
+        finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${checkIcon} ${standardMessage}</div>`;
     }
+    submissionContainer.innerHTML = finalMessageHtml;
+}
     
     
    function setupTutorial() {
@@ -2653,7 +2690,7 @@ function getTileCenter(tile) {
                  <div><strong class="font-semibold text-slate-700">Long Word Bonus:</strong>
                      <table class="w-full mt-1 text-left text-xs">
                          <tbody>
-                             <tr><td class="py-0.5 pr-2">4 Letters: <span class="font-medium">+5 pts</span></td><td class="py-0.5">6 Letters: <span class="font-medium">+200 pts</span></td></tr>
+                             <tr><td class="py-0.5 pr-2">4 Letters: <span class="font-medium">+5 pts</span></td><td class="py-0.5">6 Letters: <span class="font-medium">+20 pts</span></td></tr>
                              <tr><td class="py-0.5 pr-2">5 Letters: <span class="font-medium">+10 pts</span></td><td class="py-0.5">7+ Letters: <span class="font-medium">+40 pts</span></td></tr>
                          </tbody>
                      </table>
