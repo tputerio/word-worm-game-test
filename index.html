@@ -1040,6 +1040,11 @@ async function getDailyPuzzleWithTimeout() {
         return;
 
     } else { // --- Standard & Practice Mode Logic ---
+        // Reset end game guard flag
+        isEndingGame = false;
+        // Clear any existing timer interval
+        clearInterval(timerInterval);
+        timerInterval = null;
         document.getElementById('daily-challenge-content').style.display = 'none';
         gameContentEl.style.display = 'block';
         currentGamemode = practiceMode ? 'practice' : 'standard';
@@ -1277,17 +1282,20 @@ function setupDailyUI(challengeData) {
     updateDailyChallengeUI(); 
 }
 
+    let isEndingGame = false;  // Add guard flag
     function endGame() {
-    clearInterval(timerInterval);
-    grid.style.pointerEvents = 'none';
-    menuContainer.classList.add('hidden');
-    
-    // ✅ FIX: No delay needed. Show the end screen immediately.
-    showEndGameScreen();
-
-    
-    if (!isPracticeMode && db && userId) {
-        processEndOfGame(score, foundWords, userId);
+        if (isEndingGame) return;  // Prevent multiple calls
+        isEndingGame = true;
+        
+        clearInterval(timerInterval);
+        grid.style.pointerEvents = 'none';
+        menuContainer.classList.add('hidden');
+        
+        // ✅ FIX: No delay needed. Show the end screen immediately.
+        showEndGameScreen();
+        
+        if (!isPracticeMode && db && userId) {
+            processEndOfGame(score, foundWords, userId);
     }
 }
 
@@ -1591,7 +1599,7 @@ async function submitDailyScoreToLeaderboard(finalScore) {
     const leaderboardRef = doc(db, "leaderboards", "dailyChallenge");
 
     const newScore = {
-        userId: userId,
+        userID: userId,
         name: playerName,
         score: finalScore,
         wordsFound: foundWords.length,
@@ -1605,7 +1613,7 @@ async function submitDailyScoreToLeaderboard(finalScore) {
             // ✅ FIX: This logic is now simpler. It assumes the board has been reset by the server.
             const currentScores = leaderboardDoc.exists() ? leaderboardDoc.data().topScores : [];
             
-            const filteredScores = currentScores.filter(s => s.userId !== userId);
+            const filteredScores = currentScores.filter(s => s.userID !== userId);
             filteredScores.push(newScore);
             
             const newTopScores = filteredScores
@@ -1657,6 +1665,8 @@ function getTileFromEvent(e) {
     if (!db || !uId || isPracticeMode) return;
 
     const playerDocRef = doc(db, "players", uId);
+    
+    // --- PART 1: GET PLAYER NAME IF NEEDED ---
 
     // --- PART 1: GET PLAYER NAME IF NEEDED ---
     let finalPlayerName = localStorage.getItem('wordRushPlayerName') || 'Anonymous';
@@ -1697,16 +1707,20 @@ function getTileFromEvent(e) {
     
     // --- PART 2: UPDATE ALL DATABASE STATS ---
     const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    let updatedStats, didBeatDailyHighScore;
 
-    const { updatedStats, didBeatDailyHighScore } = await runTransaction(db, async (transaction) => {
-        const playerDoc = await transaction.get(playerDocRef);
+    try {
+        // First, get the current player data
+        const playerDoc = await getDoc(playerDocRef);
+        const oldData = playerDoc.exists() ? playerDoc.data() : {};
+        const gameBestWord = words.length > 0 ? words.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: '' };
+        
+        // Calculate streak
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
         const yesterdayStr = yesterday.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
         
-        const oldData = playerDoc.exists() ? playerDoc.data() : {};
-        const gameBestWord = words.length > 0 ? words.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: '' };
-        
+        // Prepare the update data
         const updateData = {
             highScore: Math.max(finalScore, (oldData.highScore || 0)),
             bestWord: gameBestWord.score > (oldData.bestWord?.score || 0) ? gameBestWord : (oldData.bestWord || { word: '', score: 0 }),
@@ -1724,42 +1738,52 @@ function getTileFromEvent(e) {
             name: finalPlayerName,
             hasSubmittedName: true
         };
+
+        // Update the document with merge: true to avoid update time conflicts
+        await setDoc(playerDocRef, updateData, { merge: true });
         
-        // ✅ FIX: This is the critical change.
-        // We use .update() for existing players and .set() only for new ones.
-        if (playerDoc.exists()) {
-            transaction.update(playerDocRef, updateData);
-        } else {
-            transaction.set(playerDocRef, updateData);
-        }
+        didBeatDailyHighScore = oldData.dailyHighScoreLastUpdated !== todayStr || finalScore > (oldData.dailyHighScore || 0);
+        updatedStats = { ...oldData, ...updateData };
+    } catch (e) {
+        console.error("Failed to update player stats:", e);
+        updatedStats = {};
+        didBeatDailyHighScore = false;
+    }
 
-        const didBeat = oldData.dailyHighScoreLastUpdated !== todayStr || finalScore > (oldData.dailyHighScore || 0);
-        return { updatedStats: { ...oldData, ...updateData }, didBeatDailyHighScore: didBeat };
-    });
-
+    // Save game history
     try {
         const gameData = { score: finalScore, timestamp: serverTimestamp(), words: words.map(w => ({ word: w.word, score: w.score, length: w.length })) };
         await addDoc(collection(db, `players/${uId}/games`), gameData);
-    } catch (e) { console.error("Failed to save game history:", e); }
+    } catch (e) { 
+        console.error("Failed to save game history:", e); 
+    }
 
     let dailyRank = null;
     const dailyRef = doc(db, "leaderboards", "daily");
     try {
-        await runTransaction(db, async (transaction) => {
-            const leaderboardDoc = await transaction.get(dailyRef);
-            let data = leaderboardDoc.exists() ? leaderboardDoc.data() : {};
-            const oldTotalEntry = (data.topByTotalScore || []).find(e => e.userID === uId);
-            const newTotalScore = (oldTotalEntry?.dailyTotalScore || 0) + finalScore;
-            const gameBestWord = words.length > 0 ? words.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: '' };
-            const oldBestWordEntry = (data.topByBestWord || []).find(e => e.userID === uId);
-            const newBestWord = gameBestWord.score > (oldBestWordEntry?.dailyBestWord?.score || 0) ? gameBestWord : (oldBestWordEntry?.dailyBestWord || gameBestWord);
-            
-            data.topByHighScore = updateLeaderboardList(data.topByHighScore || [], { userID: uId, name: finalPlayerName, dailyHighScore: updatedStats.dailyHighScore }, 'dailyHighScore');
-            data.topByTotalScore = updateLeaderboardList(data.topByTotalScore || [], { userID: uId, name: finalPlayerName, dailyTotalScore: newTotalScore }, 'dailyTotalScore');
-            data.topByBestWord = updateLeaderboardList(data.topByBestWord || [], { userID: uId, name: finalPlayerName, dailyBestWord: newBestWord }, 'dailyBestWord', 'score');
-            
-            transaction.set(dailyRef, data, { merge: true });
-        });
+        // Get current leaderboard data
+        const leaderboardDoc = await getDoc(dailyRef);
+        let data = leaderboardDoc.exists() ? leaderboardDoc.data() : {};
+        
+        // Always initialize arrays if missing
+        data.topByHighScore = Array.isArray(data.topByHighScore) ? data.topByHighScore : [];
+        data.topByTotalScore = Array.isArray(data.topByTotalScore) ? data.topByTotalScore : [];
+        data.topByBestWord = Array.isArray(data.topByBestWord) ? data.topByBestWord : [];
+
+        const oldTotalEntry = data.topByTotalScore.find(e => e.userID === uId);
+        const newTotalScore = (oldTotalEntry?.dailyTotalScore || 0) + finalScore;
+        const gameBestWord = words.length > 0 ? words.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: '' };
+        const oldBestWordEntry = data.topByBestWord.find(e => e.userID === uId);
+        const newBestWord = gameBestWord.score > (oldBestWordEntry?.dailyBestWord?.score || 0) ? gameBestWord : (oldBestWordEntry?.dailyBestWord || gameBestWord);
+
+        // Update leaderboard lists
+        data.date = todayStr;  // Always update the date
+        data.topByHighScore = updateLeaderboardList(data.topByHighScore, { userID: uId, name: finalPlayerName, dailyHighScore: updatedStats.dailyHighScore }, 'dailyHighScore');
+        data.topByTotalScore = updateLeaderboardList(data.topByTotalScore, { userID: uId, name: finalPlayerName, dailyTotalScore: newTotalScore }, 'dailyTotalScore');
+        data.topByBestWord = updateLeaderboardList(data.topByBestWord, { userID: uId, name: finalPlayerName, dailyBestWord: newBestWord }, 'dailyBestWord', 'score');
+
+        // Update with merge
+        await setDoc(dailyRef, data, { merge: true });
 
         const updatedLeaderboardDoc = await getDoc(dailyRef);
         if (updatedLeaderboardDoc.exists()) {
@@ -1770,16 +1794,22 @@ function getTileFromEvent(e) {
 
     const allTimeRef = doc(db, "leaderboards", "allTime");
     try {
-        await runTransaction(db, async (transaction) => {
-            const allTimeDoc = await transaction.get(allTimeRef);
-            let data = allTimeDoc.exists() ? allTimeDoc.data() : {};
-            
-            data.topByHighScore = updateLeaderboardList(data.topByHighScore, { userID: uId, name: finalPlayerName, score: updatedStats.highScore }, 'score');
-            data.topByTotalPoints = updateLeaderboardList(data.topByTotalPoints, { userID: uId, name: finalPlayerName, totalPoints: updatedStats.totalPoints }, 'totalPoints');
-            data.topByBestWord = updateLeaderboardList(data.topByBestWord, { userID: uId, name: finalPlayerName, bestWord: updatedStats.bestWord }, 'bestWord', 'score');
-            
-            transaction.set(allTimeRef, data, { merge: true });
-        });
+        // Get current all-time data
+        const allTimeDoc = await getDoc(allTimeRef);
+        let data = allTimeDoc.exists() ? allTimeDoc.data() : {};
+        
+        // Initialize arrays if missing
+        data.topByHighScore = Array.isArray(data.topByHighScore) ? data.topByHighScore : [];
+        data.topByTotalPoints = Array.isArray(data.topByTotalPoints) ? data.topByTotalPoints : [];
+        data.topByBestWord = Array.isArray(data.topByBestWord) ? data.topByBestWord : [];
+        
+        // Update leaderboard lists
+        data.topByHighScore = updateLeaderboardList(data.topByHighScore, { userID: uId, name: finalPlayerName, score: updatedStats.highScore }, 'score');
+        data.topByTotalPoints = updateLeaderboardList(data.topByTotalPoints, { userID: uId, name: finalPlayerName, totalPoints: updatedStats.totalPoints }, 'totalPoints');
+        data.topByBestWord = updateLeaderboardList(data.topByBestWord, { userID: uId, name: finalPlayerName, bestWord: updatedStats.bestWord }, 'bestWord', 'score');
+        
+        // Update with merge
+        await setDoc(allTimeRef, data, { merge: true });
     } catch (e) { console.error("Failed to update all-time leaderboard:", e); }
 
     updateEndGameSubmissionUI(finalPlayerName, { didBeatDailyHighScore, rank: dailyRank });
@@ -1946,13 +1976,11 @@ function updateCurrentWord() {
 function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     const filteredList = list.filter(item => item.userID !== newEntry.userID);
     const newList = [...filteredList, newEntry];
-    
     newList.sort((a, b) => {
         const valA = nestedKey ? (a[sortKey] || {})[nestedKey] || 0 : a[sortKey] || 0;
         const valB = nestedKey ? (b[sortKey] || {})[nestedKey] || 0 : b[sortKey] || 0;
         return valB - valA;
     });
-
     return newList.slice(0, 10);
 }
 
