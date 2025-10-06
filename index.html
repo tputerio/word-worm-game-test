@@ -356,6 +356,8 @@
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
     import { getFirestore, collection, addDoc, getDocs, query, where, orderBy, limit, doc, getDoc, setDoc, updateDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
+     // --- Google Analytics ---
+   // GOOGLE ANALYTICS -- import { getAnalytics, logEvent, setUserId } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-analytics.js";
     
     // --- Config ---
     const [GRID_SIZE, GRID_COLS, GAME_TIME] = [16, 4, 60];
@@ -381,6 +383,7 @@
 
     // --- Firebase State ---
     let auth, db, userId;
+   // GOOGLE ANALYTICS -- let auth, db, userId, analytics;
 
     // --- Game State ---
     let score = 0, timer = GAME_TIME, timerInterval, foundWords = [], selectedTiles = [], isMouseDown = false;
@@ -690,6 +693,8 @@ function showSubmitConfirmation() {
                 return; // If it is, don't do anything.
             }
 
+            // REMOVE THIS IN PROD
+            
                             const firebaseConfig = {
   apiKey: "AIzaSyC_DYC4l4DxZNBpOF-1tWlTJj0pG8910F0",
   authDomain: "wordworm-test-c7f3a.firebaseapp.com",
@@ -697,16 +702,34 @@ function showSubmitConfirmation() {
   storageBucket: "wordworm-test-c7f3a.firebasestorage.app",
   messagingSenderId: "912527691093",
   appId: "1:912527691093:web:bd22a2205b39f009e1b3dc"
+
 };
+
+// PROD API SET UP GOOGLE ANALYTICS
+  //  const firebaseConfig = {
+     //           apiKey: "AIzaSyBa2DPRjwaI-G5mz-OmHVXEDJ4_MzBAZgA",
+       //         authDomain: "word-rush-game-9010a.firebaseapp.com",
+         //       projectId: "word-rush-game-9010a",
+           //     storageBucket: "word-rush-game-9010a.firebasestorage.app",
+             //   messagingSenderId: "551838491871",
+               // appId: "1:551838491871:web:757325be04daab9289b56a",
+              //  measurementId: "G-D0TSQFY1XS"
+               // };
 
             const app = initializeApp(firebaseConfig);
             auth = getAuth(app);
             db = getFirestore(app);
+            // GOOGLE ANALYTICS -- analytics = getAnalytics(app);
+
 
             onAuthStateChanged(auth, async (user) => {
                 if (user) {
                     userId = user.uid;
-                   
+                 
+                    // GOOGLE ANALYTICS -- if (analytics && userId) {
+                   //     setUserId(analytics, userId);
+                  //  }
+
                     console.log("Firebase connected. User ID:", userId);
                     fetchGlobalStats();
                     fetchPlayerStats(userId);
@@ -1293,6 +1316,15 @@ function setupDailyUI(challengeData) {
         
         // ✅ FIX: No delay needed. Show the end screen immediately.
         showEndGameScreen();
+
+       //GOOGLE ANALYTICS -- if (analytics) {
+       // logEvent(analytics, 'game_end', {
+       //     game_mode: isPracticeMode ? 'practice' : 'timed',
+       //     final_score: score,
+       //     words_found_count: foundWords.length,
+       //     time_taken_seconds: isPracticeMode ? practiceTimeElapsed : GAME_TIME
+      //  });
+  //  }
         
         if (!isPracticeMode && db && userId) {
             processEndOfGame(score, foundWords, userId);
@@ -1430,6 +1462,8 @@ function replaceSelectedTiles() {
             else if (word.length === 5) finalScore += 10;
             else if (word.length === 4) finalScore += 5;
             
+            // GOOGLE ANALYTICS             if (analytics) { logEvent(analytics, 'submit_word', { word_length: word.length, score: finalScore, game_mode: isPracticeMode ? 'practice' : 'timed' }); }
+
             if (timeBonus > 0 && !isPracticeMode) { timer += timeBonus; updateTimerUI(); }
 
             foundWords.push({ word, score: finalScore, length: word.length });
