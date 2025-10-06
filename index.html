@@ -616,7 +616,7 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
     }
     
     document.getElementById('return-home-button').onclick = resetGame;
-    document.getElementById('endgame-leaderboard-button').onclick = showLeaderboardModal;
+    document.getElementById('endgame-leaderboard-button').onclick = () => showLeaderboardModal(currentGamemode === 'daily' ? 'challenge' : 'daily');
 
     const shareLinkContainer = document.getElementById('share-link-container');
     if (navigator.share || navigator.clipboard) {
@@ -694,7 +694,7 @@ function showSubmitConfirmation() {
             }
 
             // REMOVE THIS IN PROD
-            
+
                             const firebaseConfig = {
   apiKey: "AIzaSyC_DYC4l4DxZNBpOF-1tWlTJj0pG8910F0",
   authDomain: "wordworm-test-c7f3a.firebaseapp.com",
@@ -1034,6 +1034,8 @@ async function getDailyPuzzleWithTimeout() {
 
         if (hasCompleted) {
             // If completed, show the end screen with final data from Firebase.
+            // Make sure we set currentGamemode before showing the end screen
+            currentGamemode = 'daily';
             const finalStats = { score: finalSavedData.score || 0, foundWords: finalSavedData.foundWords || [], totalCount: allDailyWords.size };
             showDailyEndScreen(finalStats, false);
             return;
@@ -2104,7 +2106,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     document.getElementById('play-daily-button').onclick = () => startGame(false, 'daily');
 }
 
-   async function showLeaderboardModal() {
+   async function showLeaderboardModal(initialTab = 'challenge') {
     leaderboardModal.classList.remove('hidden');
     leaderboardModalContent.innerHTML = `
         <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-xs mx-auto modal-enter">
@@ -2158,8 +2160,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     dailyTab.onclick = () => displayTab('daily');
     allTimeTab.onclick = () => displayTab('all-time');
     
-    // Default to showing the 'Challenge' leaderboard first
-    displayTab('challenge'); 
+    // Display the specified initial tab
+    displayTab(initialTab); 
     
     document.getElementById('close-leaderboard-button').onclick = () => { leaderboardModal.classList.add('hidden'); };
 }
@@ -2253,7 +2255,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center gap-2">${icons.highScore} Score / Words Found</h3>`;
                 const players = docSnap.data().topScores;
                 const scores = players.map((player, i) => {
-                    const isCurrentUser = player.userId === userId;
+                    const isCurrentUser = player.userID === userId;
                     return `
                         <li class="flex items-center p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}">
                             <span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span>
@@ -2650,7 +2652,7 @@ function getTileCenter(tile) {
     }
 
     document.getElementById('play-again-button').onclick = resetGame;
-    document.getElementById('endgame-leaderboard-button').onclick = showLeaderboardModal;
+    document.getElementById('endgame-leaderboard-button').onclick = () => showLeaderboardModal(currentGamemode === 'daily' ? 'challenge' : 'daily');
     document.getElementById('endgame-stats-button').onclick = showStatsModal;
     
     const shareLinkContainer = document.getElementById('share-link-container');
