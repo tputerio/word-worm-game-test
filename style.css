@@ -1,0 +1,213 @@
+        body { font-family: 'Inter', sans-serif; overflow: hidden; touch-action: none; background-color: #f0ebe2; }
+        .tile {
+            position: relative;
+            background-color: #ffffff;
+            transition: all 0.15s ease-in-out; -webkit-user-select: none; user-select: none;
+            box-shadow: 0 4px 0 #b5ada4, 0 5px 10px rgba(0,0,0,0.1);
+            color: #1e293b;
+            border-color: #e0d8ce !important;
+        }
+
+        #line-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+
+        /* Bonus Tile Styles */
+        .bonus-label {
+            position: absolute;
+            top: 3px;
+            right: 5px;
+            font-size: 0.6rem;
+            font-weight: 900;
+            color: white;
+            background: rgba(0,0,0,0.18);
+            padding: 1px 4px;
+            border-radius: 4px;
+        }
+        .tile.bonus-DL { background-color: #3b82f6; color: white; } /* Blue */
+        .tile.bonus-TL { background-color: #ef4444; color: white; } /* Red */
+        .tile.bonus-DW { background-color: #f59e0b; color: white; } /* Amber */
+        .tile.bonus-Time { background-color: #22c55e; color: white; } /* Green */
+        .tile.bonus-DL .tile-points, .tile.bonus-TL .tile-points, .tile.bonus-DW .tile-points, .tile.bonus-Time .tile-points { color: rgba(255,255,255,0.7); }
+
+        /* Selected state — comes after bonus rules so it wins at equal specificity */
+        .tile.selected {
+            background-color: #6B8E38;
+            color: white; transform: scale(1.05); border-color: #4E6A2A !important;
+            box-shadow: 0 2px 0 #4E6A2A, 0 3px 6px rgba(0,0,0,0.2);
+        }
+        .tile.selected .tile-points { color: rgba(255,255,255,0.7); }
+
+        /* Animations */
+
+@keyframes shake-sm {
+    0%, 100% { transform: translate(-50%, -50%) translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translate(-50%, -50%) translateX(-5px); }
+    20%, 40%, 60%, 80% { transform: translate(-50%, -50%) translateX(5px); }
+}
+.animate-shake {
+    animation: shake-sm 0.5s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+
+                @keyframes fade-in-out {
+            0%, 100% { opacity: 0; transform: translateY(10px); }
+            10%, 90% { opacity: 1; transform: translateY(0); }
+        }
+        .game-message {
+            animation: fade-in-out 2s ease-in-out forwards;
+        }
+
+      /* --- START: Tutorial-specific CSS --- */
+.tut-tile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.375rem; /* rounded-md */
+    font-weight: 700;
+    font-size: 1.125rem; /* text-lg */
+    color: #1e293b;
+    background-color: white;
+    border: 2px solid #cbd5e1;
+    transition: all 0.3s ease-in-out;
+    position: relative;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.tut-tile sub {
+    font-size: 0.6rem;
+    font-weight: 600;
+    margin-left: 2px;
+    opacity: 0.8;
+}
+.tut-tile.highlight {
+    transform: scale(1.1);
+    background: linear-gradient(45deg, #60a5fa, #3b82f6);
+    color: white;
+    border-color: #2563eb;
+}
+.bonus-tl-tut { background-color: #ef4444 !important; color: white !important; }
+.bonus-dw-tut { background-color: #f59e0b !important; color: white !important; }
+.bonus-dl-tut { background-color: #3b82f6 !important; color: white !important; }
+.bonus-time-tut { background-color: #22c55e !important; color: white !important; }
+.tut-tile .bonus-label {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    font-size: 0.45rem; /* Smaller font */
+    font-weight: 900;
+    padding: 0px 2px; /* Tighter padding */
+    border-radius: 3px;
+    color: white;
+    background-color: rgba(0, 0, 0, 0.25);
+}
+@keyframes bounce-sm {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+}
+.scroll-prompt-arrow {
+    animation: bounce-sm 1.5s infinite;
+}
+.line-segment {
+    position: absolute;
+    background-color: rgba(59, 130, 246, 0.7);
+    height: 6px;
+    border-radius: 3px;
+    transform-origin: left center;
+    opacity: 0;
+    transition: opacity 0.1s ease-in-out;
+    z-index: 5; /* Ensure lines are on top of tiles */
+}
+@keyframes fly-up-score {
+    0% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+    100% { transform: translate(-50%, -50px) scale(0.6); opacity: 0; }
+}
+.flying-score-tut {
+    position: absolute;
+    left: 50%;
+    top: 40%;
+    background: linear-gradient(45deg, #f59e0b, #d97706);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    font-weight: bold;
+    font-size: 1rem;
+    z-index: 20; /* Ensure score is on top of everything */
+    animation: fly-up-score 1.5s ease-out forwards;
+}
+/* --- END: Tutorial-specific CSS --- */
+
+               @keyframes pulse-text-glow {
+  0%, 100% {
+    transform: scale(1.05);
+    text-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+  }
+  50% {
+    transform: scale(1.15);
+    text-shadow: 0 0 14px rgba(239, 68, 68, 0.8);
+  }
+}
+
+.timer-warning {
+  /* This applies the new text-based glow animation */
+  animation: pulse-text-glow 1s infinite;
+}
+
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+        .animate-pulse { animation: pulse 1s infinite; }
+        @keyframes fly-to-score {
+            0% { transform: translate(0, 0) scale(1.2); opacity: 1; }
+            100% { transform: translate(0, -180px) scale(0.5); opacity: 0; }
+        }
+        .flying-score {
+            position: absolute; background: linear-gradient(45deg, #facc15, #f59e0b); color: white;
+            padding: 8px 16px; border-radius: 9999px; font-weight: bold; font-size: 1.25rem;
+            z-index: 100; animation: fly-to-score 1.5s ease-in-out forwards; pointer-events: none;
+        }
+        @keyframes pop-in {
+            0% { transform: scale(0.8); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .current-letter { animation: pop-in 0.2s ease-out; }
+        .modal-enter { animation: pop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        .tab-button.active {
+            background-color: #3b82f6;
+            color: white;
+        }
+
+        /* Tutorial Animation */
+        .tutorial-tile.highlight {
+            background: linear-gradient(45deg, #60a5fa, #3b82f6);
+            color: white;
+            transform: scale(1.08);
+            border-color: #2563eb;
+        }
+        @keyframes fly-up-tutorial {
+            0% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+            100% { transform: translate(-50%, -200%) scale(0.5); opacity: 0; }
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+        .animate-bounce-slow {
+            animation: bounce 1.5s infinite;
+        }
+
+        .particle {
+            position: fixed;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #facc15;
+            z-index: 101;
+            animation: particle-anim 1.2s ease-out forwards;
+        }
+
+        @keyframes particle-anim {
+            to {
+                transform: var(--transform-end);
+                opacity: 0;
+            }
+        }
+
+
