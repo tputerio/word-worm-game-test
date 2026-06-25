@@ -519,7 +519,7 @@ function showGameMessage(message, type = 'info', startTile = null) {
             if (playerName !== 'Anonymous') {
                 playerGreetingEl.innerHTML = `Welcome back, <strong class="font-bold">${playerName}</strong>!`;
             } else {
-                playerGreetingEl.innerHTML = `Playing as <strong class="font-bold">Anonymous</strong>`;
+                playerGreetingEl.innerHTML = `<span style="color:#2a2b20;">Playing as <strong class="font-bold">Anonymous</strong></span>`;
             }
         }
 
@@ -1526,15 +1526,15 @@ function getTileFromEvent(e) {
         timerCircle.setAttribute('stroke-dasharray', `${progress * circumference} ${circumference}`);
 
         if (timer <= 10) {
-            timerCircle.setAttribute('stroke', '#c0392b');
-            timerEl.style.color = '#c0392b';
+            timerCircle.setAttribute('stroke', '#dc2626');
+            timerEl.style.color = '#dc2626';
             timerEl.classList.add('timer-warning');
         } else if (timer <= 30) {
-            timerCircle.setAttribute('stroke', '#e05252');
-            timerEl.style.color = '#e05252';
+            timerCircle.setAttribute('stroke', '#f59e0b');
+            timerEl.style.color = '#f59e0b';
         } else {
-            timerCircle.setAttribute('stroke', '#e05252');
-            timerEl.style.color = '#1e293b';
+            timerCircle.setAttribute('stroke', '#a9c766');
+            timerEl.style.color = '#2a2b20';
         }
     }
 }
@@ -1681,16 +1681,16 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
    function showWelcomeScreen() {
     modalContent.innerHTML = `
         <div class="bg-white rounded-2xl shadow-lg p-6 text-center">
-            <h1 class="text-4xl font-black text-slate-800 tracking-tighter mb-1 flex items-center justify-center">
+            <h1 class="text-4xl font-black tracking-tighter mb-1 flex items-center justify-center" style="color:#2a2b20;font-family:'Fredoka One',sans-serif;">
                 <img src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-12 h-12 mr-2" width="48" height="48">
                 <span>Word Worm</span>
             </h1>
-            <p class="text-slate-500 text-sm mb-3">The fast-paced word finding game!</p>
-            
+            <p class="text-sm mb-3" style="color:#858b63;font-family:'Fredoka One',sans-serif;">The fast-paced word finding game!</p>
+
 <div id="how-to-play-container" class="relative bg-slate-100 p-3 rounded-lg h-[17rem] flex flex-col"></div>
 
      <div class="flex items-center gap-3 mt-4">
-    <button id="play-daily-button" class="bg-blue-500 hover:bg-blue-600 flex-1 text-white font-bold h-12 px-2 rounded-lg text-sm shadow-lg flex items-center justify-center transition-transform hover:scale-105">
+    <button id="play-daily-button" class="btn-daily flex-1 text-white font-bold h-12 px-2 rounded-lg text-sm flex items-center justify-center">
         <div class="flex items-center justify-center">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
         <path stroke-linecap="round" stroke-linejoin="round" d="M14.25 6.087c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003 0-1.036-1.007-1.875-2.25-1.875s-2.25.84-2.25 1.875c0 .369.128.713.349 1.003.215.283.401.604.401.959v0a.64.64 0 0 1-.657.643 48.39 48.39 0 0 1-4.163-.3c.186 1.613.293 3.25.315 4.907a.656.656 0 0 1-.658.663v0c-.355 0-.676-.186-.959-.401a1.647 1.647 0 0 0-1.003-.349c-1.036 0-1.875 1.007-1.875 2.25s.84 2.25 1.875 2.25c.369 0 .713-.128 1.003-.349.283-.215.604-.401.959-.401v0c.31 0 .555.26.532.57a48.039 48.039 0 0 1-.642 5.056c1.518.19 3.058.309 4.616.354a.64.64 0 0 0 .657-.643v0c0-.355-.186-.676-.401-.959a1.647 1.647 0 0 1-.349-1.003c0-1.035 1.008-1.875 2.25-1.875 1.243 0 2.25.84 2.25 1.875 0 .369-.128.713-.349 1.003-.215.283-.4.604-.4.959v0c0 .333.277.599.61.58a48.1 48.1 0 0 0 5.427-.63 48.05 48.05 0 0 0 .582-4.717.532.532 0 0 0-.533-.57v0c-.355 0-.676.186-.959.401-.29.221-.634.349-1.003.349-1.035 0-1.875-1.007-1.875-2.25s.84-2.25 1.875-2.25c.37 0 .713.128 1.003.349.283.215.604.401.96.401v0a.656.656 0 0 0 .658-.663 48.422 48.422 0 0 0-.37-5.36c-1.886.342-3.81.574-5.766.689a.578.578 0 0 1-.61-.58v0Z" />
@@ -1698,7 +1698,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             <span>Daily Challenge</span>
         </div>
     </button>
-    <button id="play-game-mode-button" class="bg-green-500 hover:bg-green-600 flex-1 text-white font-bold h-12 px-2 rounded-lg text-base shadow-lg flex items-center justify-center transition-transform hover:scale-105">
+    <button id="play-game-mode-button" class="btn-play flex-1 text-white font-bold h-12 px-2 rounded-lg text-base flex items-center justify-center">
         <div class="flex items-center justify-center">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-1"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg>
             <span>Play</span>
@@ -1709,29 +1709,30 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             <div class="bg-slate-100 rounded-xl p-2 mt-4">
                 <div class="grid grid-cols-3 gap-1 text-center">
                     <div class="bg-white rounded-lg shadow-sm p-1 flex flex-col items-center justify-center">
-                    <div id="welcome-high-score" class="h-7 flex items-center justify-center text-xl font-black text-amber-500">0</div>                        <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Your High</div>
+                        <div id="welcome-high-score" class="h-7 flex items-center justify-center text-xl font-black" style="color:#e5b46e;">0</div>
+                        <div class="text-[10px] font-bold uppercase tracking-wider" style="color:#858b63;font-family:'Fredoka One',sans-serif;">Your High</div>
                     </div>
-                
+
                     <a href="#" id="welcome-stats-button" class="bg-white rounded-lg shadow-sm p-1 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors">
-                        <div class="h-7 flex items-center justify-center text-blue-500">
+                        <div class="h-7 flex items-center justify-center" style="color:#858b63;">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg>
                         </div>
-                        <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Your Stats</div>
+                        <div class="text-[10px] font-bold uppercase tracking-wider" style="color:#858b63;font-family:'Fredoka One',sans-serif;">Your Stats</div>
                     </a>
-                
+
                     <a href="#" id="welcome-leaderboard-button" class="bg-white rounded-lg shadow-sm p-1 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors">
-                        <div class="h-7 flex items-center justify-center text-green-500">
+                        <div class="h-7 flex items-center justify-center" style="color:#a9c766;">
                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="m6.115 5.19.319 1.913A6 6 0 0 0 8.11 10.36L9.75 12l-.387.775c-.217.433-.132.956.21 1.298l1.348 1.348c.21.21.329.497.329.795v1.089c0 .426.24.815.622 1.006l.153.076c.433.217.956.132 1.298-.21l.723-.723a8.7 8.7 0 0 0 2.288-4.042 1.087 1.087 0 0 0-.358-1.099l-1.33-1.108c-.251-.21-.582-.299-.905-.245l-1.17.195a1.125 1.125 0 0 1-.98-.314l-.295-.295a1.125 1.125 0 0 1 0-1.591l.13-.132a1.125 1.125 0 0 1 1.3-.21l.603.302a.809.809 0 0 0 1.086-1.086L14.25 7.5l1.256-.837a4.5 4.5 0 0 0 1.528-1.732l.146-.292M6.115 5.19A9 9 0 1 0 17.18 4.64M6.115 5.19A8.965 8.965 0 0 1 12 3c1.929 0 3.716.607 5.18 1.64" /></svg>
                         </div>
-                        <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Leaderboard</div>
+                        <div class="text-[10px] font-bold uppercase tracking-wider" style="color:#858b63;font-family:'Fredoka One',sans-serif;">Leaderboard</div>
                     </a>
                 </div>
                 <div class="border-t border-slate-200 mt-2 pt-2">
-                    <p id="player-greeting" class="text-xs text-slate-600 font-medium"></p>
+                    <p id="player-greeting" class="text-xs font-medium" style="color:#858b63;font-family:'Fredoka One',sans-serif;"></p>
                 </div>
             </div>
 
-            <div class="text-center text-xs text-slate-400 mt-4">
+            <div class="text-center text-xs text-slate-400 mt-4" style="font-family:'Fredoka One',sans-serif;">
   <p>&copy; 2026 Word Worm</p>
   <p>
     <a href="/about.html" class="hover:underline">About</a> &bull;
@@ -2356,7 +2357,7 @@ function getTileCenter(tile) {
             <div class="flex flex-col items-center justify-center space-y-1">
                 <div id="tutorial-word-builder" class="h-7 p-1 bg-white rounded-lg shadow-inner w-32 flex items-center justify-center space-x-1"></div>
                 <div id="tutorial-grid" class="grid grid-cols-4 gap-1 w-40 h-40 relative"></div>
-                <div class="h-6 text-center text-xs font-semibold text-blue-600 flex items-center justify-center gap-1">
+                <div class="h-6 text-center text-xs font-semibold flex items-center justify-center gap-1" style="color:#858b63;">
                     <svg class="w-4 h-4 scroll-prompt-arrow" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
                     <span>Scroll down for game rules and tips!</span>
                     <svg class="w-4 h-4 scroll-prompt-arrow" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
@@ -2521,7 +2522,7 @@ function getTileCenter(tile) {
             }
             
             tile.classList.add('highlight');
-            wordBuilderEl.innerHTML += `<span class="bg-white text-blue-500 font-bold text-sm p-0.5 rounded-md shadow-sm">${step.letter}</span>`;
+            wordBuilderEl.innerHTML += `<span class="font-bold text-sm p-0.5 rounded-md shadow-sm" style="background-color:#a9c766;color:white;">${step.letter}</span>`;
             
             if (i === sequence.length - 1) {
                 await pause(200);
