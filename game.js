@@ -497,11 +497,13 @@ function showGameMessage(message, type = 'info', startTile = null) {
         const docSnap = await getDoc(playerDocRef);
         let highScore = 0;
         let playerName = 'Anonymous';
+        let playStreak = 0;
 
         if (docSnap.exists()) {
             const playerData = docSnap.data();
             highScore = playerData.highScore || 0;
             playerName = playerData.name && playerData.name !== 'Anonymous' ? playerData.name : 'Anonymous';
+            playStreak = playerData.playStreak || 0;
         }
 
            // ✅ FIX: Sync the official name from Firebase to Local Storage
@@ -512,7 +514,10 @@ function showGameMessage(message, type = 'info', startTile = null) {
 
         const welcomeHighScoreEl = document.getElementById('welcome-high-score');
         if (welcomeHighScoreEl) welcomeHighScoreEl.textContent = highScore.toLocaleString();
-        
+
+        const welcomeStreakEl = document.getElementById('welcome-streak');
+        if (welcomeStreakEl) welcomeStreakEl.textContent = playStreak;
+
         // Updated logic for personalized greeting
         const playerGreetingEl = document.getElementById('player-greeting');
         if (playerGreetingEl) {
@@ -1709,8 +1714,11 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             <div class="bg-slate-100 rounded-xl p-2 mt-4">
                 <div class="grid grid-cols-3 gap-1 text-center">
                     <div class="bg-white rounded-lg shadow-sm p-1 flex flex-col items-center justify-center">
-                        <div id="welcome-high-score" class="h-7 flex items-center justify-center text-xl font-black" style="color:#e5b46e;">0</div>
-                        <div class="text-[10px] font-bold uppercase tracking-wider" style="color:#858b63;font-family:'Fredoka One',sans-serif;">Your High</div>
+                        <div class="h-7 flex items-center justify-center gap-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5" style="color:#f97316;"><path fill-rule="evenodd" d="M12.963 2.286a.75.75 0 0 0-1.071-.136 9.742 9.742 0 0 0-3.539 6.176 7.547 7.547 0 0 1-1.705-1.715.75.75 0 0 0-1.152-.082A9 9 0 1 0 15.68 4.534a7.46 7.46 0 0 1-2.717-2.248ZM15.75 14.25a3.75 3.75 0 1 1-7.313-1.172c.628.465 1.35.81 2.133 1a5.99 5.99 0 0 1 1.925-3.546 3.75 3.75 0 0 1 3.255 3.718Z" clip-rule="evenodd" /></svg>
+                            <span id="welcome-streak" class="text-xl font-black" style="color:#f97316;">0</span>
+                        </div>
+                        <div class="text-[10px] font-bold uppercase tracking-wider" style="color:#858b63;font-family:'Fredoka One',sans-serif;">Day Streak</div>
                     </div>
 
                     <a href="#" id="welcome-stats-button" class="bg-white rounded-lg shadow-sm p-1 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors">
