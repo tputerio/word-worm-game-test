@@ -2500,63 +2500,103 @@ function getTileCenter(tile) {
             return `<span class="bg-slate-200 text-slate-700 font-bold rounded-sm px-1.5 py-0.5 text-[10px] leading-none">${letter}-${config.p}</span>`;
         }).join('');
 
+        const circleLeft = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M14 8l-4 4 4 4"/></svg>`;
+        const circleRight = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M10 8l4 4-4 4"/></svg>`;
+
         content.innerHTML = `
-            <div class="bg-white rounded-2xl shadow-2xl modal-enter w-full max-w-xs mx-auto overflow-y-auto" style="max-height:72vh; padding: 1.25rem;">
-                <div class="flex justify-between items-center mb-4">
+            <div class="bg-white rounded-2xl shadow-2xl modal-enter w-full max-w-xs mx-auto" style="padding: 1rem;">
+                <div class="flex justify-between items-center mb-3">
                     <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">How to Play <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-slate-500"><path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 5.25h.008v.008H12v-.008Z" /></svg></h2>
                     <button id="close-instructions-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
                 </div>
-                <div class="text-left text-xs space-y-3">
-                    <ul class="space-y-3">
-                        <li class="flex items-start gap-3">
-                            <svg class="shrink-0 mt-0.5 text-slate-500" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M14 8l4 4-4 4"/></svg>
-                            <span><span class="font-bold text-slate-700">How to Play:</span> Trace adjacent letters to form words of 3 or more.</span>
-                        </li>
-                        <li class="flex items-start gap-3">
-                            <svg class="shrink-0 mt-0.5 text-slate-500" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>
-                            <span><span class="font-bold text-slate-700">Your Goal:</span> Score as many points as you can in 60 seconds.</span>
-                        </li>
-                        <li class="flex items-start gap-3">
-                            <svg class="shrink-0 mt-0.5 text-slate-500" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
-                            <span><span class="font-bold text-slate-700">How to Score:</span> Your score is the sum of letter points and any bonuses.</span>
-                        </li>
-                        <li class="flex items-start gap-3">
-                            <svg class="shrink-0 mt-0.5 text-slate-500" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                            <span><span class="font-bold text-slate-700">Pro-Tip:</span> Use bonuses and long words to maximize your score!</span>
-                        </li>
-                    </ul>
-                    <div class="border-t pt-3">
-                        <strong class="font-semibold text-slate-700">Bonus Tiles:</strong>
-                        <div class="grid grid-cols-2 gap-x-4 gap-y-3 mt-2">
-                            <div class="flex items-center gap-2.5"><span class="inline-block text-white text-center font-bold rounded px-2 py-1 w-11 text-[11px] leading-tight" style="background-color:#3b82f6;">DL</span><span>Double Letter</span></div>
-                            <div class="flex items-center gap-2.5"><span class="inline-block text-white text-center font-bold rounded px-2 py-1 w-11 text-[11px] leading-tight" style="background-color:#f59e0b;">DW</span><span>Double Word</span></div>
-                            <div class="flex items-center gap-2.5"><span class="inline-block text-white text-center font-bold rounded px-2 py-1 w-11 text-[11px] leading-tight" style="background-color:#ef4444;">TL</span><span>Triple Letter</span></div>
-                            <div class="flex items-center gap-2.5"><span class="inline-block text-white text-center font-bold rounded px-2 py-1 w-11 text-[11px] leading-tight" style="background-color:#22c55e;">+5s</span><span>Extra Time</span></div>
+                <div style="overflow:hidden;">
+                    <div id="htp-slides" style="display:flex;width:200%;transition:transform 0.3s ease;">
+                        <div style="width:50%;">
+                            <div class="text-left text-xs space-y-2">
+                                <ul class="space-y-2 text-sm">
+                                    <li class="flex items-start gap-3">
+                                        <svg class="shrink-0 mt-0.5 text-blue-500" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M14 8l4 4-4 4"/></svg>
+                                        <span><span class="font-bold text-slate-900">How to Play:</span> <span class="text-slate-900">Trace adjacent letters to form words of 3 or more.</span></span>
+                                    </li>
+                                    <li class="flex items-start gap-3">
+                                        <svg class="shrink-0 mt-0.5 text-green-500" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>
+                                        <span><span class="font-bold text-slate-900">Your Goal:</span> <span class="text-slate-900">Score as many points as you can in 60 seconds.</span></span>
+                                    </li>
+                                    <li class="flex items-start gap-3">
+                                        <svg class="shrink-0 mt-0.5 text-purple-500" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
+                                        <span><span class="font-bold text-slate-900">How to Score:</span> <span class="text-slate-900">Your score is the sum of letter points and any bonuses.</span></span>
+                                    </li>
+                                    <li class="flex items-start gap-3">
+                                        <svg class="shrink-0 mt-0.5 text-amber-500" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                                        <span><span class="font-bold text-slate-900">Pro-Tip:</span> <span class="text-slate-900">Use bonuses and long words to maximize your score!</span></span>
+                                    </li>
+                                </ul>
+                                <div class="border-t pt-3">
+                                    <strong class="font-semibold text-slate-800 text-sm">Daily Challenge Mode:</strong>
+                                    <p class="mt-1.5 text-slate-900 text-sm">The Daily Challenge is a static board that resets every day. Find as many words as you can, then hit <span class="font-semibold">Submit</span> when done to be added to the leaderboard!</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="width:50%;">
+                            <div class="text-left text-xs space-y-3">
+                                <div>
+                                    <strong class="font-semibold text-slate-700">Bonus Tiles:</strong>
+                                    <div class="grid grid-cols-2 gap-x-4 gap-y-3 mt-2">
+                                        <div class="flex items-center gap-2.5"><span class="inline-block text-white text-center font-bold rounded px-2 py-1 w-11 text-[11px] leading-tight" style="background-color:#3b82f6;">DL</span><span>Double Letter</span></div>
+                                        <div class="flex items-center gap-2.5"><span class="inline-block text-white text-center font-bold rounded px-2 py-1 w-11 text-[11px] leading-tight" style="background-color:#f59e0b;">DW</span><span>Double Word</span></div>
+                                        <div class="flex items-center gap-2.5"><span class="inline-block text-white text-center font-bold rounded px-2 py-1 w-11 text-[11px] leading-tight" style="background-color:#ef4444;">TL</span><span>Triple Letter</span></div>
+                                        <div class="flex items-center gap-2.5"><span class="inline-block text-white text-center font-bold rounded px-2 py-1 w-11 text-[11px] leading-tight" style="background-color:#22c55e;">+5s</span><span>Extra Time</span></div>
+                                    </div>
+                                </div>
+                                <div class="border-t pt-3">
+                                    <strong class="font-semibold text-slate-700">Length Bonus:</strong>
+                                    <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 mt-2">
+                                        <span>4 letters: <span class="font-medium">+5 pts</span></span>
+                                        <span>6 letters: <span class="font-medium">+20 pts</span></span>
+                                        <span>5 letters: <span class="font-medium">+10 pts</span></span>
+                                        <span>7+ letters: <span class="font-medium">+40 pts</span></span>
+                                    </div>
+                                </div>
+                                <div class="border-t pt-3">
+                                    <strong class="font-semibold text-slate-700">Letter Values:</strong>
+                                    <div class="flex flex-wrap gap-1.5 mt-2">${letterTilesHtml}</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="border-t pt-3">
-                        <strong class="font-semibold text-slate-700">Length Bonus:</strong>
-                        <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 mt-2">
-                            <span>4 letters: <span class="font-medium">+5 pts</span></span>
-                            <span>6 letters: <span class="font-medium">+20 pts</span></span>
-                            <span>5 letters: <span class="font-medium">+10 pts</span></span>
-                            <span>7+ letters: <span class="font-medium">+40 pts</span></span>
-                        </div>
-                    </div>
-                    <div class="border-t pt-3">
-                        <strong class="font-semibold text-slate-700">Letter Values:</strong>
-                        <div class="flex flex-wrap gap-1.5 mt-2">${letterTilesHtml}</div>
-                    </div>
-                    <div class="border-t pt-3">
-                        <strong class="font-semibold text-slate-700">Daily Challenge Mode:</strong>
-                        <p class="mt-2 text-slate-600">The Daily Challenge is a static board that resets every day. Find as many words as you can, then hit <span class="font-semibold">Submit</span> when done to be added to the leaderboard!</p>
-                    </div>
-                    <div class="border-t pt-3 pb-1 text-center">
-                        <p class="text-slate-600 mb-2">Want to play without the timer?</p>
-                        <button id="instructions-practice-button" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-5 rounded-lg text-sm">Practice Mode</button>
+                </div>
+                <div class="border-t pt-2 pb-1 text-center mt-3">
+                    <p class="text-slate-500 text-xs mb-2">Want to play without the timer?</p>
+                    <button id="instructions-practice-button" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-5 rounded-lg text-sm">Practice Mode</button>
+                    <div class="flex items-center justify-center gap-3 mt-2">
+                        <button id="htp-prev" class="text-slate-300 transition-colors">${circleLeft}</button>
+                        <button id="htp-next" class="text-slate-700 transition-colors">${circleRight}</button>
                     </div>
                 </div>
             </div>`;
+
+        let currentPage = 0;
+        const slidesEl = document.getElementById('htp-slides');
+        const prevBtn = document.getElementById('htp-prev');
+        const nextBtn = document.getElementById('htp-next');
+
+        function goToPage(n) {
+            currentPage = Math.max(0, Math.min(1, n));
+            slidesEl.style.transform = `translateX(-${currentPage * 50}%)`;
+            prevBtn.className = currentPage === 0 ? 'text-slate-300 transition-colors' : 'text-slate-700 transition-colors';
+            nextBtn.className = currentPage === 1 ? 'text-slate-300 transition-colors' : 'text-slate-700 transition-colors';
+        }
+
+        prevBtn.onclick = () => goToPage(currentPage - 1);
+        nextBtn.onclick = () => goToPage(currentPage + 1);
+
+        const wrapper = slidesEl.parentElement;
+        let touchStartX = 0;
+        wrapper.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, { passive: true });
+        wrapper.addEventListener('touchend', e => {
+            const dx = e.changedTouches[0].clientX - touchStartX;
+            if (Math.abs(dx) > 40) goToPage(dx < 0 ? currentPage + 1 : currentPage - 1);
+        }, { passive: true });
 
         modal.classList.remove('hidden');
         document.getElementById('close-instructions-button').onclick = () => modal.classList.add('hidden');
