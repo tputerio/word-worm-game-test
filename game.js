@@ -1675,9 +1675,9 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
    function showWelcomeScreen() {
     modalContent.innerHTML = `
         <div class="bg-white rounded-2xl shadow-lg p-6 text-center">
-            <h1 class="mb-1 flex items-center justify-center">
-                <img src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-12 h-12 mr-2" width="48" height="48">
-                <img src="assets/word-worm-text-logo.png" alt="Word Worm" style="max-height: 48px; width: auto;">
+            <h1 class="mb-1 flex items-center justify-center text-3xl font-black text-slate-800 tracking-tighter">
+                <img src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-9 h-9 mr-2" width="36" height="36">
+                <span>Word Worm</span>
             </h1>
             <p class="text-slate-500 text-sm mb-3">The fast-paced word finding game!</p>
 
