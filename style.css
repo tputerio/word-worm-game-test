@@ -201,3 +201,123 @@
                 opacity: 0;
             }
         }
+
+/* --- Dark Mode Toggle Switch --- */
+.dark-toggle-track {
+    width: 44px;
+    height: 24px;
+    background-color: #cbd5e1;
+    border-radius: 9999px;
+    position: relative;
+    transition: background-color 0.2s;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.dark-toggle-track.active { background-color: #3b82f6; }
+.dark-toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    background-color: white;
+    border-radius: 9999px;
+    transition: transform 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+.dark-toggle-track.active .dark-toggle-thumb { transform: translateX(20px); }
+
+/* --- Dark Mode --- */
+html.dark body { background-color: #0f172a; color: #e2e8f0; }
+html.dark .bg-white { background-color: #1e293b !important; }
+html.dark .bg-slate-100 { background-color: #1e293b !important; }
+html.dark .bg-slate-200 { background-color: #334155 !important; }
+html.dark .text-slate-800 { color: #e2e8f0 !important; }
+html.dark .text-slate-700 { color: #cbd5e1 !important; }
+html.dark .text-slate-600 { color: #94a3b8 !important; }
+html.dark .text-slate-500 { color: #94a3b8 !important; }
+html.dark .text-slate-400 { color: #64748b !important; }
+html.dark .border-slate-200 { border-color: #334155 !important; }
+html.dark .border-slate-300 { border-color: #475569 !important; }
+html.dark .hover\:bg-slate-50:hover { background-color: #334155 !important; }
+html.dark .hover\:bg-slate-100:hover { background-color: #334155 !important; }
+html.dark .hover\:text-slate-800:hover { color: #e2e8f0 !important; }
+html.dark .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5), 0 4px 6px -4px rgba(0,0,0,0.4) !important; }
+html.dark .shadow-2xl { box-shadow: 0 25px 50px -12px rgba(0,0,0,0.6) !important; }
+html.dark .shadow-md { box-shadow: 0 4px 6px -1px rgba(0,0,0,0.4) !important; }
+html.dark .shadow-sm { box-shadow: 0 1px 2px rgba(0,0,0,0.4) !important; }
+html.dark .tile { background-color: #334155 !important; border-color: #475569 !important; color: #e2e8f0 !important; }
+html.dark .tut-tile { background-color: #334155; border-color: #475569; color: #e2e8f0; }
+html.dark .shadow-inner { box-shadow: inset 0 2px 4px rgba(0,0,0,0.4) !important; }
+html.dark .dark-toggle-track { background-color: #475569; }
+html.dark .dark-toggle-track.active { background-color: #3b82f6; }
+
+/* Additional text colors */
+html.dark .text-slate-900 { color: #f1f5f9 !important; }
+html.dark .text-black { color: #e2e8f0 !important; }
+
+/* Bonus tiles keep their colors in dark mode (slightly darker hue) */
+html.dark .tile.bonus-DL { background-color: #2563eb !important; }
+html.dark .tile.bonus-TL { background-color: #dc2626 !important; }
+html.dark .tile.bonus-DW { background-color: #d97706 !important; }
+html.dark .tile.bonus-Time { background-color: #16a34a !important; }
+
+/* bg-slate-50 rows */
+html.dark .bg-slate-50 { background-color: #293548 !important; }
+html.dark .bg-blue-100 { background-color: #1e3a5f !important; }
+
+/* Scoreboard border during gameplay */
+html.dark #scoreboard { border: 1px solid #475569; }
+
+/* Home screen stat boxes (Day Streak / Your High / Leaderboard) */
+html.dark #modal-content .bg-white.rounded-lg.shadow-sm { border: 1px solid #475569; }
+
+/* Border-t / border-b in dark mode */
+html.dark .border-t { border-top-color: #334155 !important; }
+html.dark .border-b { border-bottom-color: #334155 !important; }
+
+/* Leaderboard standings: dark pill + light outline + white text */
+html.dark #leaderboard-list-simple li {
+    background-color: #334155;
+    border: 1px solid #475569;
+    border-radius: 0.5rem;
+    margin-bottom: 2px;
+    color: #e2e8f0;
+}
+html.dark #leaderboard-list-simple li.bg-blue-100 {
+    background-color: #1e3a5f !important;
+    border-color: #3b82f6 !important;
+}
+
+/* Stats list items: same treatment */
+html.dark #profile-tab-content ol li {
+    background-color: #334155 !important;
+    border: 1px solid #475569;
+    border-radius: 0.375rem;
+    color: #e2e8f0;
+    margin-bottom: 2px;
+}
+
+/* Profile modal: input fields (name + password) */
+html.dark #stats-modal input[type="text"],
+html.dark #stats-modal input[type="password"] {
+    background-color: #0f172a !important;
+    color: #e2e8f0 !important;
+    border-color: #475569 !important;
+}
+html.dark #stats-modal input[type="text"]::placeholder,
+html.dark #stats-modal input[type="password"]::placeholder { color: #64748b; }
+
+/* Profile modal: Save / Update Password buttons — darker hue of light-mode color */
+html.dark #stats-modal .bg-slate-800 {
+    background-color: #0f172a !important;
+    border: 1px solid #334155 !important;
+}
+html.dark #stats-modal .hover\:bg-slate-700:hover { background-color: #1e293b !important; }
+
+/* Stats tab: Games / Avg Score / Avg Length grid cell outlines */
+html.dark #profile-tab-content .bg-slate-100.rounded-lg > div {
+    border: 1px solid #475569;
+    border-radius: 0.375rem;
+    padding: 0.5rem;
+}

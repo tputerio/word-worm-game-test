@@ -28,6 +28,17 @@
     const leaderboardModal = document.getElementById('leaderboard-modal'), leaderboardModalContent = document.getElementById('leaderboard-modal-content');
     const statsModal = document.getElementById('stats-modal'), statsModalContent = document.getElementById('stats-modal-content');
 
+    // --- Dark Mode ---
+    function setDarkMode(dark) {
+        document.documentElement.classList.toggle('dark', dark);
+        localStorage.setItem('wordWormDarkMode', dark ? 'true' : 'false');
+        document.querySelectorAll('.dark-toggle-track').forEach(el => {
+            el.classList.toggle('active', dark);
+            el.setAttribute('aria-checked', String(dark));
+        });
+    }
+    setDarkMode(localStorage.getItem('wordWormDarkMode') === 'true');
+
     // --- Firebase State ---
     let auth, db, userId;
    // GOOGLE ANALYTICS -- let auth, db, userId, analytics;
@@ -3132,5 +3143,8 @@ function getTileCenter(tile) {
             startGame(true);
         };
 }
+
+    document.getElementById('settings-dark-mode-row').addEventListener('click', () => setDarkMode(!document.documentElement.classList.contains('dark')));
+    document.getElementById('pause-dark-mode-row').addEventListener('click', () => setDarkMode(!document.documentElement.classList.contains('dark')));
 
     document.addEventListener('DOMContentLoaded', main);
