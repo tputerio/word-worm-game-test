@@ -1,6 +1,6 @@
     // --- Firebase SDKs ---
     import { getApps, initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, updateProfile } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
     import { getFirestore, collection, addDoc, getDocs, query, where, orderBy, limit, doc, getDoc, setDoc, updateDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
      // --- Google Analytics ---
@@ -31,6 +31,7 @@
     // --- Firebase State ---
     let auth, db, userId;
    // GOOGLE ANALYTICS -- let auth, db, userId, analytics;
+    const isUserSignedIn = () => auth?.currentUser && !auth.currentUser.isAnonymous;
 
     // --- Game State ---
     let score = 0, timer = GAME_TIME, timerInterval, foundWords = [], selectedTiles = [], isMouseDown = false;
@@ -224,35 +225,32 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
         summaryContainer.innerHTML = `<p class="text-base font-bold text-green-600 flex items-center justify-center">${checkIcon}<span>You found ${foundCount} / ${totalCount} words (${percentage}%)</span></p>`;
     };
 
-    const playerName = localStorage.getItem('wordRushPlayerName');
-    if ((!playerName || playerName === 'Anonymous') && isNewSubmission) {
+    if (isNewSubmission && !isUserSignedIn()) {
+        const googleSvg = `<svg class="w-4 h-4 mr-2 flex-shrink-0" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>`;
         summaryContainer.innerHTML = `
-            <div class="w-full">
-                <div class="flex space-x-2">
-                    <input type="text" id="player-name-daily" placeholder="Enter your name" class="w-full px-3 py-2 border border-slate-300 rounded-lg" maxlength="10">
-                    <button id="submit-name-daily" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Submit</button>
+            <div class="text-center w-full">
+                <p class="text-xs text-slate-500 mb-2">Sign in to appear on the leaderboard</p>
+                <div class="flex flex-col gap-2">
+                    <button id="daily-google-signin" class="w-full flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 font-bold py-2 px-3 rounded-lg text-sm border border-slate-200 shadow-sm">${googleSvg}Continue with Google</button>
+                    <button id="daily-create-signin" class="w-full flex items-center justify-center bg-slate-800 hover:bg-slate-700 text-white font-bold py-2 px-3 rounded-lg text-sm shadow-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-2 flex-shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
+                        Create an Account
+                    </button>
                 </div>
+                <button id="daily-skip-signin" class="text-xs text-slate-400 hover:text-slate-600 mt-2 cursor-pointer hover:underline block w-full text-center py-1">Skip (won't appear on leaderboard)</button>
             </div>`;
-        
-        const nameInput = document.getElementById('player-name-daily');
-        const submitBtn = document.getElementById('submit-name-daily');
-        
-        submitBtn.onclick = async () => {
-            const newPlayerName = nameInput.value.trim();
-            if (newPlayerName) {
-                submitBtn.disabled = true;
-                submitBtn.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Submitting...</div>`;
-                localStorage.setItem('wordRushPlayerName', newPlayerName);
-                
-                if (userId && db) {
-                    const playerDocRef = doc(db, "players", userId);
-                    await setDoc(playerDocRef, { name: newPlayerName, hasSubmittedName: true }, { merge: true });
-                }
-                
+
+        document.getElementById('daily-google-signin').onclick = async () => {
+            const btn = document.getElementById('daily-google-signin');
+            btn.disabled = true;
+            try {
+                await signInWithProvider(new GoogleAuthProvider());
                 await submitDailyScoreToLeaderboard(stats.score);
                 showSummaryText();
-            }
+            } catch(e) { console.error('Sign-in failed:', e); btn.disabled = false; }
         };
+        document.getElementById('daily-create-signin').onclick = () => showAccountModal();
+        document.getElementById('daily-skip-signin').onclick = () => showSummaryText();
     } else {
         showSummaryText();
     }
@@ -390,6 +388,41 @@ function showSubmitConfirmation() {
         }
     };
     
+    async function signInWithProvider(provider) {
+        try {
+            const result = await linkWithPopup(auth.currentUser, provider);
+            const user = result.user;
+            userId = user.uid;
+            if (db) {
+                const playerDocRef = doc(db, "players", user.uid);
+                const snap = await getDoc(playerDocRef);
+                if (!snap.exists() || !snap.data().hasSubmittedName) {
+                    const name = (user.displayName || 'Player').split(' ')[0];
+                    await setDoc(playerDocRef, { name, hasSubmittedName: true }, { merge: true });
+                    localStorage.setItem('wordRushPlayerName', name);
+                } else {
+                    localStorage.setItem('wordRushPlayerName', snap.data().name);
+                }
+            }
+            return user;
+        } catch (err) {
+            if (err.code === 'auth/credential-already-in-use' || err.code === 'auth/email-already-in-use') {
+                const result = await signInWithPopup(auth, provider);
+                const user = result.user;
+                userId = user.uid;
+                if (db) {
+                    const playerDocRef = doc(db, "players", user.uid);
+                    const snap = await getDoc(playerDocRef);
+                    if (snap.exists() && snap.data().name) {
+                        localStorage.setItem('wordRushPlayerName', snap.data().name);
+                    }
+                }
+                return user;
+            }
+            throw err;
+        }
+    }
+
     const loadDictionaryAndEnableButtons = async () => {
         if (playGameModeButton && playGameModeButton.disabled) return; // Don't re-run if already loaded
         
@@ -518,14 +551,24 @@ function showGameMessage(message, type = 'info', startTile = null) {
         const welcomeStreakEl = document.getElementById('welcome-streak');
         if (welcomeStreakEl) welcomeStreakEl.textContent = playStreak;
 
-        // Updated logic for personalized greeting
         const playerGreetingEl = document.getElementById('player-greeting');
         if (playerGreetingEl) {
-            if (playerName !== 'Anonymous') {
+            if (isUserSignedIn() && playerName !== 'Anonymous') {
                 playerGreetingEl.innerHTML = `Welcome back, <strong class="font-bold">${playerName}</strong>!`;
             } else {
-                playerGreetingEl.innerHTML = `Playing as <strong class="font-bold">Anonymous</strong>`;
+                playerGreetingEl.innerHTML = `Playing as <strong class="font-bold">Guest</strong> &bull; <span id="greeting-signin-link" class="text-blue-500 hover:underline cursor-pointer">Sign in</span>`;
+                setTimeout(() => {
+                    const link = document.getElementById('greeting-signin-link');
+                    if (link) link.onclick = () => showAccountModal();
+                }, 0);
             }
+        }
+
+        const accountBtn = document.getElementById('account-btn');
+        if (accountBtn && isUserSignedIn()) {
+            accountBtn.className = 'p-1 rounded-full text-green-500 hover:text-slate-700 hover:bg-slate-100 transition-colors';
+            accountBtn.title = 'Your account';
+            accountBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path fill-rule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clip-rule="evenodd" /></svg>`;
         }
 
     } catch (e) {
@@ -1277,11 +1320,11 @@ async function submitDailyScoreToLeaderboard(finalScore) {
         console.warn("Firebase not ready, can't submit daily score.");
         return;
     }
-    const playerName = localStorage.getItem('wordRushPlayerName') || 'Anonymous';
-    if (playerName === 'Anonymous') {
-        console.log("Player is Anonymous, not submitting to daily leaderboard.");
+    if (!isUserSignedIn()) {
+        console.log("User not signed in, not submitting to daily leaderboard.");
         return;
     }
+    const playerName = localStorage.getItem('wordRushPlayerName') || 'Player';
 
     const todayStr = new Date().toLocaleDateString('en-CA');
     const leaderboardRef = doc(db, "leaderboards", "dailyChallenge");
@@ -1370,28 +1413,45 @@ function getTileFromEvent(e) {
         console.error("Could not check for player name:", e);
     }
 
+    let skipLeaderboard = false;
     if (needsToSubmitName) {
         const submissionContainer = document.getElementById('submission-container');
-        submissionContainer.innerHTML = `<div id="submit-score-form" class="w-full"><div class="flex space-x-2"><input type="text" id="player-name" placeholder="Enter your name" class="w-full px-3 py-2 border border-slate-300 rounded-lg" maxlength="10"><button id="submit-global-score" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Submit</button></div></div>`;
-        
-        const newPlayerName = await new Promise(resolve => {
-            const nameInput = document.getElementById('player-name');
-            const submitButton = document.getElementById('submit-global-score');
-            if (nameInput && submitButton) {
-                submitButton.onclick = () => {
-                    const nameValue = nameInput.value.trim();
-                    if (nameValue) {
-                        submitButton.disabled = true;
-                        submitButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Submitting...</div>`;
+        if (!isUserSignedIn()) {
+            const googleSvg = `<svg class="w-4 h-4 mr-2 flex-shrink-0" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>`;
+            submissionContainer.innerHTML = `
+                <div class="text-center w-full">
+                    <p class="text-xs text-slate-500 mb-2">Sign in to appear on the leaderboard</p>
+                    <div class="flex flex-col gap-2">
+                        <button id="endgame-google-signin" class="w-full flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 font-bold py-2 px-3 rounded-lg text-sm border border-slate-200 shadow-sm">${googleSvg}Continue with Google</button>
+                        <button id="endgame-create-signin" class="w-full flex items-center justify-center bg-slate-800 hover:bg-slate-700 text-white font-bold py-2 px-3 rounded-lg text-sm shadow-sm">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-2 flex-shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
+                            Create an Account
+                        </button>
+                    </div>
+                    <button id="endgame-skip-signin" class="text-xs text-slate-400 hover:text-slate-600 mt-2 cursor-pointer hover:underline block w-full text-center py-1">Skip (won't appear on leaderboard)</button>
+                </div>`;
 
-                        resolve(nameValue);
-                    }
+            const didSignIn = await new Promise(resolve => {
+                document.getElementById('endgame-google-signin').onclick = async () => {
+                    const btn = document.getElementById('endgame-google-signin');
+                    btn.disabled = true;
+                    try { await signInWithProvider(new GoogleAuthProvider()); resolve(true); }
+                    catch(e) { console.error('Sign-in failed:', e); btn.disabled = false; }
                 };
-            }
-        });
+                document.getElementById('endgame-create-signin').onclick = () => {
+                    showAccountModal();
+                    resolve(false);
+                };
+                document.getElementById('endgame-skip-signin').onclick = () => resolve(false);
+            });
 
-        finalPlayerName = newPlayerName;
-        localStorage.setItem('wordRushPlayerName', finalPlayerName);
+            if (!didSignIn) {
+                skipLeaderboard = true;
+                submissionContainer.innerHTML = '';
+            } else {
+                finalPlayerName = localStorage.getItem('wordRushPlayerName') || 'Player';
+            }
+        }
     }
     
     // --- PART 2: UPDATE ALL DATABASE STATS ---
@@ -1448,58 +1508,60 @@ function getTileFromEvent(e) {
     }
 
     let dailyRank = null;
-    const dailyRef = doc(db, "leaderboards", "daily");
-    try {
-        // Get current leaderboard data
-        const leaderboardDoc = await getDoc(dailyRef);
-        let data = leaderboardDoc.exists() ? leaderboardDoc.data() : {};
-        
-        // Always initialize arrays if missing
-        data.topByHighScore = Array.isArray(data.topByHighScore) ? data.topByHighScore : [];
-        data.topByTotalScore = Array.isArray(data.topByTotalScore) ? data.topByTotalScore : [];
-        data.topByBestWord = Array.isArray(data.topByBestWord) ? data.topByBestWord : [];
+    if (!skipLeaderboard && isUserSignedIn()) {
+        const dailyRef = doc(db, "leaderboards", "daily");
+        try {
+            // Get current leaderboard data
+            const leaderboardDoc = await getDoc(dailyRef);
+            let data = leaderboardDoc.exists() ? leaderboardDoc.data() : {};
 
-        const oldTotalEntry = data.topByTotalScore.find(e => e.userID === uId);
-        const newTotalScore = (oldTotalEntry?.dailyTotalScore || 0) + finalScore;
-        const gameBestWord = words.length > 0 ? words.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: '' };
-        const oldBestWordEntry = data.topByBestWord.find(e => e.userID === uId);
-        const newBestWord = gameBestWord.score > (oldBestWordEntry?.dailyBestWord?.score || 0) ? gameBestWord : (oldBestWordEntry?.dailyBestWord || gameBestWord);
+            // Always initialize arrays if missing
+            data.topByHighScore = Array.isArray(data.topByHighScore) ? data.topByHighScore : [];
+            data.topByTotalScore = Array.isArray(data.topByTotalScore) ? data.topByTotalScore : [];
+            data.topByBestWord = Array.isArray(data.topByBestWord) ? data.topByBestWord : [];
 
-        // Update leaderboard lists
-        data.date = todayStr;  // Always update the date
-        data.topByHighScore = updateLeaderboardList(data.topByHighScore, { userID: uId, name: finalPlayerName, dailyHighScore: updatedStats.dailyHighScore }, 'dailyHighScore');
-        data.topByTotalScore = updateLeaderboardList(data.topByTotalScore, { userID: uId, name: finalPlayerName, dailyTotalScore: newTotalScore }, 'dailyTotalScore');
-        data.topByBestWord = updateLeaderboardList(data.topByBestWord, { userID: uId, name: finalPlayerName, dailyBestWord: newBestWord }, 'dailyBestWord', 'score');
+            const oldTotalEntry = data.topByTotalScore.find(e => e.userID === uId);
+            const newTotalScore = (oldTotalEntry?.dailyTotalScore || 0) + finalScore;
+            const gameBestWord = words.length > 0 ? words.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: '' };
+            const oldBestWordEntry = data.topByBestWord.find(e => e.userID === uId);
+            const newBestWord = gameBestWord.score > (oldBestWordEntry?.dailyBestWord?.score || 0) ? gameBestWord : (oldBestWordEntry?.dailyBestWord || gameBestWord);
 
-        // Update with merge
-        await setDoc(dailyRef, data, { merge: true });
+            // Update leaderboard lists
+            data.date = todayStr;  // Always update the date
+            data.topByHighScore = updateLeaderboardList(data.topByHighScore, { userID: uId, name: finalPlayerName, dailyHighScore: updatedStats.dailyHighScore }, 'dailyHighScore');
+            data.topByTotalScore = updateLeaderboardList(data.topByTotalScore, { userID: uId, name: finalPlayerName, dailyTotalScore: newTotalScore }, 'dailyTotalScore');
+            data.topByBestWord = updateLeaderboardList(data.topByBestWord, { userID: uId, name: finalPlayerName, dailyBestWord: newBestWord }, 'dailyBestWord', 'score');
 
-        const updatedLeaderboardDoc = await getDoc(dailyRef);
-        if (updatedLeaderboardDoc.exists()) {
-            const rankIndex = (updatedLeaderboardDoc.data().topByHighScore || []).findIndex(p => p.userID === uId);
-            if (rankIndex !== -1) dailyRank = rankIndex + 1;
-        }
-    } catch (e) { console.error("Failed to update daily leaderboard:", e); }
+            // Update with merge
+            await setDoc(dailyRef, data, { merge: true });
 
-    const allTimeRef = doc(db, "leaderboards", "allTime");
-    try {
-        // Get current all-time data
-        const allTimeDoc = await getDoc(allTimeRef);
-        let data = allTimeDoc.exists() ? allTimeDoc.data() : {};
-        
-        // Initialize arrays if missing
-        data.topByHighScore = Array.isArray(data.topByHighScore) ? data.topByHighScore : [];
-        data.topByTotalPoints = Array.isArray(data.topByTotalPoints) ? data.topByTotalPoints : [];
-        data.topByBestWord = Array.isArray(data.topByBestWord) ? data.topByBestWord : [];
-        
-        // Update leaderboard lists
-        data.topByHighScore = updateLeaderboardList(data.topByHighScore, { userID: uId, name: finalPlayerName, score: updatedStats.highScore }, 'score');
-        data.topByTotalPoints = updateLeaderboardList(data.topByTotalPoints, { userID: uId, name: finalPlayerName, totalPoints: updatedStats.totalPoints }, 'totalPoints');
-        data.topByBestWord = updateLeaderboardList(data.topByBestWord, { userID: uId, name: finalPlayerName, bestWord: updatedStats.bestWord }, 'bestWord', 'score');
-        
-        // Update with merge
-        await setDoc(allTimeRef, data, { merge: true });
-    } catch (e) { console.error("Failed to update all-time leaderboard:", e); }
+            const updatedLeaderboardDoc = await getDoc(dailyRef);
+            if (updatedLeaderboardDoc.exists()) {
+                const rankIndex = (updatedLeaderboardDoc.data().topByHighScore || []).findIndex(p => p.userID === uId);
+                if (rankIndex !== -1) dailyRank = rankIndex + 1;
+            }
+        } catch (e) { console.error("Failed to update daily leaderboard:", e); }
+
+        const allTimeRef = doc(db, "leaderboards", "allTime");
+        try {
+            // Get current all-time data
+            const allTimeDoc = await getDoc(allTimeRef);
+            let data = allTimeDoc.exists() ? allTimeDoc.data() : {};
+
+            // Initialize arrays if missing
+            data.topByHighScore = Array.isArray(data.topByHighScore) ? data.topByHighScore : [];
+            data.topByTotalPoints = Array.isArray(data.topByTotalPoints) ? data.topByTotalPoints : [];
+            data.topByBestWord = Array.isArray(data.topByBestWord) ? data.topByBestWord : [];
+
+            // Update leaderboard lists
+            data.topByHighScore = updateLeaderboardList(data.topByHighScore, { userID: uId, name: finalPlayerName, score: updatedStats.highScore }, 'score');
+            data.topByTotalPoints = updateLeaderboardList(data.topByTotalPoints, { userID: uId, name: finalPlayerName, totalPoints: updatedStats.totalPoints }, 'totalPoints');
+            data.topByBestWord = updateLeaderboardList(data.topByBestWord, { userID: uId, name: finalPlayerName, bestWord: updatedStats.bestWord }, 'bestWord', 'score');
+
+            // Update with merge
+            await setDoc(allTimeRef, data, { merge: true });
+        } catch (e) { console.error("Failed to update all-time leaderboard:", e); }
+    }
 
     updateEndGameSubmissionUI(finalPlayerName, { didBeatDailyHighScore, rank: dailyRank });
 }
@@ -1780,6 +1842,154 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     document.getElementById('play-game-mode-button').onclick = () => startGame(false);
     document.getElementById('play-daily-button').onclick = () => startGame(false, 'daily');
 }
+
+    function showAccountModal() {
+        const accountModal = document.getElementById('account-modal');
+        const accountModalContent = document.getElementById('account-modal-content');
+
+        if (isUserSignedIn()) {
+            const playerName = localStorage.getItem('wordRushPlayerName') || 'Player';
+            const highScore = document.getElementById('welcome-high-score')?.textContent || '0';
+            const streak = document.getElementById('welcome-streak')?.textContent || '0';
+            accountModalContent.innerHTML = `
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-slate-800 flex items-center">
+                        Your Account
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 ml-2 text-green-500"><path fill-rule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clip-rule="evenodd" /></svg>
+                    </h2>
+                    <button id="close-account-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
+                </div>
+                <div class="bg-slate-50 rounded-xl p-4 mb-4">
+                    <p class="text-lg font-black text-slate-800">${playerName}</p>
+                    <p class="text-xs text-slate-500 mt-1">High Score: ${highScore} &bull; Streak: ${streak} days</p>
+                </div>
+                <button id="account-signout-btn" class="w-full flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors border border-slate-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2 text-red-400"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" /></svg>
+                    Sign Out
+                </button>`;
+
+            document.getElementById('close-account-modal').onclick = () => accountModal.classList.add('hidden');
+            document.getElementById('account-signout-btn').onclick = async () => {
+                await signOut(auth);
+                await signInAnonymously(auth);
+                localStorage.removeItem('wordRushPlayerName');
+                accountModal.classList.add('hidden');
+                showWelcomeScreen();
+            };
+        } else {
+            const googleSvg = `<svg class="w-5 h-5 mr-2 flex-shrink-0" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>`;
+            const renderSignInView = (errorMsg = '') => {
+                accountModalContent.innerHTML = `
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-2xl font-bold text-slate-800">
+                            Sign In
+                        </h2>
+                        <button id="close-account-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
+                    </div>
+                    <p class="text-xs text-slate-500 text-center mb-6">Save your stats &amp; appear on the leaderboard</p>
+                    ${errorMsg ? `<p class="text-xs text-red-500 text-center mb-3">${errorMsg}</p>` : ''}
+                    <div class="space-y-3">
+                        <button id="account-google-btn" class="w-full flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors border border-slate-200">
+                            ${googleSvg}Continue with Google
+                        </button>
+                        <button id="account-create-btn" class="w-full flex items-center justify-center bg-white hover:bg-slate-50 text-slate-900 font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors border border-slate-200">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2 flex-shrink-0 text-slate-900"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM4 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 10.374 21c-2.331 0-4.512-.645-6.374-1.766Z" /></svg>
+                            Create an Account
+                        </button>
+                    </div>
+                    <p class="text-center mt-4"><span id="account-guest-btn" class="text-xs text-slate-400 hover:text-slate-600 cursor-pointer hover:underline">Continue as Guest</span></p>`;
+
+                document.getElementById('close-account-modal').onclick = () => accountModal.classList.add('hidden');
+                document.getElementById('account-guest-btn').onclick = () => accountModal.classList.add('hidden');
+                document.getElementById('account-google-btn').onclick = async () => {
+                    const btn = document.getElementById('account-google-btn');
+                    const orig = btn.innerHTML;
+                    btn.disabled = true;
+                    btn.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Signing in...</div>`;
+                    try {
+                        await signInWithProvider(new GoogleAuthProvider());
+                        accountModal.classList.add('hidden');
+                        showWelcomeScreen();
+                    } catch (e) {
+                        console.error('Google sign-in failed:', e);
+                        renderSignInView('Sign-in failed. Please try again.');
+                    }
+                };
+                document.getElementById('account-create-btn').onclick = () => renderCreateAccountView();
+            };
+
+            const renderCreateAccountView = (errorMsg = '') => {
+                accountModalContent.innerHTML = `
+                    <div class="flex items-center mb-4">
+                        <button id="back-to-signin" class="text-slate-400 hover:text-slate-600 mr-3 text-sm flex items-center gap-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
+                            Back
+                        </button>
+                        <h2 class="text-xl font-bold text-slate-800">Create an Account</h2>
+                        <button id="close-account-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800 ml-auto">&times;</button>
+                    </div>
+                    ${errorMsg ? `<p class="text-xs text-red-500 mb-3">${errorMsg}</p>` : ''}
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-1">Display Name</label>
+                            <input id="create-name" type="text" placeholder="Shown on leaderboard (max 10 chars)" maxlength="10" class="w-full px-3 py-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-1">Email Address</label>
+                            <input id="create-email" type="email" placeholder="" class="w-full px-3 py-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-1">Password</label>
+                            <input id="create-password" type="password" placeholder="Minimum 6 characters" class="w-full px-3 py-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
+                        </div>
+                        <button id="create-submit-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base transition-colors">
+                            Create Account
+                        </button>
+                    </div>`;
+
+                document.getElementById('close-account-modal').onclick = () => accountModal.classList.add('hidden');
+                document.getElementById('back-to-signin').onclick = () => renderSignInView();
+                document.getElementById('create-submit-btn').onclick = async () => {
+                    const name = document.getElementById('create-name').value.trim();
+                    const email = document.getElementById('create-email').value.trim();
+                    const password = document.getElementById('create-password').value;
+                    if (!name) { renderCreateAccountView('Please enter a display name.'); return; }
+                    if (!email) { renderCreateAccountView('Please enter an email address.'); return; }
+                    if (password.length < 6) { renderCreateAccountView('Password must be at least 6 characters.'); return; }
+
+                    const btn = document.getElementById('create-submit-btn');
+                    btn.disabled = true;
+                    btn.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Creating account...</div>`;
+
+                    try {
+                        const credential = EmailAuthProvider.credential(email, password);
+                        const result = await linkWithCredential(auth.currentUser, credential);
+                        const user = result.user;
+                        userId = user.uid;
+                        if (db) {
+                            const playerDocRef = doc(db, "players", user.uid);
+                            await setDoc(playerDocRef, { name, hasSubmittedName: true }, { merge: true });
+                            localStorage.setItem('wordRushPlayerName', name);
+                        }
+                        accountModal.classList.add('hidden');
+                        showWelcomeScreen();
+                    } catch (e) {
+                        console.error('Account creation failed:', e);
+                        const msg = e.code === 'auth/email-already-in-use'
+                            ? 'That email is already in use.'
+                            : e.code === 'auth/invalid-email'
+                            ? 'Please enter a valid email address.'
+                            : 'Something went wrong. Please try again.';
+                        renderCreateAccountView(msg);
+                    }
+                };
+            };
+
+            renderSignInView();
+        }
+
+        accountModal.classList.remove('hidden');
+    }
 
    async function showLeaderboardModal(initialTab = 'challenge') {
     leaderboardModal.classList.remove('hidden');
