@@ -1769,6 +1769,10 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         document.getElementById('settings-modal').classList.add('hidden');
         showHowToPlayModal();
     };
+    document.getElementById('settings-modal-leaderboard').onclick = () => {
+        document.getElementById('settings-modal').classList.add('hidden');
+        showLeaderboardModal();
+    };
 
     setupTutorial();
     menuContainer.classList.add('hidden');
