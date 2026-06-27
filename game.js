@@ -1,6 +1,6 @@
     // --- Firebase SDKs ---
     import { getApps, initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, updateProfile } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
     import { getFirestore, collection, addDoc, getDocs, query, where, orderBy, limit, doc, getDoc, setDoc, updateDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
      // --- Google Analytics ---
@@ -1878,114 +1878,232 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             };
         } else {
             const googleSvg = `<svg class="w-5 h-5 mr-2 flex-shrink-0" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>`;
-            const renderSignInView = (errorMsg = '') => {
-                accountModalContent.innerHTML = `
-                    <div class="flex justify-between items-center mb-3">
-                        <h2 class="text-2xl font-bold text-slate-800">
-                            Sign In
-                        </h2>
-                        <button id="close-account-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
-                    </div>
-                    <p class="text-xs text-slate-500 text-center mb-6">Save your stats &amp; appear on the leaderboard</p>
-                    ${errorMsg ? `<p class="text-xs text-red-500 text-center mb-3">${errorMsg}</p>` : ''}
-                    <div class="space-y-3">
-                        <button id="account-google-btn" class="w-full flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors border border-slate-200">
+            const spinnerHtml = `<svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+            const orDivider = `<div class="relative my-4"><div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div><div class="relative flex justify-center text-xs"><span class="bg-white px-2 text-slate-400">or</span></div></div>`;
+            const inputClass = `w-full px-3 py-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400`;
+            const labelClass = `block text-sm font-bold text-slate-700 mb-1`;
+
+            const viewHeader = (title) => `
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-slate-800">${title}</h2>
+                    <button id="close-account-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
+                </div>`;
+
+            const renderAuthModal = (activeTab = 'login', errorMsg = '') => {
+                if (activeTab === 'login') {
+                    accountModalContent.innerHTML = `
+                        ${viewHeader('Log In')}
+                        ${errorMsg ? `<p class="text-xs text-red-500 mb-3">${errorMsg}</p>` : ''}
+                        <div class="space-y-3">
+                            <div>
+                                <label class="${labelClass}">Email Address</label>
+                                <input id="login-email" type="email" class="${inputClass}">
+                            </div>
+                            <div>
+                                <div class="flex justify-between items-center mb-1">
+                                    <label class="${labelClass}">Password</label>
+                                    <span id="forgot-password-link" class="text-xs text-slate-400 hover:text-slate-600 cursor-pointer hover:underline">Forgot password?</span>
+                                </div>
+                                <input id="login-password" type="password" class="${inputClass}">
+                            </div>
+                            <button id="login-submit-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-sm transition-colors">
+                                Log In
+                            </button>
+                        </div>
+                        ${orDivider}
+                        <button id="login-google-btn" class="w-full flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 font-semibold py-3 px-4 rounded-lg text-sm border border-slate-300 transition-colors">
                             ${googleSvg}Continue with Google
                         </button>
-                        <button id="account-create-btn" class="w-full flex items-center justify-center bg-white hover:bg-slate-50 text-slate-900 font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors border border-slate-200">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2 flex-shrink-0 text-slate-900"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM4 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 10.374 21c-2.331 0-4.512-.645-6.374-1.766Z" /></svg>
-                            Create an Account
-                        </button>
-                    </div>
-                    <p class="text-center mt-4"><span id="account-guest-btn" class="text-xs text-slate-400 hover:text-slate-600 cursor-pointer hover:underline">Continue as Guest</span></p>`;
+                        <p class="text-center mt-4 space-x-3">
+                            <span id="goto-signup" class="text-xs text-slate-400 hover:text-slate-600 cursor-pointer hover:underline">Don't have an account? Sign up</span>
+                        </p>
+                        <p class="text-center mt-2">
+                            <span id="login-guest-btn" class="text-xs text-slate-400 hover:text-slate-600 cursor-pointer hover:underline">Continue as Guest</span>
+                        </p>`;
 
-                document.getElementById('close-account-modal').onclick = () => accountModal.classList.add('hidden');
-                document.getElementById('account-guest-btn').onclick = () => accountModal.classList.add('hidden');
-                document.getElementById('account-google-btn').onclick = async () => {
-                    const btn = document.getElementById('account-google-btn');
-                    const orig = btn.innerHTML;
-                    btn.disabled = true;
-                    btn.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Signing in...</div>`;
-                    try {
-                        await signInWithProvider(new GoogleAuthProvider());
-                        accountModal.classList.add('hidden');
-                        showWelcomeScreen();
-                    } catch (e) {
-                        console.error('Google sign-in failed:', e);
-                        renderSignInView('Sign-in failed. Please try again.');
-                    }
-                };
-                document.getElementById('account-create-btn').onclick = () => renderCreateAccountView();
+                    document.getElementById('close-account-modal').onclick = () => accountModal.classList.add('hidden');
+                    document.getElementById('goto-signup').onclick = () => renderAuthModal('signup');
+                    document.getElementById('login-guest-btn').onclick = () => accountModal.classList.add('hidden');
+                    document.getElementById('forgot-password-link').onclick = () => renderForgotPasswordView();
+                    document.getElementById('login-google-btn').onclick = async () => {
+                        const btn = document.getElementById('login-google-btn');
+                        btn.disabled = true;
+                        btn.innerHTML = `<div class="flex items-center justify-center">${spinnerHtml}Signing in...</div>`;
+                        try {
+                            await signInWithProvider(new GoogleAuthProvider());
+                            accountModal.classList.add('hidden');
+                            showWelcomeScreen();
+                        } catch (e) {
+                            console.error('Google sign-in failed:', e);
+                            renderAuthModal('login', 'Sign-in failed. Please try again.');
+                        }
+                    };
+                    document.getElementById('login-submit-btn').onclick = async () => {
+                        const email = document.getElementById('login-email').value.trim();
+                        const password = document.getElementById('login-password').value;
+                        if (!email) { renderAuthModal('login', 'Please enter your email address.'); return; }
+                        if (!password) { renderAuthModal('login', 'Please enter your password.'); return; }
+                        const btn = document.getElementById('login-submit-btn');
+                        btn.disabled = true;
+                        btn.innerHTML = `<div class="flex items-center justify-center">${spinnerHtml}Signing in...</div>`;
+                        try {
+                            const result = await signInWithEmailAndPassword(auth, email, password);
+                            userId = result.user.uid;
+                            if (db) {
+                                const snap = await getDoc(doc(db, "players", result.user.uid));
+                                if (snap.exists() && snap.data().name) localStorage.setItem('wordRushPlayerName', snap.data().name);
+                            }
+                            accountModal.classList.add('hidden');
+                            showWelcomeScreen();
+                        } catch (e) {
+                            console.error('Email sign-in failed:', e);
+                            const msg = e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found'
+                                ? 'Incorrect email or password.'
+                                : e.code === 'auth/invalid-email' ? 'Please enter a valid email address.'
+                                : 'Something went wrong. Please try again.';
+                            renderAuthModal('login', msg);
+                        }
+                    };
+                } else {
+                    accountModalContent.innerHTML = `
+                        ${viewHeader('Sign Up')}
+                        ${errorMsg ? `<p class="text-xs text-red-500 mb-3">${errorMsg}</p>` : ''}
+                        <div class="space-y-3">
+                            <div>
+                                <label class="${labelClass}">Display Name</label>
+                                <input id="create-name" type="text" placeholder="Shown on leaderboard (max 10 chars)" maxlength="10" class="${inputClass}">
+                            </div>
+                            <div>
+                                <label class="${labelClass}">Email Address</label>
+                                <input id="create-email" type="email" class="${inputClass}">
+                            </div>
+                            <div>
+                                <label class="${labelClass}">Password</label>
+                                <input id="create-password" type="password" placeholder="Minimum 6 characters" class="${inputClass}">
+                            </div>
+                            <button id="create-submit-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-sm transition-colors">
+                                Create Account
+                            </button>
+                        </div>
+                        ${orDivider}
+                        <button id="signup-google-btn" class="w-full flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 font-semibold py-3 px-4 rounded-lg text-sm border border-slate-300 transition-colors">
+                            ${googleSvg}Continue with Google
+                        </button>
+                        <p class="text-center mt-4">
+                            <span id="goto-login" class="text-xs text-slate-400 hover:text-slate-600 cursor-pointer hover:underline">Already have an account? Log in</span>
+                        </p>
+                        <p class="text-center mt-2">
+                            <span id="signup-guest-btn" class="text-xs text-slate-400 hover:text-slate-600 cursor-pointer hover:underline">Continue as Guest</span>
+                        </p>`;
+
+                    document.getElementById('close-account-modal').onclick = () => accountModal.classList.add('hidden');
+                    document.getElementById('goto-login').onclick = () => renderAuthModal('login');
+                    document.getElementById('signup-guest-btn').onclick = () => accountModal.classList.add('hidden');
+                    document.getElementById('signup-google-btn').onclick = async () => {
+                        const btn = document.getElementById('signup-google-btn');
+                        btn.disabled = true;
+                        btn.innerHTML = `<div class="flex items-center justify-center">${spinnerHtml}Signing in...</div>`;
+                        try {
+                            await signInWithProvider(new GoogleAuthProvider());
+                            accountModal.classList.add('hidden');
+                            showWelcomeScreen();
+                        } catch (e) {
+                            console.error('Google sign-in failed:', e);
+                            renderAuthModal('signup', 'Sign-in failed. Please try again.');
+                        }
+                    };
+                    document.getElementById('create-submit-btn').onclick = async () => {
+                        const name = document.getElementById('create-name').value.trim();
+                        const email = document.getElementById('create-email').value.trim();
+                        const password = document.getElementById('create-password').value;
+                        if (!name) { renderAuthModal('signup', 'Please enter a display name.'); return; }
+                        if (!email) { renderAuthModal('signup', 'Please enter an email address.'); return; }
+                        if (password.length < 6) { renderAuthModal('signup', 'Password must be at least 6 characters.'); return; }
+                        const btn = document.getElementById('create-submit-btn');
+                        btn.disabled = true;
+                        btn.innerHTML = `<div class="flex items-center justify-center">${spinnerHtml}Creating account...</div>`;
+                        try {
+                            const credential = EmailAuthProvider.credential(email, password);
+                            const result = await linkWithCredential(auth.currentUser, credential);
+                            userId = result.user.uid;
+                            if (db) {
+                                await setDoc(doc(db, "players", result.user.uid), { name, hasSubmittedName: true }, { merge: true });
+                                localStorage.setItem('wordRushPlayerName', name);
+                            }
+                            accountModal.classList.add('hidden');
+                            showWelcomeScreen();
+                        } catch (e) {
+                            console.error('Account creation failed:', e);
+                            const msg = e.code === 'auth/email-already-in-use' ? 'That email is already in use.'
+                                : e.code === 'auth/invalid-email' ? 'Please enter a valid email address.'
+                                : 'Something went wrong. Please try again.';
+                            renderAuthModal('signup', msg);
+                        }
+                    };
+                }
             };
 
-            const renderCreateAccountView = (errorMsg = '') => {
-                accountModalContent.innerHTML = `
+            const renderForgotPasswordView = (errorMsg = '', successEmail = '') => {
+                accountModalContent.innerHTML = successEmail ? `
                     <div class="flex items-center mb-4">
-                        <button id="back-to-signin" class="text-slate-400 hover:text-slate-600 mr-3 text-sm flex items-center gap-1">
+                        <button id="back-to-login" class="text-slate-400 hover:text-slate-600 mr-3 text-sm flex items-center gap-1">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
                             Back
                         </button>
-                        <h2 class="text-xl font-bold text-slate-800">Create an Account</h2>
                         <button id="close-account-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800 ml-auto">&times;</button>
                     </div>
+                    <div class="text-center py-4">
+                        <div class="text-4xl mb-3">📬</div>
+                        <h2 class="text-lg font-bold text-slate-800 mb-2">Check your email</h2>
+                        <p class="text-sm text-slate-500">We sent a password reset link to <strong>${successEmail}</strong>. Check your inbox and follow the link to reset your password.</p>
+                    </div>
+                    <button id="back-to-login-btn" class="w-full mt-4 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 px-4 rounded-lg text-sm transition-colors">Back to Log In</button>` : `
+                    <div class="flex items-center mb-4">
+                        <button id="back-to-login" class="text-slate-400 hover:text-slate-600 mr-3 text-sm flex items-center gap-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
+                            Back
+                        </button>
+                        <h2 class="text-lg font-bold text-slate-800">Reset Password</h2>
+                        <button id="close-account-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800 ml-auto">&times;</button>
+                    </div>
+                    <p class="text-xs text-slate-500 mb-4">Enter your email and we'll send you a link to reset your password.</p>
                     ${errorMsg ? `<p class="text-xs text-red-500 mb-3">${errorMsg}</p>` : ''}
                     <div class="space-y-3">
                         <div>
-                            <label class="block text-sm font-bold text-slate-700 mb-1">Display Name</label>
-                            <input id="create-name" type="text" placeholder="Shown on leaderboard (max 10 chars)" maxlength="10" class="w-full px-3 py-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
+                            <label class="${labelClass}">Email Address</label>
+                            <input id="reset-email" type="email" class="${inputClass}">
                         </div>
-                        <div>
-                            <label class="block text-sm font-bold text-slate-700 mb-1">Email Address</label>
-                            <input id="create-email" type="email" placeholder="" class="w-full px-3 py-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-bold text-slate-700 mb-1">Password</label>
-                            <input id="create-password" type="password" placeholder="Minimum 6 characters" class="w-full px-3 py-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400">
-                        </div>
-                        <button id="create-submit-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base transition-colors">
-                            Create Account
+                        <button id="reset-submit-btn" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 px-4 rounded-lg text-sm transition-colors">
+                            Send Reset Link
                         </button>
                     </div>`;
 
                 document.getElementById('close-account-modal').onclick = () => accountModal.classList.add('hidden');
-                document.getElementById('back-to-signin').onclick = () => renderSignInView();
-                document.getElementById('create-submit-btn').onclick = async () => {
-                    const name = document.getElementById('create-name').value.trim();
-                    const email = document.getElementById('create-email').value.trim();
-                    const password = document.getElementById('create-password').value;
-                    if (!name) { renderCreateAccountView('Please enter a display name.'); return; }
-                    if (!email) { renderCreateAccountView('Please enter an email address.'); return; }
-                    if (password.length < 6) { renderCreateAccountView('Password must be at least 6 characters.'); return; }
-
-                    const btn = document.getElementById('create-submit-btn');
-                    btn.disabled = true;
-                    btn.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Creating account...</div>`;
-
-                    try {
-                        const credential = EmailAuthProvider.credential(email, password);
-                        const result = await linkWithCredential(auth.currentUser, credential);
-                        const user = result.user;
-                        userId = user.uid;
-                        if (db) {
-                            const playerDocRef = doc(db, "players", user.uid);
-                            await setDoc(playerDocRef, { name, hasSubmittedName: true }, { merge: true });
-                            localStorage.setItem('wordRushPlayerName', name);
+                document.getElementById('back-to-login').onclick = () => renderAuthModal('login');
+                if (successEmail) {
+                    document.getElementById('back-to-login-btn').onclick = () => renderAuthModal('login');
+                } else {
+                    document.getElementById('reset-submit-btn').onclick = async () => {
+                        const email = document.getElementById('reset-email').value.trim();
+                        if (!email) { renderForgotPasswordView('Please enter your email address.'); return; }
+                        const btn = document.getElementById('reset-submit-btn');
+                        btn.disabled = true;
+                        btn.innerHTML = `<div class="flex items-center justify-center">${spinnerHtml}Sending...</div>`;
+                        try {
+                            await sendPasswordResetEmail(auth, email);
+                            renderForgotPasswordView('', email);
+                        } catch (e) {
+                            console.error('Password reset failed:', e);
+                            const msg = e.code === 'auth/user-not-found' || e.code === 'auth/invalid-email'
+                                ? 'No account found with that email.'
+                                : 'Something went wrong. Please try again.';
+                            renderForgotPasswordView(msg);
                         }
-                        accountModal.classList.add('hidden');
-                        showWelcomeScreen();
-                    } catch (e) {
-                        console.error('Account creation failed:', e);
-                        const msg = e.code === 'auth/email-already-in-use'
-                            ? 'That email is already in use.'
-                            : e.code === 'auth/invalid-email'
-                            ? 'Please enter a valid email address.'
-                            : 'Something went wrong. Please try again.';
-                        renderCreateAccountView(msg);
-                    }
-                };
+                    };
+                }
             };
 
-            renderSignInView();
+            renderAuthModal('login');
         }
 
         accountModal.classList.remove('hidden');
