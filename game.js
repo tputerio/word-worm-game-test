@@ -524,7 +524,7 @@ function showGameMessage(message, type = 'info', startTile = null) {
             if (playerName !== 'Anonymous') {
                 playerGreetingEl.innerHTML = `Welcome back, <strong class="font-bold">${playerName}</strong>!`;
             } else {
-                playerGreetingEl.innerHTML = `<span style="color:#2a2b20;">Playing as <strong class="font-bold">Anonymous</strong></span>`;
+                playerGreetingEl.innerHTML = `Playing as <strong class="font-bold">Anonymous</strong>`;
             }
         }
 
@@ -547,11 +547,11 @@ function showGameMessage(message, type = 'info', startTile = null) {
         const letter = typeof letterData === 'object' ? letterData.letter : letterData;
         const points = letterConfig[letter].p;
         const tile = document.createElement('div');
-        tile.className = 'tile w-full aspect-square border-2 rounded-2xl flex items-center justify-center cursor-pointer relative';
+        tile.className = 'tile w-full aspect-square border-2 border-slate-300 bg-white rounded-lg flex items-center justify-center text-3xl font-bold text-slate-800 cursor-pointer';
         tile.dataset.letter = letter;
         tile.dataset.points = points;
         tile.dataset.id = i;
-        tile.innerHTML = `<span class="font-black" style="font-size:1.9rem;line-height:1;">${letter}</span><span class="absolute tile-points" style="bottom:4px;right:6px;font-size:0.65rem;font-weight:700;color:#9c8e80;">${points}</span>`;
+        tile.innerHTML = `<span>${letter}<sub class="text-xs font-semibold ml-1">${points}</sub></span>`;
         
         let bonusType = null;
         // ✅ FIX: Check for deterministic bonuses first
@@ -1010,7 +1010,7 @@ function replaceSelectedTiles() {
         setTimeout(() => {
             tile.dataset.letter = letter;
             tile.dataset.points = points;
-            tile.innerHTML = `<span class="font-black" style="font-size:1.9rem;line-height:1;">${letter}</span><span class="absolute tile-points" style="bottom:4px;right:6px;font-size:0.65rem;font-weight:700;color:#9c8e80;">${points}</span>`;
+            tile.innerHTML = `<span>${letter}<sub class="text-xs font-semibold ml-1">${points}</sub></span>`;
 
             const bonusType = getBonusType();
             if (bonusType) {
@@ -1522,25 +1522,14 @@ function getTileFromEvent(e) {
 
     function updateTimerUI() {
     timerEl.textContent = timer;
-    timerEl.classList.remove('timer-warning');
+    timerEl.classList.remove('text-green-500', 'text-yellow-500', 'text-red-500', 'timer-warning');
 
-    const timerCircle = document.getElementById('timer-circle');
-    const circumference = 113.1;
-    if (timerCircle) {
-        const progress = Math.max(0, timer / GAME_TIME);
-        timerCircle.setAttribute('stroke-dasharray', `${progress * circumference} ${circumference}`);
-
-        if (timer <= 10) {
-            timerCircle.setAttribute('stroke', '#dc2626');
-            timerEl.style.color = '#dc2626';
-            timerEl.classList.add('timer-warning');
-        } else if (timer <= 30) {
-            timerCircle.setAttribute('stroke', '#f59e0b');
-            timerEl.style.color = '#f59e0b';
-        } else {
-            timerCircle.setAttribute('stroke', '#a9c766');
-            timerEl.style.color = '#2a2b20';
-        }
+    if (timer <= 10) {
+        timerEl.classList.add('text-red-500', 'timer-warning');
+    } else if (timer <= 30) {
+        timerEl.classList.add('text-yellow-500');
+    } else {
+        timerEl.classList.add('text-green-500');
     }
 }
     
@@ -1664,7 +1653,7 @@ function triggerConfetti(tiles) {
 
 function updateCurrentWord() {
     const hasLetters = selectedTiles.length > 0;
-    const newWordHTML = selectedTiles.map(t => `<span class="current-letter inline-flex items-center justify-center font-black text-white rounded-xl shadow-md" style="width:38px;height:38px;font-size:1.25rem;background-color:#9DC061;flex-shrink:0;">${t.dataset.letter}</span>`).join('');
+    const newWordHTML = selectedTiles.map(t => `<span class="current-letter bg-white text-blue-500 font-bold text-xl p-1 rounded-md shadow-sm">${t.dataset.letter}</span>`).join('');
 
     if (currentWordLettersEl.innerHTML !== newWordHTML) {
         currentWordLettersEl.innerHTML = newWordHTML;
@@ -1686,16 +1675,16 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
    function showWelcomeScreen() {
     modalContent.innerHTML = `
         <div class="bg-white rounded-2xl shadow-lg p-6 text-center">
-            <h1 class="text-4xl font-black tracking-tighter mb-1 flex items-center justify-center" style="color:#2a2b20;font-family:'Fredoka One',sans-serif;">
+            <h1 class="text-4xl font-black text-slate-800 tracking-tighter mb-1 flex items-center justify-center">
                 <img src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-12 h-12 mr-2" width="48" height="48">
                 <span>Word Worm</span>
             </h1>
-            <p class="text-sm mb-3" style="color:#858b63;font-family:'Fredoka One',sans-serif;">The fast-paced word finding game!</p>
+            <p class="text-slate-500 text-sm mb-3">The fast-paced word finding game!</p>
 
-<div id="how-to-play-container" class="relative bg-slate-100 p-3 rounded-lg h-[17rem] flex flex-col"></div>
+<div id="how-to-play-container" class="bg-slate-100 p-3 rounded-lg flex flex-col w-full"></div>
 
      <div class="flex items-center gap-3 mt-4">
-    <button id="play-daily-button" class="btn-daily flex-1 text-white font-bold h-12 px-2 rounded-lg text-sm flex items-center justify-center">
+    <button id="play-daily-button" class="bg-blue-500 hover:bg-blue-600 flex-1 text-white font-bold h-12 px-2 rounded-lg text-sm flex items-center justify-center transition-transform hover:scale-105">
         <div class="flex items-center justify-center">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
         <path stroke-linecap="round" stroke-linejoin="round" d="M14.25 6.087c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003 0-1.036-1.007-1.875-2.25-1.875s-2.25.84-2.25 1.875c0 .369.128.713.349 1.003.215.283.401.604.401.959v0a.64.64 0 0 1-.657.643 48.39 48.39 0 0 1-4.163-.3c.186 1.613.293 3.25.315 4.907a.656.656 0 0 1-.658.663v0c-.355 0-.676-.186-.959-.401a1.647 1.647 0 0 0-1.003-.349c-1.036 0-1.875 1.007-1.875 2.25s.84 2.25 1.875 2.25c.369 0 .713-.128 1.003-.349.283-.215.604-.401.959-.401v0c.31 0 .555.26.532.57a48.039 48.039 0 0 1-.642 5.056c1.518.19 3.058.309 4.616.354a.64.64 0 0 0 .657-.643v0c0-.355-.186-.676-.401-.959a1.647 1.647 0 0 1-.349-1.003c0-1.035 1.008-1.875 2.25-1.875 1.243 0 2.25.84 2.25 1.875 0 .369-.128.713-.349 1.003-.215.283-.4.604-.4.959v0c0 .333.277.599.61.58a48.1 48.1 0 0 0 5.427-.63 48.05 48.05 0 0 0 .582-4.717.532.532 0 0 0-.533-.57v0c-.355 0-.676.186-.959.401-.29.221-.634.349-1.003.349-1.035 0-1.875-1.007-1.875-2.25s.84-2.25 1.875-2.25c.37 0 .713.128 1.003.349.283.215.604.401.96.401v0a.656.656 0 0 0 .658-.663 48.422 48.422 0 0 0-.37-5.36c-1.886.342-3.81.574-5.766.689a.578.578 0 0 1-.61-.58v0Z" />
@@ -1703,7 +1692,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             <span>Daily Challenge</span>
         </div>
     </button>
-    <button id="play-game-mode-button" class="btn-play flex-1 text-white font-bold h-12 px-2 rounded-lg text-base flex items-center justify-center">
+    <button id="play-game-mode-button" class="bg-green-500 hover:bg-green-600 flex-1 text-white font-bold h-12 px-2 rounded-lg text-base flex items-center justify-center transition-transform hover:scale-105">
         <div class="flex items-center justify-center">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-1"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg>
             <span>Play</span>
@@ -1718,29 +1707,29 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5" style="color:#f97316;"><path fill-rule="evenodd" d="M12.963 2.286a.75.75 0 0 0-1.071-.136 9.742 9.742 0 0 0-3.539 6.176 7.547 7.547 0 0 1-1.705-1.715.75.75 0 0 0-1.152-.082A9 9 0 1 0 15.68 4.534a7.46 7.46 0 0 1-2.717-2.248ZM15.75 14.25a3.75 3.75 0 1 1-7.313-1.172c.628.465 1.35.81 2.133 1a5.99 5.99 0 0 1 1.925-3.546 3.75 3.75 0 0 1 3.255 3.718Z" clip-rule="evenodd" /></svg>
                             <span id="welcome-streak" class="text-xl font-black" style="color:#f97316;">0</span>
                         </div>
-                        <div class="text-[10px] font-bold uppercase tracking-wider" style="color:#858b63;font-family:'Fredoka One',sans-serif;">Day Streak</div>
+                        <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Day Streak</div>
                     </div>
 
                     <a href="#" id="welcome-stats-button" class="bg-white rounded-lg shadow-sm p-1 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors">
-                        <div class="h-7 flex items-center justify-center" style="color:#858b63;">
+                        <div class="h-7 flex items-center justify-center text-blue-500">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg>
                         </div>
-                        <div class="text-[10px] font-bold uppercase tracking-wider" style="color:#858b63;font-family:'Fredoka One',sans-serif;">Your Stats</div>
+                        <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Your Stats</div>
                     </a>
 
                     <a href="#" id="welcome-leaderboard-button" class="bg-white rounded-lg shadow-sm p-1 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors">
-                        <div class="h-7 flex items-center justify-center" style="color:#a9c766;">
+                        <div class="h-7 flex items-center justify-center text-green-500">
                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="m6.115 5.19.319 1.913A6 6 0 0 0 8.11 10.36L9.75 12l-.387.775c-.217.433-.132.956.21 1.298l1.348 1.348c.21.21.329.497.329.795v1.089c0 .426.24.815.622 1.006l.153.076c.433.217.956.132 1.298-.21l.723-.723a8.7 8.7 0 0 0 2.288-4.042 1.087 1.087 0 0 0-.358-1.099l-1.33-1.108c-.251-.21-.582-.299-.905-.245l-1.17.195a1.125 1.125 0 0 1-.98-.314l-.295-.295a1.125 1.125 0 0 1 0-1.591l.13-.132a1.125 1.125 0 0 1 1.3-.21l.603.302a.809.809 0 0 0 1.086-1.086L14.25 7.5l1.256-.837a4.5 4.5 0 0 0 1.528-1.732l.146-.292M6.115 5.19A9 9 0 1 0 17.18 4.64M6.115 5.19A8.965 8.965 0 0 1 12 3c1.929 0 3.716.607 5.18 1.64" /></svg>
                         </div>
-                        <div class="text-[10px] font-bold uppercase tracking-wider" style="color:#858b63;font-family:'Fredoka One',sans-serif;">Leaderboard</div>
+                        <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Leaderboard</div>
                     </a>
                 </div>
                 <div class="border-t border-slate-200 mt-2 pt-2">
-                    <p id="player-greeting" class="text-xs font-medium" style="color:#858b63;font-family:'Fredoka One',sans-serif;"></p>
+                    <p id="player-greeting" class="text-xs text-slate-600 font-medium"></p>
                 </div>
             </div>
 
-            <div class="text-center text-xs text-slate-400 mt-4" style="font-family:'Fredoka One',sans-serif;">
+            <div class="text-center text-xs text-slate-400 mt-4">
   <p>&copy; 2026 Word Worm</p>
   <p>
     <a href="/about.html" class="hover:underline">About</a> &bull;
@@ -1768,7 +1757,6 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     menuContainer.classList.add('hidden');
     
     document.getElementById('play-game-mode-button').onclick = () => startGame(false);
-    document.getElementById('play-practice-button').onclick = () => startGame(true);
     document.getElementById('play-daily-button').onclick = () => startGame(false, 'daily');
 }
 
@@ -2072,7 +2060,7 @@ function drawLines() {
     if (selectedTiles.length < 2) return;
 
     activeCtx.beginPath();
-    activeCtx.strokeStyle = "#9DC061";
+    activeCtx.strokeStyle = "rgba(59, 130, 246, 0.7)";
     activeCtx.lineWidth = 12;
     activeCtx.lineCap = "round";
     activeCtx.lineJoin = "round";
@@ -2353,86 +2341,21 @@ function getTileCenter(tile) {
     
     
    function setupTutorial() {
-    // Get the main container for the tutorial, which is created by showWelcomeScreen()
     const container = document.getElementById('how-to-play-container');
     if (!container) return;
 
-    // --- 1. Define the HTML structure for the new animation ---
-    // This is taken directly from the new animation file you provided.
     container.innerHTML = `
-        <h3 class="text-md font-bold text-slate-700 text-center mb-2 shrink-0">How to Play</h3>
-        <div id="how-to-play-content" class="flex-grow overflow-y-auto pr-2">
-            <div class="flex flex-col items-center justify-center space-y-1">
-                <div id="tutorial-word-builder" class="h-7 p-1 bg-white rounded-lg shadow-inner w-32 flex items-center justify-center space-x-1"></div>
-                <div id="tutorial-grid" class="grid grid-cols-4 gap-1 w-40 h-40 relative"></div>
-                <div class="h-6 text-center text-xs font-semibold flex items-center justify-center gap-1" style="color:#858b63;">
-                    <svg class="w-4 h-4 scroll-prompt-arrow" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
-                    <span>Scroll down for game rules and tips!</span>
-                    <svg class="w-4 h-4 scroll-prompt-arrow" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
-                </div>
-            </div>
-            <div class="text-left text-xs space-y-3 mt-3">
-                 <ul class="space-y-1">
-                    <li class="flex items-start"><span class="inline-block w-5 h-5 mr-2 shrink-0 text-black"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m12.75 15 3-3m0 0-3-3m3 3h-7.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg></span><span><strong>How to Play:</strong> Trace letters to form words of 3 or more.</span></li>
-                    <li class="flex items-start"><span class="inline-block w-5 h-5 mr-2 shrink-0 text-black"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg></span><span><strong>Your Goal:</strong> Score as many points as you can in 60 seconds.</span></li>
-                    <li class="flex items-start"><span class="inline-block w-5 h-5 mr-2 shrink-0 text-black"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0 0 20.25 18V6A2.25 2.25 0 0 0 18 3.75H6A2.25 2.25 0 0 0 3.75 6v12A2.25 2.25 0 0 0 6 20.25Z" /></svg></span><span><strong>How to Score:</strong> Your score is the sum of letter points and any bonuses.</span></li>
-                    <li class="flex items-start"><span class="inline-block w-5 h-5 mr-2 shrink-0 text-black"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" /></svg></span><span><strong>Pro-Tip:</strong> Use bonuses and long words to maximize your score!</span></li>
-                 </ul>
-                 <div><strong class="font-semibold text-slate-700">Bonus Tiles:</strong>
-                     <div class="grid grid-cols-2 gap-x-4 mt-1">
-                         <ul class="list-none space-y-1">
-                             <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #3b82f6;">DL</span> Double Letter</span></li>
-                             <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #ef4444;">TL</span> Triple Letter</span></li>
-                         </ul>
-                         <ul class="list-none space-y-1">
-                             <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #f59e0b;">DW</span> Double Word</span></li>
-                             <li class="flex items-center"><span><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color: #22c55e;">+5s</span> Extra Time</span></li>
-                         </ul>
-                     </div>
-                 </div>
-                 <div><strong class="font-semibold text-slate-700">Long Word Bonus:</strong>
-                     <table class="w-full mt-1 text-left text-xs">
-                         <tbody>
-                             <tr><td class="py-0.5 pr-2">4 Letters: <span class="font-medium">+5 pts</span></td><td class="py-0.5">6 Letters: <span class="font-medium">+20 pts</span></td></tr>
-                             <tr><td class="py-0.5 pr-2">5 Letters: <span class="font-medium">+10 pts</span></td><td class="py-0.5">7+ Letters: <span class="font-medium">+40 pts</span></td></tr>
-                         </tbody>
-                     </table>
-                 </div>
-                  <div><strong class="font-semibold text-slate-700">Letter Point Values:</strong>
-                      <div id="letter-values-container" class="flex flex-wrap gap-1 mt-1"></div>
-                  </div>
-
-                  <div class="pt-2 mt-2 border-t">
-                    <strong class="font-semibold text-slate-700">Daily Challenge Mode:</strong>
-                    <p class="mt-1">The Daily Challenge is a static board that resets every day. Find as many words as you can, and the hit 'Submit' when done to be added to the leaderboard!</p>
-                </div>
-
-                  <!-- NEW PRACTICE BUTTON ADDED HERE -->
-                 <div class="pt-4 mt-4 border-t border-slate-200">
-                <p class="text-center text-sm font-semibold text-slate-600 mb-2">Practice without the timer here!</p>
-                <div class="flex justify-center">
-                    <button id="play-practice-button" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-5 rounded-lg text-sm">
-                        Practice
-                    </button>
-                </div>
-            </div>
+        <div style="display:flex;justify-content:flex-end;margin-bottom:4px;">
+            <button id="how-to-play-btn" class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-slate-200 text-slate-600" style="flex-shrink:0;" title="How to play">?</button>
+        </div>
+        <div class="flex flex-col items-center">
+            <div id="tutorial-word-builder" class="h-7 p-1 bg-white rounded-lg shadow-inner w-32 flex items-center justify-center space-x-1 mb-2"></div>
+            <div id="tutorial-grid" class="grid grid-cols-4 gap-1 w-40 h-40 relative"></div>
         </div>
     `;
 
-    // --- 2. Get DOM elements and set up constants for the animation ---
     const gridEl = document.getElementById('tutorial-grid');
     const wordBuilderEl = document.getElementById('tutorial-word-builder');
-    const letterValuesContainer = document.getElementById('letter-values-container');
-
-    // Display letter point values (this is also from the new code)
-    if (letterValuesContainer) {
-        const sortedLetters = Object.keys(letterConfig).sort();
-        const letterTilesHtml = sortedLetters.map(letter => {
-            const config = letterConfig[letter];
-            return `<span class="bg-slate-200 text-slate-700 font-bold rounded-sm px-1.5 py-0.5 text-[10px] leading-none">${letter}-${config.p}</span>`;
-        }).join('');
-        letterValuesContainer.innerHTML = letterTilesHtml;
-    }
 
     const initialLetters = ['W', 'A', 'R', 'D', 'O', 'R', 'D', 'E', 'B', 'N', 'M', 'I', 'S', 'L', 'P', 'T'];
     const bonusTiles = [
@@ -2441,14 +2364,11 @@ function getTileCenter(tile) {
         { index: 12, type: 'Time', label: '+5s' }
     ];
 
-    // --- 3. Define the animation helper functions ---
-    // These are also copied from your new animation file.
     function setupGrid(letters) {
         gridEl.innerHTML = '';
         letters.forEach((letter, i) => {
             const tile = document.createElement('div');
             const points = letterConfig[letter]?.p || 1;
-            // The class names here match the new CSS you provided.
             tile.className = 'tut-tile';
             tile.id = `tut-tile-${i}`;
             tile.innerHTML = `<span>${letter}<sub>${points}</sub></span>`;
@@ -2466,7 +2386,6 @@ function getTileCenter(tile) {
 
     function createFlyingScore(points, container) {
         const scoreEl = document.createElement('div');
-        // The class name here matches the new CSS you provided.
         scoreEl.className = 'flying-score-tut';
         scoreEl.textContent = `+${points}`;
         container.appendChild(scoreEl);
@@ -2475,7 +2394,6 @@ function getTileCenter(tile) {
 
     function drawLine(startTile, endTile) {
         const line = document.createElement('div');
-        // The class name here matches the new CSS you provided.
         line.className = 'line-segment';
         const rect1 = startTile.getBoundingClientRect();
         const rect2 = endTile.getBoundingClientRect();
@@ -2494,62 +2412,132 @@ function getTileCenter(tile) {
         setTimeout(() => { line.style.opacity = '1'; }, 10);
     }
 
-    // --- 4. Define and run the main animation sequence ---
-    async function runAnimation() {
-        // Only run the animation if the modal is actually visible.
-        if (messageModal.classList.contains('hidden')) {
-            // Stop if the modal closes mid-animation.
-            if(animationInterval) clearInterval(animationInterval);
-            return;
-        }
-
-        const pause = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-        
-        wordBuilderEl.innerHTML = '';
-        // Clear old lines before starting a new loop
-        const oldLines = gridEl.querySelectorAll('.line-segment');
-        oldLines.forEach(line => line.remove());
-        setupGrid(initialLetters);
-        
-        const sequence = [
-            { index: 0, letter: 'W' }, { index: 4, letter: 'O' },
-            { index: 5, letter: 'R' }, { index: 10, letter: 'M' }
-        ];
-
+    async function animateWord(sequence, score) {
         for (let i = 0; i < sequence.length; i++) {
-            // Check again inside the loop in case the modal was closed.
-            if (messageModal.classList.contains('hidden')) return;
-
+            if (messageModal.classList.contains('hidden')) return false;
             const step = sequence[i];
             const tile = document.getElementById(`tut-tile-${step.index}`);
-            
             if (i > 0) {
                 const prevTile = document.getElementById(`tut-tile-${sequence[i-1].index}`);
                 drawLine(prevTile, tile);
-                await pause(100);
+                await new Promise(r => setTimeout(r, 100));
             }
-            
             tile.classList.add('highlight');
-            wordBuilderEl.innerHTML += `<span class="font-bold text-sm p-0.5 rounded-md shadow-sm" style="background-color:#a9c766;color:white;">${step.letter}</span>`;
-            
-            if (i === sequence.length - 1) {
-                await pause(200);
-                createFlyingScore(13, gridEl);
-            }
-            
-            await pause(700);
+            wordBuilderEl.innerHTML += `<span class="bg-white text-blue-500 font-bold text-sm p-0.5 rounded-md shadow-sm">${step.letter}</span>`;
+            await new Promise(r => setTimeout(r, 600));
         }
+        if (messageModal.classList.contains('hidden')) return false;
+        createFlyingScore(score, gridEl);
+        return true;
     }
 
-    // Clear any previous interval before starting a new one.
-    // The `animationInterval` variable should be declared in your main game script's scope.
+    async function runAnimation() {
+        if (messageModal.classList.contains('hidden')) {
+            if (animationInterval) clearInterval(animationInterval);
+            return;
+        }
+
+        // WORD: W(0)→O(4)→R(5)→D(6)
+        wordBuilderEl.innerHTML = '';
+        gridEl.querySelectorAll('.line-segment').forEach(l => l.remove());
+        setupGrid(initialLetters);
+        const wordSeq = [
+            { index: 0, letter: 'W' }, { index: 4, letter: 'O' },
+            { index: 5, letter: 'R' }, { index: 6, letter: 'D' }
+        ];
+        const ok1 = await animateWord(wordSeq, 9);
+        if (!ok1) return;
+
+        await new Promise(r => setTimeout(r, 1200));
+        if (messageModal.classList.contains('hidden')) return;
+
+        // WORM: W(0)→O(4)→R(5)→M(10)
+        wordBuilderEl.innerHTML = '';
+        gridEl.querySelectorAll('.line-segment').forEach(l => l.remove());
+        setupGrid(initialLetters);
+        const wormSeq = [
+            { index: 0, letter: 'W' }, { index: 4, letter: 'O' },
+            { index: 5, letter: 'R' }, { index: 10, letter: 'M' }
+        ];
+        const ok2 = await animateWord(wormSeq, 13);
+        if (!ok2) return;
+
+        await new Promise(r => setTimeout(r, 1200));
+    }
+
     if (animationInterval) clearInterval(animationInterval);
-
-    // Initial run and set interval
     runAnimation();
-    animationInterval = setInterval(runAnimation, 5000);
+    // Total cycle: 2 words × (4 tiles × 700ms) + 2 pauses × 1200ms = ~8s
+    animationInterval = setInterval(runAnimation, 8000);
 
-    document.getElementById('play-practice-button').onclick = () => startGame(true);
+    // "?" button opens instructions modal
+    document.getElementById('how-to-play-btn').onclick = () => {
+        const modal = document.getElementById('instructions-modal');
+        const content = document.getElementById('instructions-modal-content');
+
+        const sortedLetters = Object.keys(letterConfig).sort();
+        const letterTilesHtml = sortedLetters.map(letter => {
+            const config = letterConfig[letter];
+            return `<span class="bg-slate-200 text-slate-700 font-bold rounded-sm px-1.5 py-0.5 text-[10px] leading-none">${letter}-${config.p}</span>`;
+        }).join('');
+
+        content.innerHTML = `
+            <div class="bg-white rounded-2xl shadow-2xl p-4 modal-enter w-full max-w-xs mx-auto max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-slate-800">How to Play</h2>
+                    <button id="close-instructions-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
+                </div>
+                <div class="text-left text-xs space-y-3">
+                    <ul class="space-y-2">
+                        <li class="flex items-start"><span class="font-bold text-slate-700 mr-1">Trace:</span> Connect adjacent letters to form words of 3 or more.</li>
+                        <li class="flex items-start"><span class="font-bold text-slate-700 mr-1">Score:</span> Earn points equal to letter values plus length bonuses.</li>
+                        <li class="flex items-start"><span class="font-bold text-slate-700 mr-1">Goal:</span> Score as many points as you can in 60 seconds.</li>
+                        <li class="flex items-start"><span class="font-bold text-slate-700 mr-1">Pro tip:</span> Long words and bonus tiles multiply your score fast!</li>
+                    </ul>
+                    <div>
+                        <strong class="font-semibold text-slate-700">Bonus Tiles:</strong>
+                        <div class="grid grid-cols-2 gap-x-4 mt-1">
+                            <ul class="list-none space-y-1">
+                                <li class="flex items-center"><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color:#3b82f6;">DL</span> Double Letter</li>
+                                <li class="flex items-center"><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color:#ef4444;">TL</span> Triple Letter</li>
+                            </ul>
+                            <ul class="list-none space-y-1">
+                                <li class="flex items-center"><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color:#f59e0b;">DW</span> Double Word</li>
+                                <li class="flex items-center"><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 mr-2 w-8" style="background-color:#22c55e;">+5s</span> Extra Time</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div>
+                        <strong class="font-semibold text-slate-700">Length Bonus:</strong>
+                        <table class="w-full mt-1 text-left text-xs">
+                            <tbody>
+                                <tr><td class="py-0.5 pr-2">4 letters: <span class="font-medium">+5 pts</span></td><td class="py-0.5">6 letters: <span class="font-medium">+20 pts</span></td></tr>
+                                <tr><td class="py-0.5 pr-2">5 letters: <span class="font-medium">+10 pts</span></td><td class="py-0.5">7+ letters: <span class="font-medium">+40 pts</span></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div>
+                        <strong class="font-semibold text-slate-700">Letter Values:</strong>
+                        <div class="flex flex-wrap gap-1 mt-1">${letterTilesHtml}</div>
+                    </div>
+                    <div class="pt-2 mt-2 border-t">
+                        <strong class="font-semibold text-slate-700">Daily Challenge:</strong>
+                        <p class="mt-1">A new board every day. Find as many words as you can, then submit to join the leaderboard!</p>
+                    </div>
+                    <div class="pt-2 mt-2 border-t text-center">
+                        <p class="text-sm font-semibold text-slate-600 mb-2">Want to play without the timer?</p>
+                        <button id="instructions-practice-button" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-5 rounded-lg text-sm">Practice Mode</button>
+                    </div>
+                </div>
+            </div>`;
+
+        modal.classList.remove('hidden');
+        document.getElementById('close-instructions-button').onclick = () => modal.classList.add('hidden');
+        document.getElementById('instructions-practice-button').onclick = () => {
+            modal.classList.add('hidden');
+            startGame(true);
+        };
+    };
 }
 
     document.addEventListener('DOMContentLoaded', main);
