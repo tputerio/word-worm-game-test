@@ -1,6 +1,6 @@
     // --- Firebase SDKs ---
     import { getApps, initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
     import { getFirestore, collection, addDoc, getDocs, query, where, orderBy, limit, doc, getDoc, setDoc, updateDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
      // --- Google Analytics ---
@@ -262,15 +262,13 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
     const savedName = localStorage.getItem('wordRushPlayerName');
     if (isNewSubmission && !savedName) {
         summaryContainer.innerHTML = `
-            <div class="text-center w-full py-1">
-                <p class="text-xs text-slate-500 mb-2">Enter a name to appear on the leaderboard</p>
+            <div class="w-full py-1">
                 <div class="flex gap-2">
-                    <input id="daily-name-input" type="text" maxlength="10" placeholder="Your name"
-                        class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-green-400">
-                    <button id="daily-name-submit" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg text-sm">Go</button>
+                    <input id="daily-name-input" type="text" maxlength="10" placeholder="Enter your name"
+                        class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-green-400">
+                    <button id="daily-name-submit" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg text-sm">Submit</button>
                 </div>
-                <button id="daily-create-account" class="text-xs text-blue-500 hover:underline mt-2 block w-full text-center py-1">Sign up to save stats across devices</button>
-                <button id="daily-skip-signin" class="text-xs text-slate-400 hover:text-slate-600 mt-1 cursor-pointer hover:underline block w-full text-center py-1">Skip (won't appear on leaderboard)</button>
+                <button id="daily-create-account" class="text-xs text-green-500 hover:text-green-600 hover:underline mt-2 flex items-center py-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-1 flex-shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" /></svg>Sign up to save stats across devices</button>
             </div>`;
 
         const doSubmitName = async (name) => {
@@ -305,7 +303,6 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
             await doSubmitName(name);
         };
         document.getElementById('daily-create-account').onclick = () => showAccountModal();
-        document.getElementById('daily-skip-signin').onclick = () => { unsubscribeDailyAuth(); showSummaryText(); };
     } else {
         if (isNewSubmission) {
             await submitDailyScoreToLeaderboard(stats.score);
@@ -1427,15 +1424,13 @@ function getTileFromEvent(e) {
     if (needsToSubmitName) {
         const submissionContainer = document.getElementById('submission-container');
         submissionContainer.innerHTML = `
-            <div class="text-center w-full py-1">
-                <p class="text-xs text-slate-500 mb-2">Enter a name to appear on the leaderboard</p>
+            <div class="w-full py-1">
                 <div class="flex gap-2">
-                    <input id="endgame-name-input" type="text" maxlength="10" placeholder="Your name"
-                        class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-green-400">
-                    <button id="endgame-name-submit" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg text-sm">Go</button>
+                    <input id="endgame-name-input" type="text" maxlength="10" placeholder="Enter your name"
+                        class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-green-400">
+                    <button id="endgame-name-submit" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg text-sm">Submit</button>
                 </div>
-                <button id="endgame-create-account" class="text-xs text-blue-500 hover:underline mt-2 block w-full text-center py-1">Sign up to save stats across devices</button>
-                <button id="endgame-skip-signin" class="text-xs text-slate-400 hover:text-slate-600 mt-1 cursor-pointer hover:underline block w-full text-center py-1">Skip (won't appear on leaderboard)</button>
+                <button id="endgame-create-account" class="text-xs text-green-500 hover:text-green-600 hover:underline mt-2 flex items-center py-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-1 flex-shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" /></svg>Sign up to save stats across devices</button>
             </div>`;
 
         const enteredName = await new Promise(resolve => {
@@ -1453,7 +1448,6 @@ function getTileFromEvent(e) {
             document.getElementById('endgame-name-submit').onclick = doSubmit;
             document.getElementById('endgame-name-input').onkeydown = (e) => { if (e.key === 'Enter') doSubmit(); };
             document.getElementById('endgame-create-account').onclick = () => showAccountModal();
-            document.getElementById('endgame-skip-signin').onclick = () => { unsubscribeAuth(); resolve(null); };
         });
 
         if (!enteredName) {
@@ -1836,7 +1830,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     };
     document.getElementById('settings-modal-stats').onclick = () => {
         document.getElementById('settings-modal').classList.add('hidden');
-        showStatsModal();
+        showProfileModal();
     };
     document.getElementById('settings-modal-how-to-play').onclick = () => {
         document.getElementById('settings-modal').classList.add('hidden');
@@ -2180,34 +2174,228 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     document.getElementById('close-leaderboard-button').onclick = () => { leaderboardModal.classList.add('hidden'); };
 }
 
-    async function showStatsModal() {
+    async function showProfileModal(defaultTab = 'profile') {
         statsModal.classList.remove('hidden');
-        statsModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center modal-enter"><h2 class="text-2xl font-bold text-slate-800 mb-4">Loading Your Stats...</h2><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mx-auto"></div></div>`;
-        
-        const stats = await fetchAndCalculateStats();
-        let statsHTML;
-        if (stats) {
-            const avgScore = stats.totalGamesPlayed > 0 ? Math.round(stats.totalPoints / stats.totalGamesPlayed) : 0;
-            const avgWordLength = stats.totalWordsFound > 0 ? (stats.totalLettersFound / stats.totalWordsFound).toFixed(1) : 0;
-            const playStreakIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6"><path stroke-linecap="round" stroke-linejoin="round" d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.867 8.21 8.21 0 0 0 3 2.48Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M12 18a3.75 3.75 0 0 0 .495-7.468 5.99 5.99 0 0 0-1.925 3.547 5.975 5.975 0 0 1-2.133-1.001A3.75 3.75 0 0 0 12 18Z" /></svg>`;
-            const totalPointsIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg>`;
-            const bestWordIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg>`;
-            const bestWordDisplay = stats.bestWord.word ? `${stats.bestWord.word.toUpperCase()} (${stats.bestWord.score})` : 'N/A';
-            const topScoresHTML = stats.top5Scores.map((s, i) => {
-                const dateParts = s.date.split('-');
-                const shortDate = `${Number(dateParts[1])}/${Number(dateParts[2])}/${dateParts[0].slice(-2)}`;
-                return `<li class="flex justify-between p-1 ${i % 2 === 0 ? 'bg-slate-50' : ''} rounded"><span><strong>${s.score}</strong></span><span class="text-slate-500">${shortDate}</span></li>`;
-            }).join('') || '<p class="text-xs text-slate-400 text-center py-1">No scores yet.</p>';
-            const topWordsHTML = stats.top5LongestWords.map((w, i) => `<li class="p-1 ${i % 2 === 0 ? 'bg-slate-50' : ''} rounded"><strong>${w.word.toUpperCase()}</strong> (${w.length})</li>`).join('') || '<p class="text-xs text-slate-400 text-center py-1">No words found.</p>';
-            statsHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 modal-enter w-full max-w-sm mx-auto max-h-[90vh] overflow-y-auto"> <div class="flex justify-between items-center mb-4"> <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">Your Stats <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-blue-500"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg></h2> <button id="close-stats-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button> </div> <div class="space-y-3 text-left mb-4"> <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${playStreakIcon}<span class="ml-2">Play Streak</span></span> <span class="font-black text-xl text-amber-500">${stats.playStreak} Day${stats.playStreak !== 1 ? 's' : ''}</span></div> <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${totalPointsIcon}<span class="ml-2">Total Points</span></span> <span class="font-black text-xl text-slate-700">${stats.totalPoints.toLocaleString()}</span></div> <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${bestWordIcon}<span class="ml-2">Best Word</span></span> <span class="font-black text-xl text-slate-700">${bestWordDisplay}</span></div> </div> <div class="grid grid-cols-3 gap-2 text-center bg-slate-100 p-3 rounded-lg mb-4"> <div><div class="text-xs font-bold text-slate-500 uppercase">Games</div><div class="text-2xl font-black text-slate-800">${stats.totalGamesPlayed}</div></div> <div><div class="text-xs font-bold text-slate-500 uppercase">Avg Score</div><div class="text-2xl font-black text-slate-800">${avgScore}</div></div> <div><div class="text-xs font-bold text-slate-500 uppercase">Avg Length</div><div class="text-2xl font-black text-slate-800">${avgWordLength}</div></div> </div> <div class="grid grid-cols-2 gap-4"> <div><h3 class="text-base font-bold text-slate-700 mb-2 border-b pb-1">Best Scores</h3><ol class="space-y-1">${topScoresHTML}</ol></div> <div><h3 class="text-base font-bold text-slate-700 mb-2 border-b pb-1">Longest Words</h3><ol class="space-y-1">${topWordsHTML}</ol></div> </div> </div>`;
-        } else {
-            statsHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 modal-enter w-full max-w-sm mx-auto"><div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">Your Stats <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-blue-500"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg></h2><button id="close-stats-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button></div><p class="text-slate-500 text-center py-8">Play a game to see your stats here!</p></div>`;
+
+        const inputCls = 'w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400';
+        const googleSvg = `<svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>`;
+
+        const renderModal = async (activeTab) => {
+            const user = auth.currentUser;
+            const signedIn = isUserSignedIn();
+
+            const tabBar = `<div class="flex p-1 bg-slate-100 rounded-lg mb-5">
+                <button id="profile-tab-btn" class="flex-1 py-1.5 rounded-md font-semibold text-sm transition-colors ${activeTab === 'profile' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}">Profile</button>
+                <button id="stats-tab-btn" class="flex-1 py-1.5 rounded-md font-semibold text-sm transition-colors ${activeTab === 'stats' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}">Stats</button>
+            </div>`;
+
+            const wrapModal = (body) => `<div class="bg-white rounded-2xl shadow-2xl p-6 modal-enter w-full max-w-sm mx-auto max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold text-slate-800">Profile</h2>
+                    <button id="close-profile-btn" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
+                </div>
+                ${tabBar}
+                <div id="profile-tab-content">${body}</div>
+            </div>`;
+
+            const attachShared = () => {
+                document.getElementById('close-profile-btn').onclick = () => statsModal.classList.add('hidden');
+                document.getElementById('profile-tab-btn').onclick = () => renderModal('profile');
+                document.getElementById('stats-tab-btn').onclick = () => renderModal('stats');
+            };
+
+            if (activeTab === 'stats') {
+                statsModalContent.innerHTML = wrapModal('<div class="text-center py-8"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900 mx-auto"></div></div>');
+                attachShared();
+                const stats = await fetchAndCalculateStats();
+                const contentEl = document.getElementById('profile-tab-content');
+                if (contentEl) contentEl.innerHTML = buildStatsContent(stats);
+                return;
+            }
+
+            let body;
+            if (signedIn) {
+                const playerName = localStorage.getItem('wordRushPlayerName') || user.displayName?.split(' ')[0] || 'Player';
+                const isEmailUser = user.providerData?.some(p => p.providerId === 'password');
+                const isGoogleUser = user.providerData?.some(p => p.providerId === 'google.com');
+
+                const providerSection = isEmailUser ? `
+                    <div class="border-t border-slate-100 pt-2">
+                        <button id="change-pw-toggle" class="w-full text-left text-sm font-bold text-slate-700 hover:text-slate-900 flex items-center justify-between">
+                            <span>Change Password</span>
+                            <svg id="change-pw-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 transition-transform duration-200"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
+                        </button>
+                        <div id="change-pw-form" class="hidden mt-3 space-y-2">
+                            <input id="current-pw" type="password" placeholder="Current password" class="${inputCls}">
+                            <input id="new-pw" type="password" placeholder="New password (min. 6 characters)" class="${inputCls}">
+                            <input id="confirm-pw" type="password" placeholder="Confirm new password" class="${inputCls}">
+                            <p id="pw-error" class="text-xs text-red-500 hidden"></p>
+                            <p id="pw-success" class="text-xs text-green-600 hidden"></p>
+                            <button id="update-pw-btn" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-2.5 px-4 rounded-lg text-sm transition-colors">Update Password</button>
+                        </div>
+                    </div>` : isGoogleUser ? `
+                    <div class="border-t border-slate-100 pt-4 flex items-center gap-2">
+                        ${googleSvg}
+                        <span class="text-xs text-slate-400">Signed in with Google</span>
+                    </div>` : '';
+
+                body = `<div class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Username</label>
+                        <div class="flex gap-2">
+                            <input id="profile-username" type="text" value="${playerName.replace(/"/g, '&quot;')}" maxlength="20" class="${inputCls} flex-1">
+                            <button id="save-username-btn" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg text-sm transition-colors whitespace-nowrap">Save</button>
+                        </div>
+                        <p id="username-msg" class="text-xs mt-1 min-h-[16px]"></p>
+                    </div>
+                    ${providerSection}
+                    <div class="border-t border-slate-100 pt-4">
+                        <button id="profile-signout-btn" class="w-full flex items-center justify-center text-red-500 hover:text-red-700 font-semibold py-2.5 px-4 rounded-lg text-sm border border-red-200 hover:border-red-300 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" /></svg>
+                            Sign Out
+                        </button>
+                    </div>
+                </div>`;
+            } else {
+                body = `<div class="text-center py-8">
+                    <p class="text-slate-500 mb-5 text-sm">Sign in to manage your profile and sync your stats across devices.</p>
+                    <button id="profile-signin-btn" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 px-4 rounded-lg text-sm transition-colors">Sign In / Sign Up</button>
+                </div>`;
+            }
+
+            statsModalContent.innerHTML = wrapModal(body);
+            attachShared();
+
+            if (signedIn) {
+                document.getElementById('save-username-btn').onclick = async () => {
+                    const newName = document.getElementById('profile-username').value.trim();
+                    const msgEl = document.getElementById('username-msg');
+                    if (!newName) {
+                        msgEl.textContent = 'Name cannot be empty.';
+                        msgEl.className = 'text-xs mt-1 text-red-500 min-h-[16px]';
+                        return;
+                    }
+                    try {
+                        localStorage.setItem('wordRushPlayerName', newName);
+                        await updateProfile(auth.currentUser, { displayName: newName });
+                        if (db && userId) {
+                            await setDoc(doc(db, 'players', userId), { name: newName, hasSubmittedName: true }, { merge: true });
+                        }
+                        const greetingEl = document.getElementById('player-greeting');
+                        if (greetingEl) greetingEl.innerHTML = `Welcome back, <strong class="font-bold">${newName}</strong>!`;
+                        msgEl.textContent = 'Saved!';
+                        msgEl.className = 'text-xs mt-1 text-green-600 min-h-[16px]';
+                        setTimeout(() => { if (msgEl) msgEl.textContent = ''; }, 2000);
+                    } catch (e) {
+                        msgEl.textContent = 'Failed to save. Try again.';
+                        msgEl.className = 'text-xs mt-1 text-red-500 min-h-[16px]';
+                    }
+                };
+
+                const toggleBtn = document.getElementById('change-pw-toggle');
+                if (toggleBtn) {
+                    toggleBtn.onclick = () => {
+                        const form = document.getElementById('change-pw-form');
+                        const chevron = document.getElementById('change-pw-chevron');
+                        const isHidden = form.classList.toggle('hidden');
+                        chevron.style.transform = isHidden ? '' : 'rotate(180deg)';
+                    };
+                    document.getElementById('update-pw-btn').onclick = async () => {
+                        const currentPw = document.getElementById('current-pw').value;
+                        const newPw = document.getElementById('new-pw').value;
+                        const confirmPw = document.getElementById('confirm-pw').value;
+                        const errorEl = document.getElementById('pw-error');
+                        const successEl = document.getElementById('pw-success');
+                        errorEl.classList.add('hidden');
+                        successEl.classList.add('hidden');
+                        if (!currentPw || !newPw || !confirmPw) {
+                            errorEl.textContent = 'Please fill in all fields.';
+                            errorEl.classList.remove('hidden');
+                            return;
+                        }
+                        if (newPw.length < 6) {
+                            errorEl.textContent = 'New password must be at least 6 characters.';
+                            errorEl.classList.remove('hidden');
+                            return;
+                        }
+                        if (newPw !== confirmPw) {
+                            errorEl.textContent = 'Passwords do not match.';
+                            errorEl.classList.remove('hidden');
+                            return;
+                        }
+                        const btn = document.getElementById('update-pw-btn');
+                        btn.disabled = true;
+                        btn.textContent = 'Updating...';
+                        try {
+                            const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPw);
+                            await reauthenticateWithCredential(auth.currentUser, credential);
+                            await updatePassword(auth.currentUser, newPw);
+                            successEl.textContent = 'Password updated successfully!';
+                            successEl.classList.remove('hidden');
+                            document.getElementById('current-pw').value = '';
+                            document.getElementById('new-pw').value = '';
+                            document.getElementById('confirm-pw').value = '';
+                            setTimeout(() => { document.getElementById('change-pw-form')?.classList.add('hidden'); }, 1500);
+                        } catch (e) {
+                            errorEl.textContent = (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential')
+                                ? 'Current password is incorrect.'
+                                : 'Failed to update password. Try again.';
+                            errorEl.classList.remove('hidden');
+                        } finally {
+                            btn.disabled = false;
+                            btn.textContent = 'Update Password';
+                        }
+                    };
+                }
+
+                document.getElementById('profile-signout-btn').onclick = async () => {
+                    await signOut(auth);
+                    await signInAnonymously(auth);
+                    localStorage.removeItem('wordRushPlayerName');
+                    statsModal.classList.add('hidden');
+                    showWelcomeScreen();
+                };
+            } else {
+                document.getElementById('profile-signin-btn').onclick = () => {
+                    statsModal.classList.add('hidden');
+                    showAccountModal();
+                };
+            }
+        };
+
+        await renderModal(defaultTab);
+    }
+
+    function buildStatsContent(stats) {
+        if (!stats) {
+            return `<p class="text-slate-500 text-center py-8">Play a game to see your stats here!</p>`;
         }
-        statsModalContent.innerHTML = statsHTML;
-        const closeButton = document.getElementById('close-stats-button');
-        if (closeButton) {
-            closeButton.onclick = () => { statsModal.classList.add('hidden'); };
-        }
+        const avgScore = stats.totalGamesPlayed > 0 ? Math.round(stats.totalPoints / stats.totalGamesPlayed) : 0;
+        const avgWordLength = stats.totalWordsFound > 0 ? (stats.totalLettersFound / stats.totalWordsFound).toFixed(1) : 0;
+        const playStreakIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6"><path stroke-linecap="round" stroke-linejoin="round" d="M15.362 5.214A8.252 8.252 0 0 1 12 21 8.25 8.25 0 0 1 6.038 7.047 8.287 8.287 0 0 0 9 9.601a8.983 8.983 0 0 1 3.361-6.867 8.21 8.21 0 0 0 3 2.48Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M12 18a3.75 3.75 0 0 0 .495-7.468 5.99 5.99 0 0 0-1.925 3.547 5.975 5.975 0 0 1-2.133-1.001A3.75 3.75 0 0 0 12 18Z" /></svg>`;
+        const totalPointsIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg>`;
+        const bestWordIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg>`;
+        const bestWordDisplay = stats.bestWord.word ? `${stats.bestWord.word.toUpperCase()} (${stats.bestWord.score})` : 'N/A';
+        const topScoresHTML = stats.top5Scores.map((s, i) => {
+            const dateParts = s.date.split('-');
+            const shortDate = `${Number(dateParts[1])}/${Number(dateParts[2])}/${dateParts[0].slice(-2)}`;
+            return `<li class="flex justify-between p-1 ${i % 2 === 0 ? 'bg-slate-50' : ''} rounded"><span><strong>${s.score}</strong></span><span class="text-slate-500">${shortDate}</span></li>`;
+        }).join('') || '<p class="text-xs text-slate-400 text-center py-1">No scores yet.</p>';
+        const topWordsHTML = stats.top5LongestWords.map((w, i) => `<li class="p-1 ${i % 2 === 0 ? 'bg-slate-50' : ''} rounded"><strong>${w.word.toUpperCase()}</strong> (${w.length})</li>`).join('') || '<p class="text-xs text-slate-400 text-center py-1">No words found.</p>';
+        return `<div class="space-y-3 text-left mb-4">
+            <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${playStreakIcon}<span class="ml-2">Play Streak</span></span><span class="font-black text-xl text-amber-500">${stats.playStreak} Day${stats.playStreak !== 1 ? 's' : ''}</span></div>
+            <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${totalPointsIcon}<span class="ml-2">Total Points</span></span><span class="font-black text-xl text-slate-700">${stats.totalPoints.toLocaleString()}</span></div>
+            <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${bestWordIcon}<span class="ml-2">Best Word</span></span><span class="font-black text-xl text-slate-700">${bestWordDisplay}</span></div>
+        </div>
+        <div class="grid grid-cols-3 gap-2 text-center bg-slate-100 p-3 rounded-lg mb-4">
+            <div><div class="text-xs font-bold text-slate-500 uppercase">Games</div><div class="text-2xl font-black text-slate-800">${stats.totalGamesPlayed}</div></div>
+            <div><div class="text-xs font-bold text-slate-500 uppercase">Avg Score</div><div class="text-2xl font-black text-slate-800">${avgScore}</div></div>
+            <div><div class="text-xs font-bold text-slate-500 uppercase">Avg Length</div><div class="text-2xl font-black text-slate-800">${avgWordLength}</div></div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div><h3 class="text-base font-bold text-slate-700 mb-2 border-b pb-1">Best Scores</h3><ol class="space-y-1">${topScoresHTML}</ol></div>
+            <div><h3 class="text-base font-bold text-slate-700 mb-2 border-b pb-1">Longest Words</h3><ol class="space-y-1">${topWordsHTML}</ol></div>
+        </div>`;
     }
     
     async function fetchAndCalculateStats() {
@@ -2637,7 +2825,7 @@ function getTileCenter(tile) {
             <div class="flex justify-between items-baseline mb-2">
                 <h3 class="text-xl font-bold text-slate-700">Your Words (${foundWords.length})</h3>
                 <button id="endgame-stats-button" class="flex items-center text-base font-bold text-blue-500 hover:text-blue-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" /></svg>
                     <span class="ml-1">Your Stats</span>
                 </button>
             </div>
@@ -2667,7 +2855,7 @@ function getTileCenter(tile) {
 
     document.getElementById('play-again-button').onclick = resetGame;
     document.getElementById('endgame-leaderboard-button').onclick = () => showLeaderboardModal(currentGamemode === 'daily' ? 'challenge' : 'daily');
-    document.getElementById('endgame-stats-button').onclick = showStatsModal;
+    document.getElementById('endgame-stats-button').onclick = () => showProfileModal('stats');
     
     const shareLinkContainer = document.getElementById('share-link-container');
     if (navigator.share || navigator.clipboard) {
