@@ -33,6 +33,41 @@
    // GOOGLE ANALYTICS -- let auth, db, userId, analytics;
     const isUserSignedIn = () => auth?.currentUser && !auth.currentUser.isAnonymous;
 
+    async function signInWithProvider(provider) {
+        try {
+            const result = await linkWithPopup(auth.currentUser, provider);
+            const user = result.user;
+            userId = user.uid;
+            if (db) {
+                const playerDocRef = doc(db, "players", user.uid);
+                const snap = await getDoc(playerDocRef);
+                if (!snap.exists() || !snap.data().hasSubmittedName) {
+                    const name = (user.displayName || 'Player').split(' ')[0];
+                    await setDoc(playerDocRef, { name, hasSubmittedName: true }, { merge: true });
+                    localStorage.setItem('wordRushPlayerName', name);
+                } else {
+                    localStorage.setItem('wordRushPlayerName', snap.data().name);
+                }
+            }
+            return user;
+        } catch (err) {
+            if (err.code === 'auth/credential-already-in-use' || err.code === 'auth/email-already-in-use') {
+                const result = await signInWithPopup(auth, provider);
+                const user = result.user;
+                userId = user.uid;
+                if (db) {
+                    const playerDocRef = doc(db, "players", user.uid);
+                    const snap = await getDoc(playerDocRef);
+                    if (snap.exists() && snap.data().name) {
+                        localStorage.setItem('wordRushPlayerName', snap.data().name);
+                    }
+                }
+                return user;
+            }
+            throw err;
+        }
+    }
+
     // --- Game State ---
     let score = 0, timer = GAME_TIME, timerInterval, foundWords = [], selectedTiles = [], isMouseDown = false;
     let validationTrie;       // For checking if a board is playable
@@ -411,41 +446,6 @@ function showSubmitConfirmation() {
         }
     };
     
-    async function signInWithProvider(provider) {
-        try {
-            const result = await linkWithPopup(auth.currentUser, provider);
-            const user = result.user;
-            userId = user.uid;
-            if (db) {
-                const playerDocRef = doc(db, "players", user.uid);
-                const snap = await getDoc(playerDocRef);
-                if (!snap.exists() || !snap.data().hasSubmittedName) {
-                    const name = (user.displayName || 'Player').split(' ')[0];
-                    await setDoc(playerDocRef, { name, hasSubmittedName: true }, { merge: true });
-                    localStorage.setItem('wordRushPlayerName', name);
-                } else {
-                    localStorage.setItem('wordRushPlayerName', snap.data().name);
-                }
-            }
-            return user;
-        } catch (err) {
-            if (err.code === 'auth/credential-already-in-use' || err.code === 'auth/email-already-in-use') {
-                const result = await signInWithPopup(auth, provider);
-                const user = result.user;
-                userId = user.uid;
-                if (db) {
-                    const playerDocRef = doc(db, "players", user.uid);
-                    const snap = await getDoc(playerDocRef);
-                    if (snap.exists() && snap.data().name) {
-                        localStorage.setItem('wordRushPlayerName', snap.data().name);
-                    }
-                }
-                return user;
-            }
-            throw err;
-        }
-    }
-
     const loadDictionaryAndEnableButtons = async () => {
         if (playGameModeButton && playGameModeButton.disabled) return; // Don't re-run if already loaded
         
