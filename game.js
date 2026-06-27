@@ -1856,9 +1856,9 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 return `<li class="flex justify-between p-1 ${i % 2 === 0 ? 'bg-slate-50' : ''} rounded"><span><strong>${s.score}</strong></span><span class="text-slate-500">${shortDate}</span></li>`;
             }).join('') || '<p class="text-xs text-slate-400 text-center py-1">No scores yet.</p>';
             const topWordsHTML = stats.top5LongestWords.map((w, i) => `<li class="p-1 ${i % 2 === 0 ? 'bg-slate-50' : ''} rounded"><strong>${w.word.toUpperCase()}</strong> (${w.length})</li>`).join('') || '<p class="text-xs text-slate-400 text-center py-1">No words found.</p>';
-            statsHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 modal-enter w-full max-w-sm mx-auto max-h-[90vh] overflow-y-auto"> <div class="flex justify-between items-center mb-4"> <h2 class="text-2xl font-bold text-slate-800">Your Stats</h2> <button id="close-stats-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button> </div> <div class="space-y-3 text-left mb-4"> <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${playStreakIcon}<span class="ml-2">Play Streak</span></span> <span class="font-black text-xl text-amber-500">${stats.playStreak} Day${stats.playStreak !== 1 ? 's' : ''}</span></div> <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${totalPointsIcon}<span class="ml-2">Total Points</span></span> <span class="font-black text-xl text-slate-700">${stats.totalPoints.toLocaleString()}</span></div> <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${bestWordIcon}<span class="ml-2">Best Word</span></span> <span class="font-black text-xl text-slate-700">${bestWordDisplay}</span></div> </div> <div class="grid grid-cols-3 gap-2 text-center bg-slate-100 p-3 rounded-lg mb-4"> <div><div class="text-xs font-bold text-slate-500 uppercase">Games</div><div class="text-2xl font-black text-slate-800">${stats.totalGamesPlayed}</div></div> <div><div class="text-xs font-bold text-slate-500 uppercase">Avg Score</div><div class="text-2xl font-black text-slate-800">${avgScore}</div></div> <div><div class="text-xs font-bold text-slate-500 uppercase">Avg Length</div><div class="text-2xl font-black text-slate-800">${avgWordLength}</div></div> </div> <div class="grid grid-cols-2 gap-4"> <div><h3 class="text-base font-bold text-slate-700 mb-2 border-b pb-1">Best Scores</h3><ol class="space-y-1">${topScoresHTML}</ol></div> <div><h3 class="text-base font-bold text-slate-700 mb-2 border-b pb-1">Longest Words</h3><ol class="space-y-1">${topWordsHTML}</ol></div> </div> </div>`;
+            statsHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 modal-enter w-full max-w-sm mx-auto max-h-[90vh] overflow-y-auto"> <div class="flex justify-between items-center mb-4"> <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">Your Stats <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-blue-500"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg></h2> <button id="close-stats-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button> </div> <div class="space-y-3 text-left mb-4"> <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${playStreakIcon}<span class="ml-2">Play Streak</span></span> <span class="font-black text-xl text-amber-500">${stats.playStreak} Day${stats.playStreak !== 1 ? 's' : ''}</span></div> <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${totalPointsIcon}<span class="ml-2">Total Points</span></span> <span class="font-black text-xl text-slate-700">${stats.totalPoints.toLocaleString()}</span></div> <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${bestWordIcon}<span class="ml-2">Best Word</span></span> <span class="font-black text-xl text-slate-700">${bestWordDisplay}</span></div> </div> <div class="grid grid-cols-3 gap-2 text-center bg-slate-100 p-3 rounded-lg mb-4"> <div><div class="text-xs font-bold text-slate-500 uppercase">Games</div><div class="text-2xl font-black text-slate-800">${stats.totalGamesPlayed}</div></div> <div><div class="text-xs font-bold text-slate-500 uppercase">Avg Score</div><div class="text-2xl font-black text-slate-800">${avgScore}</div></div> <div><div class="text-xs font-bold text-slate-500 uppercase">Avg Length</div><div class="text-2xl font-black text-slate-800">${avgWordLength}</div></div> </div> <div class="grid grid-cols-2 gap-4"> <div><h3 class="text-base font-bold text-slate-700 mb-2 border-b pb-1">Best Scores</h3><ol class="space-y-1">${topScoresHTML}</ol></div> <div><h3 class="text-base font-bold text-slate-700 mb-2 border-b pb-1">Longest Words</h3><ol class="space-y-1">${topWordsHTML}</ol></div> </div> </div>`;
         } else {
-            statsHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 modal-enter w-full max-w-sm mx-auto"><div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold text-slate-800">Your Stats</h2><button id="close-stats-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button></div><p class="text-slate-500 text-center py-8">Play a game to see your stats here!</p></div>`;
+            statsHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 modal-enter w-full max-w-sm mx-auto"><div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">Your Stats <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-blue-500"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg></h2><button id="close-stats-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button></div><p class="text-slate-500 text-center py-8">Play a game to see your stats here!</p></div>`;
         }
         statsModalContent.innerHTML = statsHTML;
         const closeButton = document.getElementById('close-stats-button');
@@ -2497,13 +2497,13 @@ function getTileCenter(tile) {
         }).join('');
 
         content.innerHTML = `
-            <div class="bg-white rounded-2xl shadow-2xl p-8 modal-enter w-full max-w-xs mx-auto overflow-y-auto" style="max-height:96vh;">
-                <div class="flex justify-between items-center mb-5">
-                    <h2 class="text-xl font-bold text-slate-800">How to Play</h2>
+            <div class="bg-white rounded-2xl shadow-2xl modal-enter w-full max-w-xs mx-auto overflow-y-auto" style="max-height:72vh; padding: 1.25rem;">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">How to Play <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-slate-500"><path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 5.25h.008v.008H12v-.008Z" /></svg></h2>
                     <button id="close-instructions-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
                 </div>
-                <div class="text-left text-xs space-y-4">
-                    <ul class="space-y-3.5">
+                <div class="text-left text-xs space-y-3">
+                    <ul class="space-y-3">
                         <li class="flex items-start gap-3">
                             <svg class="shrink-0 mt-0.5 text-slate-500" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M14 8l4 4-4 4"/></svg>
                             <span><span class="font-bold text-slate-700">How to Play:</span> Trace adjacent letters to form words of 3 or more.</span>
@@ -2521,30 +2521,34 @@ function getTileCenter(tile) {
                             <span><span class="font-bold text-slate-700">Pro-Tip:</span> Use bonuses and long words to maximize your score!</span>
                         </li>
                     </ul>
-                    <div class="border-t pt-4">
+                    <div class="border-t pt-3">
                         <strong class="font-semibold text-slate-700">Bonus Tiles:</strong>
-                        <div class="grid grid-cols-2 gap-x-4 gap-y-3.5 mt-3">
-                            <div class="flex items-center gap-2.5"><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 w-9 text-[10px] leading-tight" style="background-color:#3b82f6;">DL</span><span>Double Letter</span></div>
-                            <div class="flex items-center gap-2.5"><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 w-9 text-[10px] leading-tight" style="background-color:#f59e0b;">DW</span><span>Double Word</span></div>
-                            <div class="flex items-center gap-2.5"><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 w-9 text-[10px] leading-tight" style="background-color:#ef4444;">TL</span><span>Triple Letter</span></div>
-                            <div class="flex items-center gap-2.5"><span class="inline-block text-white text-center font-bold rounded px-1.5 py-0.5 w-9 text-[10px] leading-tight" style="background-color:#22c55e;">+5s</span><span>Extra Time</span></div>
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-3 mt-2">
+                            <div class="flex items-center gap-2.5"><span class="inline-block text-white text-center font-bold rounded px-2 py-1 w-11 text-[11px] leading-tight" style="background-color:#3b82f6;">DL</span><span>Double Letter</span></div>
+                            <div class="flex items-center gap-2.5"><span class="inline-block text-white text-center font-bold rounded px-2 py-1 w-11 text-[11px] leading-tight" style="background-color:#f59e0b;">DW</span><span>Double Word</span></div>
+                            <div class="flex items-center gap-2.5"><span class="inline-block text-white text-center font-bold rounded px-2 py-1 w-11 text-[11px] leading-tight" style="background-color:#ef4444;">TL</span><span>Triple Letter</span></div>
+                            <div class="flex items-center gap-2.5"><span class="inline-block text-white text-center font-bold rounded px-2 py-1 w-11 text-[11px] leading-tight" style="background-color:#22c55e;">+5s</span><span>Extra Time</span></div>
                         </div>
                     </div>
-                    <div class="border-t pt-4">
+                    <div class="border-t pt-3">
                         <strong class="font-semibold text-slate-700">Length Bonus:</strong>
-                        <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 mt-2.5">
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 mt-2">
                             <span>4 letters: <span class="font-medium">+5 pts</span></span>
                             <span>6 letters: <span class="font-medium">+20 pts</span></span>
                             <span>5 letters: <span class="font-medium">+10 pts</span></span>
                             <span>7+ letters: <span class="font-medium">+40 pts</span></span>
                         </div>
                     </div>
-                    <div class="border-t pt-4">
+                    <div class="border-t pt-3">
                         <strong class="font-semibold text-slate-700">Letter Values:</strong>
-                        <div class="flex flex-wrap gap-1.5 mt-2.5">${letterTilesHtml}</div>
+                        <div class="flex flex-wrap gap-1.5 mt-2">${letterTilesHtml}</div>
                     </div>
-                    <div class="border-t pt-4 pb-1 text-center">
-                        <p class="text-slate-600 mb-3">Want to play without the timer?</p>
+                    <div class="border-t pt-3">
+                        <strong class="font-semibold text-slate-700">Daily Challenge Mode:</strong>
+                        <p class="mt-2 text-slate-600">The Daily Challenge is a static board that resets every day. Find as many words as you can, then hit <span class="font-semibold">Submit</span> when done to be added to the leaderboard!</p>
+                    </div>
+                    <div class="border-t pt-3 pb-1 text-center">
+                        <p class="text-slate-600 mb-2">Want to play without the timer?</p>
                         <button id="instructions-practice-button" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-5 rounded-lg text-sm">Practice Mode</button>
                     </div>
                 </div>
