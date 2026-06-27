@@ -171,14 +171,13 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
 
     if (isNewSubmission) {
         if (activeGridEl) activeGridEl.style.pointerEvents = 'none';
-        
-        await submitDailyScoreToLeaderboard(stats.score);
 
         if (db && userId) {
             try {
-                const todayStr = new Date().toLocaleDateString('en-CA');
+                const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
                 const dailyDocRef = doc(db, `players/${userId}/dailyChallenges`, todayStr);
                 await setDoc(dailyDocRef, { completed: true, score: stats.score, foundWords: stats.foundWords }, { merge: true });
+                localStorage.removeItem(`dailyProgress-${todayStr}`);
             } catch (error) {
                 console.error("Error marking daily challenge as complete:", error);
             }
@@ -202,7 +201,7 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
              <h2 class="text-2xl font-black text-green-500">Daily Challenge Complete!</h2>
             <p class="text-slate-600 mb-2 mt-2">Your final score is:</p>
             <p id="final-score-display" class="text-6xl font-black text-slate-800 mb-3">${stats.score}</p>
-            <div id="daily-summary-container" class="h-14 flex items-center justify-center"></div>
+            <div id="daily-summary-container" class="flex items-center justify-center"></div>
             <hr class="my-4">
             <div class="text-left w-full">
                 <h3 class="text-lg font-bold text-slate-700 mb-2">All Possible Words (${foundCount}/${totalCount})</h3>
@@ -225,33 +224,57 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
         summaryContainer.innerHTML = `<p class="text-base font-bold text-green-600 flex items-center justify-center">${checkIcon}<span>You found ${foundCount} / ${totalCount} words (${percentage}%)</span></p>`;
     };
 
-    if (isNewSubmission && !isUserSignedIn()) {
-        const googleSvg = `<svg class="w-4 h-4 mr-2 flex-shrink-0" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>`;
+    const savedName = localStorage.getItem('wordRushPlayerName');
+    if (isNewSubmission && !savedName) {
         summaryContainer.innerHTML = `
-            <div class="text-center w-full">
-                <p class="text-xs text-slate-500 mb-2">Sign in to appear on the leaderboard</p>
-                <div class="flex flex-col gap-2">
-                    <button id="daily-google-signin" class="w-full flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 font-bold py-2 px-3 rounded-lg text-sm border border-slate-200 shadow-sm">${googleSvg}Continue with Google</button>
-                    <button id="daily-create-signin" class="w-full flex items-center justify-center bg-slate-800 hover:bg-slate-700 text-white font-bold py-2 px-3 rounded-lg text-sm shadow-sm">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-2 flex-shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
-                        Create an Account
-                    </button>
+            <div class="text-center w-full py-1">
+                <p class="text-xs text-slate-500 mb-2">Enter a name to appear on the leaderboard</p>
+                <div class="flex gap-2">
+                    <input id="daily-name-input" type="text" maxlength="10" placeholder="Your name"
+                        class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-green-400">
+                    <button id="daily-name-submit" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg text-sm">Go</button>
                 </div>
-                <button id="daily-skip-signin" class="text-xs text-slate-400 hover:text-slate-600 mt-2 cursor-pointer hover:underline block w-full text-center py-1">Skip (won't appear on leaderboard)</button>
+                <button id="daily-create-account" class="text-xs text-blue-500 hover:underline mt-2 block w-full text-center py-1">Sign up to save stats across devices</button>
+                <button id="daily-skip-signin" class="text-xs text-slate-400 hover:text-slate-600 mt-1 cursor-pointer hover:underline block w-full text-center py-1">Skip (won't appear on leaderboard)</button>
             </div>`;
 
-        document.getElementById('daily-google-signin').onclick = async () => {
-            const btn = document.getElementById('daily-google-signin');
-            btn.disabled = true;
-            try {
-                await signInWithProvider(new GoogleAuthProvider());
-                await submitDailyScoreToLeaderboard(stats.score);
-                showSummaryText();
-            } catch(e) { console.error('Sign-in failed:', e); btn.disabled = false; }
+        const doSubmitName = async (name) => {
+            localStorage.setItem('wordRushPlayerName', name);
+            if (db && userId) {
+                try { await setDoc(doc(db, 'players', userId), { name, hasSubmittedName: true }, { merge: true }); } catch(e) {}
+            }
+            await submitDailyScoreToLeaderboard(stats.score);
+            showSummaryText();
         };
-        document.getElementById('daily-create-signin').onclick = () => showAccountModal();
-        document.getElementById('daily-skip-signin').onclick = () => showSummaryText();
+
+        // Resolve automatically if the user completes sign-up via the account modal
+        const unsubscribeDailyAuth = onAuthStateChanged(auth, async (user) => {
+            if (user && !user.isAnonymous) {
+                unsubscribeDailyAuth();
+                const name = localStorage.getItem('wordRushPlayerName') || user.displayName?.split(' ')[0] || 'Player';
+                await doSubmitName(name);
+            }
+        });
+
+        document.getElementById('daily-name-submit').onclick = async () => {
+            const name = (document.getElementById('daily-name-input').value || '').trim().slice(0, 10);
+            if (!name) return;
+            unsubscribeDailyAuth();
+            await doSubmitName(name);
+        };
+        document.getElementById('daily-name-input').onkeydown = async (e) => {
+            if (e.key !== 'Enter') return;
+            const name = (document.getElementById('daily-name-input').value || '').trim().slice(0, 10);
+            if (!name) return;
+            unsubscribeDailyAuth();
+            await doSubmitName(name);
+        };
+        document.getElementById('daily-create-account').onclick = () => showAccountModal();
+        document.getElementById('daily-skip-signin').onclick = () => { unsubscribeDailyAuth(); showSummaryText(); };
     } else {
+        if (isNewSubmission) {
+            await submitDailyScoreToLeaderboard(stats.score);
+        }
         showSummaryText();
     }
     
@@ -539,8 +562,14 @@ function showGameMessage(message, type = 'info', startTile = null) {
             playStreak = playerData.playStreak || 0;
         }
 
-           // ✅ FIX: Sync the official name from Firebase to Local Storage
-        localStorage.setItem('wordRushPlayerName', playerName);
+        // For signed-in users Firestore is authoritative; for anonymous users prefer localStorage
+        // so a saved guest name isn't overwritten by 'Anonymous' from an empty Firestore doc.
+        if (!isUserSignedIn() && playerName === 'Anonymous') {
+            playerName = localStorage.getItem('wordRushPlayerName') || 'Anonymous';
+        }
+        if (playerName !== 'Anonymous') {
+            localStorage.setItem('wordRushPlayerName', playerName);
+        }
 
         const highScoreEl = document.getElementById('high-score');
         if (highScoreEl) highScoreEl.textContent = highScore;
@@ -553,8 +582,16 @@ function showGameMessage(message, type = 'info', startTile = null) {
 
         const playerGreetingEl = document.getElementById('player-greeting');
         if (playerGreetingEl) {
-            if (isUserSignedIn() && playerName !== 'Anonymous') {
-                playerGreetingEl.innerHTML = `Welcome back, <strong class="font-bold">${playerName}</strong>!`;
+            if (playerName !== 'Anonymous') {
+                if (isUserSignedIn()) {
+                    playerGreetingEl.innerHTML = `Welcome back, <strong class="font-bold">${playerName}</strong>!`;
+                } else {
+                    playerGreetingEl.innerHTML = `Welcome back, <strong class="font-bold">${playerName}</strong>! &bull; <span id="greeting-signin-link" class="text-blue-500 hover:underline cursor-pointer">Sign up</span>`;
+                    setTimeout(() => {
+                        const link = document.getElementById('greeting-signin-link');
+                        if (link) link.onclick = () => showAccountModal();
+                    }, 0);
+                }
             } else {
                 playerGreetingEl.innerHTML = `Playing as <strong class="font-bold">Guest</strong> &bull; <span id="greeting-signin-link" class="text-blue-500 hover:underline cursor-pointer">Sign in</span>`;
                 setTimeout(() => {
@@ -1285,29 +1322,6 @@ async function endDailyChallenge() {
         activeGridEl.style.pointerEvents = 'none';
     }
 
-    // This still submits the score to the public leaderboard
-    await submitDailyScoreToLeaderboard(score);
-
-    // This saves the final results to the player's personal profile in Firebase
-    if (db && userId) {
-        try {
-            const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-            const dailyDocRef = doc(db, `players/${userId}/dailyChallenges`, todayStr);
-            
-            await setDoc(dailyDocRef, { 
-                completed: true,
-                score: score,
-                foundWords: foundWords 
-            }, { merge: true });
-            
-            // Clean up the local storage for today now that the game is submitted
-            localStorage.removeItem(`dailyProgress-${todayStr}`);
-
-        } catch (error) {
-            console.error("Error finalizing daily challenge:", error);
-        }
-    }
-
     showDailyEndScreen({
         score: score,
         foundWords: foundWords,
@@ -1318,10 +1332,6 @@ async function endDailyChallenge() {
 async function submitDailyScoreToLeaderboard(finalScore) {
     if (!db || !userId) {
         console.warn("Firebase not ready, can't submit daily score.");
-        return;
-    }
-    if (!isUserSignedIn()) {
-        console.log("User not signed in, not submitting to daily leaderboard.");
         return;
     }
     const playerName = localStorage.getItem('wordRushPlayerName') || 'Player';
@@ -1398,59 +1408,60 @@ function getTileFromEvent(e) {
     const playerDocRef = doc(db, "players", uId);
     
     // --- PART 1: GET PLAYER NAME IF NEEDED ---
-
-    // --- PART 1: GET PLAYER NAME IF NEEDED ---
     let finalPlayerName = localStorage.getItem('wordRushPlayerName') || 'Anonymous';
-    let needsToSubmitName = true;
+    let needsToSubmitName = finalPlayerName === 'Anonymous';
 
-    try {
-        const playerDocSnap = await getDoc(playerDocRef);
-        if (playerDocSnap.exists() && playerDocSnap.data().hasSubmittedName) {
-            needsToSubmitName = false;
-            finalPlayerName = playerDocSnap.data().name;
+    if (needsToSubmitName) {
+        try {
+            const playerDocSnap = await getDoc(playerDocRef);
+            if (playerDocSnap.exists() && playerDocSnap.data().hasSubmittedName) {
+                needsToSubmitName = false;
+                finalPlayerName = playerDocSnap.data().name;
+            }
+        } catch (e) {
+            console.error("Could not check for player name:", e);
         }
-    } catch (e) {
-        console.error("Could not check for player name:", e);
     }
 
     let skipLeaderboard = false;
     if (needsToSubmitName) {
         const submissionContainer = document.getElementById('submission-container');
-        if (!isUserSignedIn()) {
-            const googleSvg = `<svg class="w-4 h-4 mr-2 flex-shrink-0" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>`;
-            submissionContainer.innerHTML = `
-                <div class="text-center w-full">
-                    <p class="text-xs text-slate-500 mb-2">Sign in to appear on the leaderboard</p>
-                    <div class="flex flex-col gap-2">
-                        <button id="endgame-google-signin" class="w-full flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 font-bold py-2 px-3 rounded-lg text-sm border border-slate-200 shadow-sm">${googleSvg}Continue with Google</button>
-                        <button id="endgame-create-signin" class="w-full flex items-center justify-center bg-slate-800 hover:bg-slate-700 text-white font-bold py-2 px-3 rounded-lg text-sm shadow-sm">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-2 flex-shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" /></svg>
-                            Create an Account
-                        </button>
-                    </div>
-                    <button id="endgame-skip-signin" class="text-xs text-slate-400 hover:text-slate-600 mt-2 cursor-pointer hover:underline block w-full text-center py-1">Skip (won't appear on leaderboard)</button>
-                </div>`;
+        submissionContainer.innerHTML = `
+            <div class="text-center w-full py-1">
+                <p class="text-xs text-slate-500 mb-2">Enter a name to appear on the leaderboard</p>
+                <div class="flex gap-2">
+                    <input id="endgame-name-input" type="text" maxlength="10" placeholder="Your name"
+                        class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-green-400">
+                    <button id="endgame-name-submit" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg text-sm">Go</button>
+                </div>
+                <button id="endgame-create-account" class="text-xs text-blue-500 hover:underline mt-2 block w-full text-center py-1">Sign up to save stats across devices</button>
+                <button id="endgame-skip-signin" class="text-xs text-slate-400 hover:text-slate-600 mt-1 cursor-pointer hover:underline block w-full text-center py-1">Skip (won't appear on leaderboard)</button>
+            </div>`;
 
-            const didSignIn = await new Promise(resolve => {
-                document.getElementById('endgame-google-signin').onclick = async () => {
-                    const btn = document.getElementById('endgame-google-signin');
-                    btn.disabled = true;
-                    try { await signInWithProvider(new GoogleAuthProvider()); resolve(true); }
-                    catch(e) { console.error('Sign-in failed:', e); btn.disabled = false; }
-                };
-                document.getElementById('endgame-create-signin').onclick = () => {
-                    showAccountModal();
-                    resolve(false);
-                };
-                document.getElementById('endgame-skip-signin').onclick = () => resolve(false);
+        const enteredName = await new Promise(resolve => {
+            const doSubmit = () => {
+                const name = (document.getElementById('endgame-name-input').value || '').trim().slice(0, 10);
+                if (name) resolve(name);
+            };
+            // Resolve automatically if the user completes sign-up via the account modal
+            const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+                if (user && !user.isAnonymous) {
+                    unsubscribeAuth();
+                    resolve(localStorage.getItem('wordRushPlayerName') || user.displayName?.split(' ')[0] || 'Player');
+                }
             });
+            document.getElementById('endgame-name-submit').onclick = doSubmit;
+            document.getElementById('endgame-name-input').onkeydown = (e) => { if (e.key === 'Enter') doSubmit(); };
+            document.getElementById('endgame-create-account').onclick = () => showAccountModal();
+            document.getElementById('endgame-skip-signin').onclick = () => { unsubscribeAuth(); resolve(null); };
+        });
 
-            if (!didSignIn) {
-                skipLeaderboard = true;
-                submissionContainer.innerHTML = '';
-            } else {
-                finalPlayerName = localStorage.getItem('wordRushPlayerName') || 'Player';
-            }
+        if (!enteredName) {
+            skipLeaderboard = true;
+            submissionContainer.innerHTML = '';
+        } else {
+            finalPlayerName = enteredName;
+            localStorage.setItem('wordRushPlayerName', finalPlayerName);
         }
     }
     
@@ -1508,7 +1519,7 @@ function getTileFromEvent(e) {
     }
 
     let dailyRank = null;
-    if (!skipLeaderboard && isUserSignedIn()) {
+    if (!skipLeaderboard && userId && finalPlayerName !== 'Anonymous') {
         const dailyRef = doc(db, "leaderboards", "daily");
         try {
             // Get current leaderboard data
@@ -2617,7 +2628,7 @@ function getTileCenter(tile) {
         <p class="text-slate-600 mb-2">Your final score is:</p>
         <p id="final-score-display" class="text-6xl font-black text-slate-800 mb-3">${score}</p>
         
-        <div id="submission-container" class="h-8 flex items-center justify-center">
+        <div id="submission-container" class="min-h-8 flex items-center justify-center">
             <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
         </div>
 
