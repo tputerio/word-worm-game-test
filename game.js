@@ -1675,10 +1675,16 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
    function showWelcomeScreen() {
     modalContent.innerHTML = `
         <div class="bg-white rounded-2xl shadow-lg p-6 text-center">
-            <h1 class="mb-1 flex items-center justify-center text-3xl font-black text-slate-800 tracking-tighter">
-                <img src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-9 h-9 mr-2" width="36" height="36">
-                <span>Word Worm</span>
-            </h1>
+            <div class="flex items-center justify-between mb-1">
+                <div class="w-8 h-8"></div>
+                <h1 class="flex items-center text-3xl font-black text-slate-800 tracking-tighter">
+                    <img src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-9 h-9 mr-2" width="36" height="36">
+                    <span>Word Worm</span>
+                </h1>
+                <button id="settings-gear-btn" class="p-1 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path fill-rule="evenodd" d="M11.078 2.25c-.917 0-1.699.663-1.85 1.567L9.05 4.889c-.02.12-.115.26-.297.348a7.493 7.493 0 0 0-.986.57c-.166.115-.334.126-.45.083L6.3 5.508a1.875 1.875 0 0 0-2.282.819l-.922 1.597a1.875 1.875 0 0 0 .432 2.385l.84.692c.095.078.17.229.154.43a7.598 7.598 0 0 0 0 1.139c.015.2-.059.352-.153.43l-.841.692a1.875 1.875 0 0 0-.432 2.385l.922 1.597a1.875 1.875 0 0 0 2.282.818l1.019-.382c.115-.043.283-.031.45.082.312.214.641.405.985.57.182.088.277.228.297.35l.178 1.071c.151.904.933 1.567 1.85 1.567h1.844c.916 0 1.699-.663 1.85-1.567l.178-1.072c.02-.12.114-.26.297-.349.344-.165.673-.356.985-.57.167-.114.335-.125.45-.082l1.02.382a1.875 1.875 0 0 0 2.28-.819l.923-1.597a1.875 1.875 0 0 0-.432-2.385l-.84-.692c-.095-.078-.17-.229-.154-.43a7.614 7.614 0 0 0 0-1.139c-.016-.2.059-.352.153-.43l.84-.692c.708-.582.891-1.59.433-2.385l-.922-1.597a1.875 1.875 0 0 0-2.282-.818l-1.02.382c-.114.043-.282.031-.449-.083a7.49 7.49 0 0 0-.985-.57c-.183-.087-.277-.227-.297-.348l-.179-1.072a1.875 1.875 0 0 0-1.85-1.567h-1.843ZM12 15.75a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5Z" clip-rule="evenodd" /></svg>
+                </button>
+            </div>
             <p class="text-slate-500 text-sm mb-3">The fast-paced word finding game!</p>
 
 <div id="how-to-play-container" class="bg-slate-100 p-3 rounded-lg flex flex-col w-full"></div>
@@ -1710,12 +1716,12 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Day Streak</div>
                     </div>
 
-                    <a href="#" id="welcome-stats-button" class="bg-white rounded-lg shadow-sm p-1 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors">
-                        <div class="h-7 flex items-center justify-center text-blue-500">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" /></svg>
+                    <div class="bg-white rounded-lg shadow-sm p-1 flex flex-col items-center justify-center">
+                        <div class="h-7 flex items-center justify-center">
+                            <span id="welcome-high-score" class="text-xl font-black text-purple-600">0</span>
                         </div>
-                        <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Your Stats</div>
-                    </a>
+                        <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Your High</div>
+                    </div>
 
                     <a href="#" id="welcome-leaderboard-button" class="bg-white rounded-lg shadow-sm p-1 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors">
                         <div class="h-7 flex items-center justify-center text-green-500">
@@ -1744,13 +1750,24 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     menuContainer.classList.add('hidden');
     messageModal.classList.remove('hidden');
     
-    document.getElementById('welcome-stats-button').onclick = (e) => {
-        e.preventDefault();
-        showStatsModal();
-    };
     document.getElementById('welcome-leaderboard-button').onclick = (e) => {
         e.preventDefault();
         showLeaderboardModal();
+    };
+
+    document.getElementById('settings-gear-btn').onclick = () => {
+        document.getElementById('settings-modal').classList.remove('hidden');
+    };
+    document.getElementById('close-settings-modal').onclick = () => {
+        document.getElementById('settings-modal').classList.add('hidden');
+    };
+    document.getElementById('settings-modal-stats').onclick = () => {
+        document.getElementById('settings-modal').classList.add('hidden');
+        showStatsModal();
+    };
+    document.getElementById('settings-modal-how-to-play').onclick = () => {
+        document.getElementById('settings-modal').classList.add('hidden');
+        showHowToPlayModal();
     };
 
     setupTutorial();
@@ -2345,9 +2362,6 @@ function getTileCenter(tile) {
     if (!container) return;
 
     container.innerHTML = `
-        <div style="display:flex;justify-content:flex-end;margin-bottom:4px;">
-            <button id="how-to-play-btn" class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-slate-200 text-slate-600" style="flex-shrink:0;" title="How to play">?</button>
-        </div>
         <div class="flex flex-col items-center">
             <div id="tutorial-word-builder" class="h-7 p-1 bg-white rounded-lg shadow-inner w-32 flex items-center justify-center space-x-1 mb-2"></div>
             <div id="tutorial-grid" class="grid grid-cols-4 gap-1 w-40 h-40 relative"></div>
@@ -2470,8 +2484,9 @@ function getTileCenter(tile) {
     // Total cycle: 2 words × (4 tiles × 700ms) + 2 pauses × 1200ms = ~8s
     animationInterval = setInterval(runAnimation, 8000);
 
-    // "?" button opens instructions modal
-    document.getElementById('how-to-play-btn').onclick = () => {
+}
+
+   function showHowToPlayModal() {
         const modal = document.getElementById('instructions-modal');
         const content = document.getElementById('instructions-modal-content');
 
@@ -2541,7 +2556,6 @@ function getTileCenter(tile) {
             modal.classList.add('hidden');
             startGame(true);
         };
-    };
 }
 
     document.addEventListener('DOMContentLoaded', main);
