@@ -1268,7 +1268,7 @@ function updateDailyChallengeUI() {
 
         for (const fw of recent) {
             const wordSpan = document.createElement('span');
-            wordSpan.className = "bg-blue-100 text-blue-700 font-semibold text-xs px-2 py-0.5 rounded-md";
+            wordSpan.className = "bg-blue-100 text-blue-700 dark:bg-blue-800 dark:text-blue-100 font-semibold text-xs px-2 py-0.5 rounded-md";
             wordSpan.textContent = fw.word.toUpperCase();
             container.appendChild(wordSpan);
 
@@ -2973,7 +2973,7 @@ function getTileCenter(tile) {
                 await new Promise(r => setTimeout(r, 100));
             }
             tile.classList.add('highlight');
-            wordBuilderEl.innerHTML += `<span class="bg-white text-blue-500 font-bold text-sm p-0.5 rounded-md shadow-sm">${step.letter}</span>`;
+            wordBuilderEl.innerHTML += `<span class="bg-white dark:bg-slate-300 text-blue-500 dark:text-blue-700 font-bold text-sm p-0.5 rounded-md shadow-sm">${step.letter}</span>`;
             await new Promise(r => setTimeout(r, 600));
         }
         if (messageModal.classList.contains('hidden')) return false;
