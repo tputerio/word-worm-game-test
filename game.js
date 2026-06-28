@@ -1804,7 +1804,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     <div id="mode-dropdown" style="position:absolute;top:100%;left:0;right:0;width:100%;z-index:10;max-height:0;opacity:0;overflow:hidden;transition:max-height 0.28s ease,opacity 0.2s ease;pointer-events:none;">
         <div id="mode-dropdown-inner" style="margin-top:4px;background:#fff;border-radius:16px;padding:8px;box-shadow:0 8px 24px rgba(0,0,0,0.15);">
             <div style="display:flex;flex-direction:column;gap:6px;">
-                <button id="mode-timed-btn" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:42px;background:#f97316;color:#fff;font-weight:700;font-size:0.875rem;border:none;border-radius:10px;cursor:pointer;">
+                <button id="mode-timed-btn" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:42px;background:#9ec25f;color:#fff;font-weight:700;font-size:0.875rem;border:none;border-radius:10px;cursor:pointer;">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width:18px;height:18px;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
                     Timed Game (Classic)
                 </button>
