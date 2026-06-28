@@ -326,3 +326,8 @@ html.dark #profile-tab-content .bg-slate-100.rounded-lg > div {
     border-radius: 0.375rem;
     padding: 0.5rem;
 }
+
+html.dark #mode-dropdown-inner {
+    background: #1e293b !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}

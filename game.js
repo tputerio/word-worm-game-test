@@ -89,8 +89,10 @@
     let practiceTimeElapsed = 0;
     let animationInterval;
     let currentGamemode = 'standard';
-    let dailyChallengeData = null; 
+    let dailyChallengeData = null;
     let allDailyWords = new Set();
+    let currentChallengeId = null;
+    let pendingChallengeId = new URLSearchParams(window.location.search).get('c') || null;
     let activeGridEl;
     let activeCanvasEl;
     let activeCtx;
@@ -203,8 +205,12 @@ function createDailyChallengeBoard() {
     function main() {
         setupEventListeners();
         topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">0</div>`;
-        showWelcomeScreen();
-        loadAssets(); 
+        if (pendingChallengeId) {
+            showChallengeAcceptScreen(pendingChallengeId);
+        } else {
+            showWelcomeScreen();
+        }
+        loadAssets();
     }
 
 async function showDailyEndScreen(stats, isNewSubmission = true) {
@@ -392,9 +398,8 @@ function showSubmitConfirmation() {
 }
     
     async function loadAssets() {
-    const playGameModeButton = document.getElementById('play-game-mode-button');
+    const playButton = document.getElementById('play-button');
     const playPracticeButton = document.getElementById('play-practice-button');
-    const dailyChallengeButton = document.getElementById('play-daily-button');
     const loadingErrorEl = document.getElementById('loading-error');
     const globalPlayCountSpan = document.getElementById('global-play-count');
 
@@ -437,7 +442,7 @@ function showSubmitConfirmation() {
             onAuthStateChanged(auth, async (user) => {
                 if (user) {
                     userId = user.uid;
-                 
+
                     // GOOGLE ANALYTICS -- if (analytics && userId) {
                    //     setUserId(analytics, userId);
                   //  }
@@ -445,6 +450,9 @@ function showSubmitConfirmation() {
                     console.log("Firebase connected. User ID:", userId);
                     fetchGlobalStats();
                     fetchPlayerStats(userId);
+                    if (pendingChallengeId) {
+                        showChallengeAcceptScreen(pendingChallengeId);
+                    }
                 } else {
                     signInAnonymously(auth).catch(err => console.error("Anonymous sign-in failed:", err));
                 }
@@ -456,17 +464,13 @@ function showSubmitConfirmation() {
     };
     
     const loadDictionaryAndEnableButtons = async () => {
-        if (playGameModeButton && playGameModeButton.disabled) return; // Don't re-run if already loaded
-        
-        if (playGameModeButton) {
-            playGameModeButton.disabled = true;
-            playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
+        if (playButton && playButton.disabled) return; // Don't re-run if already loaded
+
+        if (playButton) {
+            playButton.disabled = true;
+            playButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
         }
         if (playPracticeButton) { playPracticeButton.disabled = true; }
-        if (dailyChallengeButton) {
-            dailyChallengeButton.disabled = true;
-            dailyChallengeButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
-        }
         
         try {
             if (fullDictionaryTrie) { // Dictionaries are already loaded
@@ -482,22 +486,17 @@ function showSubmitConfirmation() {
                 console.log("Both dictionaries loaded. Game is playable.");
             }
 
-            if (playGameModeButton) {
-                playGameModeButton.disabled = false;
-                playGameModeButton.innerHTML = `<div class="flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="white" class="w-6 h-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg><span>Play</span></div>`;
+            if (playButton) {
+                playButton.disabled = false;
+                playButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg><span>Play</span>`;
             }
             if (playPracticeButton) { playPracticeButton.disabled = false; }
-            if (dailyChallengeButton) {
-                dailyChallengeButton.disabled = false;
-                dailyChallengeButton.innerHTML = `<div class="flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.25 6.087c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003 0-1.036-1.007-1.875-2.25-1.875s-2.25.84-2.25 1.875c0 .369.128.713.349 1.003.215.283.401.604.401.959v0a.64.64 0 0 1-.657.643 48.39 48.39 0 0 1-4.163-.3c.186 1.613.293 3.25.315 4.907a.656.656 0 0 1-.658.663v0c-.355 0-.676-.186-.959-.401a1.647 1.647 0 0 0-1.003-.349c-1.036 0-1.875 1.007-1.875 2.25s.84 2.25 1.875 2.25c.369 0 .713-.128 1.003-.349.283-.215.604-.401.959-.401v0c.31 0 .555.26.532.57a48.039 48.039 0 0 1-.642 5.056c1.518.19 3.058.309 4.616.354a.64.64 0 0 0 .657-.643v0c0-.355-.186-.676-.401-.959a1.647 1.647 0 0 1-.349-1.003c0-1.035 1.008-1.875 2.25-1.875 1.243 0 2.25.84 2.25 1.875 0 .369-.128.713-.349 1.003-.215.283-.4.604-.4.959v0c0 .333.277.599.61.58a48.1 48.1 0 0 0 5.427-.63 48.05 48.05 0 0 0 .582-4.717.532.532 0 0 0-.533-.57v0c-.355 0-.676.186-.959.401-.29.221-.634.349-1.003.349-1.035 0-1.875-1.007-1.875-2.25s.84-2.25 1.875-2.25c.37 0 .713.128 1.003.349.283.215.604.401.96.401v0a.656.656 0 0 0 .658-.663 48.422 48.422 0 0 0-.37-5.36c-1.886.342-3.81.574-5.766.689a.578.578 0 0 1-.61-.58v0Z" /></svg><span>Daily Challenge</span></div>`;
-            }
 
         } catch (e) {
             console.error("Critical Asset loading failed (Dictionaries):", e);
             if (loadingErrorEl) loadingErrorEl.textContent = "Error: Could not load game dictionaries.";
-            if (playGameModeButton) { playGameModeButton.innerHTML = `<span>Error</span>`; playGameModeButton.classList.add('bg-red-500'); }
+            if (playButton) { playButton.innerHTML = `<span>Error</span>`; playButton.classList.add('bg-red-500'); }
             if (playPracticeButton) { playPracticeButton.innerHTML = `<span>Error</span>`; playPracticeButton.classList.add('bg-red-500'); }
-            if (dailyChallengeButton) { dailyChallengeButton.innerHTML = `<span>Error</span>`; dailyChallengeButton.classList.add('bg-red-500'); }
         }
     };
     
@@ -512,8 +511,8 @@ function showGameMessage(message, type = 'info', startTile = null) {
         success: 'bg-green-500'
     };
 
-    // ✅ FIX: In daily mode, center the message over the grid and apply a shake animation.
-    if (currentGamemode === 'daily' && activeGridEl) {
+    // In daily/challenge mode, center the message over the grid and apply a shake animation.
+    if ((currentGamemode === 'daily' || currentGamemode === 'challenge') && activeGridEl) {
         const gridWrapper = activeGridEl.parentElement;
         if (gridWrapper) {
             gridWrapper.style.position = 'relative'; 
@@ -651,8 +650,7 @@ function showGameMessage(message, type = 'info', startTile = null) {
                 tile.dataset.bonus = bonusInfo.type;
             }
         } else {
-             // ✅ FIX: Add a check to prevent bonus tiles in the daily challenge
-            if (currentGamemode !== 'daily') {
+            if (currentGamemode !== 'daily' && currentGamemode !== 'challenge') {
                 const randomBonus = getBonusType();
                 if (randomBonus) {
                     bonusType = randomBonus;
@@ -733,25 +731,50 @@ async function getDailyPuzzleWithTimeout() {
     return null;
 }
 
- async function startGame(practiceMode = false, gameMode = 'standard') {
+ async function startGame(practiceMode = false, gameMode = 'standard', challengeData = null) {
     if (!db) {
         showGameMessage("Connecting...");
         return;
     }
 
+    if (gameMode === 'challenge') {
+        if (!challengeData) { showGameMessage('Challenge data missing.', 'error'); return; }
+        isEndingGame = false;
+        clearInterval(timerInterval);
+        timerInterval = null;
+        document.getElementById('daily-challenge-content').style.display = 'none';
+        gameContentEl.style.display = 'block';
+        currentGamemode = 'challenge';
+        isPracticeMode = false;
+        menuContainer.classList.remove('hidden');
+        messageModal.classList.add('hidden');
+        score = 0;
+        foundWords = [];
+        allDailyWords = challengeData.allWords;
+        updateScoreDisplay();
+        timer = GAME_TIME;
+        topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">0</div>`;
+        updateTimerUI();
+        timerInterval = setInterval(() => { timer--; updateTimerUI(); if (timer <= 0) endGame(); }, 1000);
+        clearInterval(animationInterval);
+        activeGridEl = document.getElementById('grid');
+        activeCanvasEl = document.getElementById('line-canvas');
+        activeCtx = activeCanvasEl.getContext('2d');
+        createGrid(challengeData.board, activeGridEl);
+        attachGridListeners(activeGridEl);
+        activeGridEl.style.pointerEvents = 'auto';
+        return;
+    }
+
     if (gameMode === 'daily') {
-        const dailyButton = document.getElementById('play-daily-button');
-        if (!dailyButton || dailyButton.disabled) return;
-        const originalButtonHTML = dailyButton.innerHTML;
-        dailyButton.disabled = true;
-        dailyButton.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Loading...</span></div>`;
+        const modeBtn = document.getElementById('mode-daily-btn');
+        if (modeBtn) { modeBtn.disabled = true; modeBtn.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>`; }
 
         const puzzleData = await getDailyPuzzleWithTimeout();
 
         if (!puzzleData) {
             showGameMessage("Today's puzzle isn't ready. Please try again later.", "error");
-            dailyButton.disabled = false;
-            dailyButton.innerHTML = originalButtonHTML;
+            if (modeBtn) modeBtn.disabled = false;
             return;
         }
         
@@ -1052,11 +1075,16 @@ function setupDailyUI(challengeData) {
     function endGame() {
         if (isEndingGame) return;  // Prevent multiple calls
         isEndingGame = true;
-        
+
         clearInterval(timerInterval);
         grid.style.pointerEvents = 'none';
         menuContainer.classList.add('hidden');
-        
+
+        if (currentGamemode === 'challenge') {
+            showChallengeEndScreen({ score, foundWords });
+            return;
+        }
+
         // ✅ FIX: No delay needed. Show the end screen immediately.
         showEndGameScreen();
 
@@ -1068,7 +1096,7 @@ function setupDailyUI(challengeData) {
        //     time_taken_seconds: isPracticeMode ? practiceTimeElapsed : GAME_TIME
       //  });
   //  }
-        
+
         if (!isPracticeMode && db && userId) {
             processEndOfGame(score, foundWords, userId);
     }
@@ -1768,21 +1796,29 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
 <div id="how-to-play-container" class="bg-slate-100 p-3 rounded-lg flex flex-col w-full"></div>
 
-     <div class="flex items-center gap-3 mt-4">
-    <button id="play-daily-button" class="bg-blue-500 hover:bg-blue-600 flex-1 text-white font-bold h-12 px-2 rounded-lg text-sm flex items-center justify-center transition-transform hover:scale-105">
-        <div class="flex items-center justify-center">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M14.25 6.087c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003 0-1.036-1.007-1.875-2.25-1.875s-2.25.84-2.25 1.875c0 .369.128.713.349 1.003.215.283.401.604.401.959v0a.64.64 0 0 1-.657.643 48.39 48.39 0 0 1-4.163-.3c.186 1.613.293 3.25.315 4.907a.656.656 0 0 1-.658.663v0c-.355 0-.676-.186-.959-.401a1.647 1.647 0 0 0-1.003-.349c-1.036 0-1.875 1.007-1.875 2.25s.84 2.25 1.875 2.25c.369 0 .713-.128 1.003-.349.283-.215.604-.401.959-.401v0c.31 0 .555.26.532.57a48.039 48.039 0 0 1-.642 5.056c1.518.19 3.058.309 4.616.354a.64.64 0 0 0 .657-.643v0c0-.355-.186-.676-.401-.959a1.647 1.647 0 0 1-.349-1.003c0-1.035 1.008-1.875 2.25-1.875 1.243 0 2.25.84 2.25 1.875 0 .369-.128.713-.349 1.003-.215.283-.4.604-.4.959v0c0 .333.277.599.61.58a48.1 48.1 0 0 0 5.427-.63 48.05 48.05 0 0 0 .582-4.717.532.532 0 0 0-.533-.57v0c-.355 0-.676.186-.959.401-.29.221-.634.349-1.003.349-1.035 0-1.875-1.007-1.875-2.25s.84-2.25 1.875-2.25c.37 0 .713.128 1.003.349.283.215.604.401.96.401v0a.656.656 0 0 0 .658-.663 48.422 48.422 0 0 0-.37-5.36c-1.886.342-3.81.574-5.766.689a.578.578 0 0 1-.61-.58v0Z" />
-        </svg>
-            <span>Daily Challenge</span>
-        </div>
+     <div class="mt-4 relative">
+    <button id="play-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold h-10 px-4 rounded-xl text-base flex items-center justify-center transition-colors gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg>
+        <span>Play</span>
     </button>
-    <button id="play-game-mode-button" class="bg-green-500 hover:bg-green-600 flex-1 text-white font-bold h-12 px-2 rounded-lg text-base flex items-center justify-center transition-transform hover:scale-105">
-        <div class="flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-1"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg>
-            <span>Play</span>
+    <div id="mode-dropdown" style="position:absolute;top:100%;left:0;right:0;width:100%;z-index:10;max-height:0;opacity:0;overflow:hidden;transition:max-height 0.28s ease,opacity 0.2s ease;pointer-events:none;">
+        <div id="mode-dropdown-inner" style="margin-top:4px;background:#fff;border-radius:16px;padding:8px;box-shadow:0 8px 24px rgba(0,0,0,0.15);">
+            <div style="display:flex;flex-direction:column;gap:6px;">
+                <button id="mode-timed-btn" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:42px;background:#f97316;color:#fff;font-weight:700;font-size:0.875rem;border:none;border-radius:10px;cursor:pointer;">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width:18px;height:18px;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                    Timed Game (Classic)
+                </button>
+                <button id="mode-daily-btn" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:42px;background:#3b82f6;color:#fff;font-weight:700;font-size:0.875rem;border:none;border-radius:10px;cursor:pointer;">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width:18px;height:18px;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" /></svg>
+                    Daily Challenge<span id="daily-mode-badge" style="display:none;margin-left:6px;font-size:0.7rem;opacity:0.8;">✓</span>
+                </button>
+                <button id="mode-challenge-btn" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:42px;background:#64748b;color:#fff;font-weight:700;font-size:0.875rem;border:none;border-radius:10px;cursor:pointer;">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width:18px;height:18px;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
+                    Challenge a Friend
+                </button>
+            </div>
         </div>
-    </button>
+    </div>
 </div>
             
             <div class="bg-slate-100 rounded-xl p-2 mt-4">
@@ -1856,9 +1892,584 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     setupTutorial();
     menuContainer.classList.add('hidden');
     
-    document.getElementById('play-game-mode-button').onclick = () => startGame(false);
-    document.getElementById('play-daily-button').onclick = () => startGame(false, 'daily');
+    const playBtn = document.getElementById('play-button');
+    const modeDropdown = document.getElementById('mode-dropdown');
+
+    playBtn.onclick = () => {
+        const isOpen = modeDropdown.style.maxHeight !== '0px' && modeDropdown.style.maxHeight !== '';
+        modeDropdown.style.maxHeight = isOpen ? '0px' : '250px';
+        modeDropdown.style.opacity = isOpen ? '0' : '1';
+        modeDropdown.style.pointerEvents = isOpen ? 'none' : 'auto';
+    };
+
+    document.getElementById('mode-timed-btn').onclick = () => startGame(false, 'standard');
+    document.getElementById('mode-challenge-btn').onclick = () => showChallengeFriendModal();
+    document.getElementById('mode-daily-btn').onclick = () => startGame(false, 'daily');
+
+    // Check daily completion status
+    (async () => {
+        try {
+            const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            if (db && userId) {
+                const snap = await getDoc(doc(db, `players/${userId}/dailyChallenges`, todayStr));
+                if (snap.exists() && snap.data().completed) {
+                    const badge = document.getElementById('daily-mode-badge');
+                    if (badge) badge.style.display = 'inline';
+                }
+            }
+        } catch(e) {}
+    })();
 }
+
+    // ---- Mode Picker ----
+
+    function showModePickerModal() {
+        const spinnerHTML = `<svg class="animate-spin h-5 w-5 text-blue-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+        const chevron = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 text-slate-400 flex-shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>`;
+
+        modalContent.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-lg p-6">
+            <div class="flex items-center mb-5">
+                <button id="mode-picker-back" class="text-slate-400 hover:text-slate-700 mr-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
+                </button>
+                <h2 class="text-xl font-black text-slate-800">Choose Mode</h2>
+            </div>
+
+            <div class="flex flex-col gap-3">
+                <button id="mode-timed-btn" class="w-full flex items-center gap-4 bg-slate-50 hover:bg-orange-50 border border-slate-200 hover:border-orange-300 rounded-xl p-4 text-left transition-colors">
+                    <div class="w-11 h-11 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-orange-500"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                    </div>
+                    <div class="flex-1">
+                        <div class="font-bold text-slate-800">Timed Challenge</div>
+                        <div class="text-sm text-slate-500">Classic 60-second word finding</div>
+                    </div>
+                    ${chevron}
+                </button>
+
+                <button id="mode-daily-btn" class="w-full flex items-center gap-4 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl p-4 text-left transition-colors">
+                    <div class="w-11 h-11 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-blue-600"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" /></svg>
+                    </div>
+                    <div class="flex-1">
+                        <div class="font-bold text-slate-800">Daily Challenge</div>
+                        <div class="text-sm text-slate-500">Today's shared puzzle</div>
+                    </div>
+                    <div id="daily-mode-status">${spinnerHTML}</div>
+                </button>
+
+                <button id="mode-challenge-btn" class="w-full flex items-center gap-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 rounded-xl p-4 text-left transition-colors">
+                    <div class="w-11 h-11 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-slate-500"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
+                    </div>
+                    <div class="flex-1">
+                        <div class="font-bold text-slate-800">Challenge a Friend</div>
+                        <div class="text-sm text-slate-500">Send a board, compare scores</div>
+                    </div>
+                    ${chevron}
+                </button>
+            </div>
+        </div>`;
+
+        menuContainer.classList.add('hidden');
+        messageModal.classList.remove('hidden');
+
+        document.getElementById('mode-picker-back').onclick = () => showWelcomeScreen();
+        document.getElementById('mode-timed-btn').onclick = () => startGame(false, 'standard');
+        document.getElementById('mode-challenge-btn').onclick = () => showChallengeFriendModal();
+
+        // Check daily challenge completion status and update button
+        const dailyBtn = document.getElementById('mode-daily-btn');
+        const dailyStatusEl = document.getElementById('daily-mode-status');
+        (async () => {
+            try {
+                const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+                if (db && userId) {
+                    const dailyDocRef = doc(db, `players/${userId}/dailyChallenges`, todayStr);
+                    const docSnap = await getDoc(dailyDocRef);
+                    if (docSnap.exists() && docSnap.data().completed) {
+                        dailyStatusEl.innerHTML = `<span class="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">Done ✓</span>`;
+                    } else {
+                        dailyStatusEl.innerHTML = chevron;
+                    }
+                } else {
+                    dailyStatusEl.innerHTML = chevron;
+                }
+            } catch(e) {
+                dailyStatusEl.innerHTML = chevron;
+            }
+        })();
+
+        dailyBtn.onclick = () => startGame(false, 'daily');
+    }
+
+    // ---- Challenge a Friend ----
+
+    function showChallengeFriendModal(view = 'create') {
+        const accountModal = document.getElementById('account-modal');
+        const accountModalContent = document.getElementById('account-modal-content');
+
+        if (view === 'my-challenges') {
+            renderMyChallenges(accountModalContent);
+        } else {
+            renderCreateChallenge(accountModalContent);
+        }
+
+        accountModal.classList.remove('hidden');
+        document.getElementById('close-challenge-modal').onclick = () => accountModal.classList.add('hidden');
+    }
+
+    function renderCreateChallenge(container) {
+        container.innerHTML = `
+            <div class="flex justify-between items-center mb-5">
+                <h2 class="text-2xl font-bold text-slate-800 flex items-center">Challenge a Friend <span class="inline-block w-6 h-6 ml-2"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-slate-600"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg></span></h2>
+                <button id="close-challenge-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
+            </div>
+            <p class="text-sm text-slate-500 mb-5">Generate a unique board and send the link to a friend. Whoever finds the most words in 60 seconds wins.</p>
+            <button id="generate-challenge-btn" class="w-full bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors border border-slate-200 flex items-center justify-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-slate-500"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" /></svg>
+                Generate Challenge Link
+            </button>
+            <div id="challenge-link-result" class="mt-4"></div>
+            <hr class="my-5 border-slate-200">
+            <button id="view-my-challenges-btn" class="w-full flex items-center justify-center gap-2 text-slate-600 hover:text-slate-800 font-semibold py-2 text-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061A1.125 1.125 0 0 1 3 16.811V8.69ZM12.75 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061a1.125 1.125 0 0 1-1.683-.977V8.69Z" /></svg>
+                My Challenges
+            </button>`;
+
+        document.getElementById('generate-challenge-btn').onclick = () => generateAndSaveChallenge();
+        document.getElementById('view-my-challenges-btn').onclick = () => renderMyChallenges(container);
+    }
+
+    async function generateAndSaveChallenge() {
+        const btn = document.getElementById('generate-challenge-btn');
+        const resultEl = document.getElementById('challenge-link-result');
+        if (!btn || !resultEl) return;
+
+        if (!validationTrie || !fullDictionaryTrie) {
+            resultEl.innerHTML = `<p class="text-sm text-red-500 text-center">Dictionaries still loading — try again in a moment.</p>`;
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = `<svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Generating...</span>`;
+
+        try {
+            const { board, allWords } = createDailyChallengeBoard();
+            const playerName = localStorage.getItem('wordRushPlayerName') || 'A friend';
+            const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+            const challengeRef = await addDoc(collection(db, 'challenges'), {
+                board,
+                allWords: Array.from(allWords),
+                createdBy: userId,
+                createdByName: playerName,
+                createdAt: serverTimestamp(),
+                expiresAt,
+                results: {}
+            });
+
+            // Track locally so it shows in My Challenges
+            const stored = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
+            stored.unshift(challengeRef.id);
+            localStorage.setItem('wordWormChallenges', JSON.stringify(stored.slice(0, 20)));
+
+            const challengeUrl = `${window.location.origin}${window.location.pathname}?c=${challengeRef.id}`;
+
+            resultEl.innerHTML = `
+                <div class="bg-slate-100 border border-slate-200 rounded-xl p-4">
+                    <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Your challenge link</p>
+                    <p id="challenge-link-text" class="text-sm text-slate-700 break-all font-mono mb-3">${challengeUrl}</p>
+                    <button id="copy-challenge-link" class="w-full bg-white hover:bg-slate-50 text-slate-700 font-bold py-2 px-4 rounded-lg text-sm shadow-sm border border-slate-200 flex items-center justify-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.337c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" /></svg>
+                        Copy Link
+                    </button>
+                </div>`;
+
+            document.getElementById('copy-challenge-link').onclick = async () => {
+                try {
+                    await navigator.clipboard.writeText(challengeUrl);
+                    const copyBtn = document.getElementById('copy-challenge-link');
+                    if (copyBtn) { copyBtn.textContent = 'Copied!'; setTimeout(() => { if (copyBtn) copyBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.337c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" /></svg> Copy Link`; }, 2000); }
+                } catch(e) {
+                    const linkEl = document.getElementById('challenge-link-text');
+                    if (linkEl) linkEl.select?.();
+                }
+            };
+
+        } catch(e) {
+            console.error('Failed to generate challenge:', e);
+            resultEl.innerHTML = `<p class="text-sm text-red-500 text-center">Something went wrong. Please try again.</p>`;
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-slate-500"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" /></svg> Generate New Challenge`;
+        }
+    }
+
+    async function renderMyChallenges(container) {
+        container.innerHTML = `
+            <div class="flex items-center mb-5">
+                <button id="my-challenges-back" class="text-slate-400 hover:text-slate-700 mr-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
+                </button>
+                <h2 class="text-xl font-black text-slate-800">My Challenges</h2>
+                <button id="close-challenge-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800 ml-auto">&times;</button>
+            </div>
+            <div id="challenges-list" class="flex flex-col gap-3">
+                <div class="flex justify-center py-4"><svg class="animate-spin h-6 w-6 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>
+            </div>`;
+
+        document.getElementById('my-challenges-back').onclick = () => renderCreateChallenge(container);
+        document.getElementById('close-challenge-modal').onclick = () => document.getElementById('account-modal').classList.add('hidden');
+
+        const listEl = document.getElementById('challenges-list');
+
+        try {
+            // Gather IDs: ones the user created + ones saved locally (received via link)
+            const localIds = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
+            const idSet = new Set(localIds);
+
+            // Also query Firestore for challenges created by this user
+            if (db && userId) {
+                const q = query(collection(db, 'challenges'), where('createdBy', '==', userId), orderBy('createdAt', 'desc'), limit(10));
+                const snap = await getDocs(q);
+                snap.docs.forEach(d => idSet.add(d.id));
+            }
+
+            if (idSet.size === 0) {
+                listEl.innerHTML = `<p class="text-center text-slate-500 text-sm py-6">No challenges yet. Generate one to get started!</p>`;
+                return;
+            }
+
+            // Fetch each challenge doc
+            const now = Date.now();
+            const cards = await Promise.all(Array.from(idSet).map(async id => {
+                try {
+                    const snap = await getDoc(doc(db, 'challenges', id));
+                    if (!snap.exists()) return null;
+                    const data = snap.data();
+                    const expired = data.expiresAt?.toDate ? data.expiresAt.toDate() < now : false;
+                    const myResult = data.results?.[userId];
+                    const otherResults = Object.entries(data.results || {}).filter(([uid]) => uid !== userId);
+                    const isCreator = data.createdBy === userId;
+                    const challengeUrl = `${window.location.origin}${window.location.pathname}?c=${id}`;
+
+                    let statusHTML;
+                    if (myResult) {
+                        const top = otherResults.sort((a,b) => b[1].score - a[1].score)[0];
+                        if (top) {
+                            const won = myResult.score >= top[1].score;
+                            statusHTML = `<span class="text-xs font-bold px-2 py-1 rounded-full ${won ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">${won ? 'You won!' : 'You lost'}</span>`;
+                        } else {
+                            statusHTML = `<span class="text-xs font-bold px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">Waiting for friend</span>`;
+                        }
+                    } else if (expired) {
+                        statusHTML = `<span class="text-xs font-bold px-2 py-1 rounded-full bg-slate-100 text-slate-500">Expired</span>`;
+                    } else {
+                        statusHTML = `<span class="text-xs font-bold px-2 py-1 rounded-full bg-purple-100 text-purple-700">${isCreator ? 'Awaiting friend' : 'Not played yet'}</span>`;
+                    }
+
+                    return { id, data, myResult, otherResults, isCreator, challengeUrl, statusHTML, expired };
+                } catch(e) { return null; }
+            }));
+
+            const valid = cards.filter(Boolean).sort((a,b) => {
+                const ta = a.data.createdAt?.toDate?.() || 0;
+                const tb = b.data.createdAt?.toDate?.() || 0;
+                return tb - ta;
+            });
+
+            if (valid.length === 0) {
+                listEl.innerHTML = `<p class="text-center text-slate-500 text-sm py-6">No challenges found.</p>`;
+                return;
+            }
+
+            listEl.innerHTML = valid.map(({ id, data, myResult, otherResults, isCreator, challengeUrl, statusHTML, expired }) => {
+                const createdDate = data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString() : '';
+                const myScore = myResult ? `<span class="font-bold text-slate-800">You: ${myResult.score}</span>` : '';
+                const topOther = otherResults.sort((a,b) => b[1].score - a[1].score)[0];
+                const otherScore = topOther ? `<span class="text-slate-500">${topOther[1].name}: ${topOther[1].score}</span>` : '';
+                const scoreRow = (myScore || otherScore) ? `<div class="flex gap-3 mt-1 text-sm">${myScore}${otherScore}</div>` : '';
+                const playBtn = !myResult && !expired ? `<button class="challenge-play-btn text-xs font-bold text-purple-600 hover:text-purple-800 underline" data-id="${id}">Play</button>` : '';
+                const copyBtn = isCreator && !expired ? `<button class="challenge-copy-btn text-xs text-slate-400 hover:text-slate-600" data-url="${challengeUrl}" title="Copy link"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.337c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" /></svg></button>` : '';
+                return `
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span class="text-xs text-slate-400">${isCreator ? 'You challenged' : `From ${data.createdByName}`} &bull; ${createdDate}</span>
+                                ${copyBtn}
+                            </div>
+                            ${scoreRow}
+                        </div>
+                        <div class="flex items-center gap-2 flex-shrink-0">
+                            ${statusHTML}
+                            ${playBtn}
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+
+            listEl.querySelectorAll('.challenge-play-btn').forEach(btn => {
+                btn.onclick = () => {
+                    document.getElementById('account-modal').classList.add('hidden');
+                    loadAndPlayChallenge(btn.dataset.id);
+                };
+            });
+            listEl.querySelectorAll('.challenge-copy-btn').forEach(btn => {
+                btn.onclick = async () => {
+                    try { await navigator.clipboard.writeText(btn.dataset.url); btn.title = 'Copied!'; } catch(e) {}
+                };
+            });
+
+        } catch(e) {
+            console.error('Failed to load challenges:', e);
+            listEl.innerHTML = `<p class="text-center text-red-500 text-sm py-6">Failed to load challenges.</p>`;
+        }
+    }
+
+    // ---- Challenge Accept Screen (opened via ?c=id link) ----
+
+    async function showChallengeAcceptScreen(challengeId) {
+        modalContent.innerHTML = `
+            <div class="bg-white rounded-2xl shadow-lg p-6 text-center">
+                <div class="flex justify-center py-4"><svg class="animate-spin h-6 w-6 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>
+                <p class="text-slate-500 mt-2">Loading challenge...</p>
+            </div>`;
+        menuContainer.classList.add('hidden');
+        messageModal.classList.remove('hidden');
+
+        if (!db || !userId) {
+            // Will be called again from onAuthStateChanged once userId is set
+            return;
+        }
+
+        try {
+            const snap = await getDoc(doc(db, 'challenges', challengeId));
+            if (!snap.exists()) {
+                modalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-lg p-6 text-center"><p class="text-slate-700 font-bold mb-4">Challenge not found.</p><button id="challenge-go-home" class="bg-green-500 text-white font-bold py-2 px-6 rounded-lg">Go Home</button></div>`;
+                document.getElementById('challenge-go-home').onclick = () => { history.replaceState(null,'',window.location.pathname); pendingChallengeId = null; showWelcomeScreen(); };
+                return;
+            }
+
+            const data = snap.data();
+            const myResult = data.results?.[userId];
+            const otherResults = Object.entries(data.results || {}).filter(([uid]) => uid !== userId);
+
+            if (myResult) {
+                showChallengeResultsScreen(challengeId, data, myResult, otherResults);
+                return;
+            }
+
+            // Track this challenge locally
+            const stored = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
+            if (!stored.includes(challengeId)) { stored.unshift(challengeId); localStorage.setItem('wordWormChallenges', JSON.stringify(stored.slice(0, 20))); }
+
+            const isSelf = data.createdBy === userId;
+            const challengerName = isSelf ? 'yourself' : data.createdByName;
+
+            modalContent.innerHTML = `
+                <div class="bg-white rounded-2xl shadow-lg p-6 text-center">
+                    <div class="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center mx-auto mb-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-9 h-9 text-purple-600"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
+                    </div>
+                    <h2 class="text-2xl font-black text-slate-800 mb-1">You've been challenged!</h2>
+                    <p class="text-slate-500 mb-6">by <strong>${challengerName}</strong></p>
+                    ${otherResults.length > 0 ? `<p class="text-sm text-slate-500 mb-4">Their score: <strong>${otherResults[0][1].score}</strong> — can you beat it?</p>` : ''}
+                    <button id="accept-challenge-btn" class="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-4 rounded-xl text-lg mb-3">Play Now</button>
+                    <button id="challenge-go-home" class="w-full text-slate-500 hover:text-slate-700 font-semibold py-2 text-sm">Maybe later — Go Home</button>
+                </div>`;
+
+            document.getElementById('accept-challenge-btn').onclick = () => loadAndPlayChallenge(challengeId);
+            document.getElementById('challenge-go-home').onclick = () => { history.replaceState(null,'',window.location.pathname); pendingChallengeId = null; showWelcomeScreen(); };
+
+        } catch(e) {
+            console.error('Error loading challenge:', e);
+            modalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-lg p-6 text-center"><p class="text-red-500 mb-4">Failed to load challenge.</p><button id="challenge-go-home" class="bg-green-500 text-white font-bold py-2 px-6 rounded-lg">Go Home</button></div>`;
+            document.getElementById('challenge-go-home').onclick = () => { history.replaceState(null,'',window.location.pathname); pendingChallengeId = null; showWelcomeScreen(); };
+        }
+    }
+
+    async function loadAndPlayChallenge(challengeId) {
+        try {
+            const snap = await getDoc(doc(db, 'challenges', challengeId));
+            if (!snap.exists()) { showGameMessage('Challenge not found.', 'error'); return; }
+            const data = snap.data();
+            currentChallengeId = challengeId;
+            history.replaceState(null,'',window.location.pathname);
+            pendingChallengeId = null;
+            await startGame(false, 'challenge', { board: data.board, allWords: new Set(data.allWords) });
+        } catch(e) {
+            console.error('Failed to load challenge board:', e);
+            showGameMessage('Failed to load challenge.', 'error');
+        }
+    }
+
+    // ---- Challenge End Screen ----
+
+    async function showChallengeEndScreen(stats) {
+        endGameModal.classList.remove('hidden');
+        endGameModalContent.innerHTML = `
+            <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
+                <h2 class="text-2xl font-black text-purple-500">Challenge Complete!</h2>
+                <p class="text-slate-600 my-4">Saving your score...</p>
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mx-auto"></div>
+            </div>`;
+
+        if (activeGridEl) activeGridEl.style.pointerEvents = 'none';
+
+        // Resolve player name
+        let playerName = localStorage.getItem('wordRushPlayerName');
+        if (!playerName && db && userId) {
+            try {
+                const playerSnap = await getDoc(doc(db, 'players', userId));
+                if (playerSnap.exists() && playerSnap.data().hasSubmittedName) {
+                    playerName = playerSnap.data().name;
+                    localStorage.setItem('wordRushPlayerName', playerName);
+                }
+            } catch(e) {}
+        }
+
+        const needsName = !playerName;
+
+        // Save result to Firestore
+        if (db && userId && currentChallengeId && !needsName) {
+            await saveAndShowChallengeResult(stats, playerName);
+        } else if (needsName) {
+            showChallengeNamePrompt(stats);
+        }
+    }
+
+    async function saveAndShowChallengeResult(stats, playerName) {
+        try {
+            const resultData = {
+                name: playerName,
+                score: stats.score,
+                foundWords: stats.foundWords.map(fw => fw.word || fw),
+                completedAt: serverTimestamp()
+            };
+
+            await setDoc(doc(db, 'challenges', currentChallengeId), {
+                [`results.${userId}`]: resultData
+            }, { merge: true });
+
+            const snap = await getDoc(doc(db, 'challenges', currentChallengeId));
+            const data = snap.data();
+            const myResult = { ...resultData, score: stats.score };
+            const otherResults = Object.entries(data.results || {}).filter(([uid]) => uid !== userId);
+
+            showChallengeResultsScreen(currentChallengeId, data, myResult, otherResults, true);
+        } catch(e) {
+            console.error('Failed to save challenge result:', e);
+            showChallengeResultsScreen(currentChallengeId, null, { score: stats.score }, [], true);
+        }
+    }
+
+    function showChallengeNamePrompt(stats) {
+        endGameModalContent.innerHTML = `
+            <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
+                <h2 class="text-2xl font-black text-purple-500">Challenge Complete!</h2>
+                <p class="text-5xl font-black text-slate-800 my-4">${stats.score}</p>
+                <p class="text-slate-600 mb-4">Enter your name to save your score:</p>
+                <div class="flex gap-2 mb-3">
+                    <input id="challenge-name-input" type="text" maxlength="10" placeholder="Your name"
+                        class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-purple-400">
+                    <button id="challenge-name-submit" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-3 rounded-lg text-sm">Save</button>
+                </div>
+                <button id="challenge-create-account" class="text-xs text-purple-500 hover:underline flex items-center justify-center gap-1 mb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" /></svg>
+                    Sign up to save stats across devices
+                </button>
+                <button id="challenge-skip-name" class="text-slate-400 hover:text-slate-600 text-xs underline">Skip</button>
+            </div>`;
+
+        const doSave = async (name) => {
+            localStorage.setItem('wordRushPlayerName', name);
+            if (db && userId) {
+                try { await setDoc(doc(db, 'players', userId), { name, hasSubmittedName: true }, { merge: true }); } catch(e) {}
+            }
+            await saveAndShowChallengeResult(stats, name);
+        };
+
+        document.getElementById('challenge-name-submit').onclick = async () => {
+            const name = (document.getElementById('challenge-name-input').value || '').trim().slice(0, 10);
+            if (name) await doSave(name);
+        };
+        document.getElementById('challenge-name-input').onkeydown = async (e) => {
+            if (e.key !== 'Enter') return;
+            const name = (document.getElementById('challenge-name-input').value || '').trim().slice(0, 10);
+            if (name) await doSave(name);
+        };
+        document.getElementById('challenge-skip-name').onclick = async () => {
+            await saveAndShowChallengeResult(stats, 'Anonymous');
+        };
+        document.getElementById('challenge-create-account').onclick = () => showAccountModal();
+
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user && !user.isAnonymous) {
+                unsubscribe();
+                const name = localStorage.getItem('wordRushPlayerName') || user.displayName?.split(' ')[0] || 'Player';
+                await doSave(name);
+            }
+        });
+    }
+
+    function showChallengeResultsScreen(challengeId, data, myResult, otherResults, isNewSubmission = false) {
+        const challengeUrl = `${window.location.origin}${window.location.pathname}?c=${challengeId}`;
+        const topOther = otherResults.sort((a,b) => b[1].score - a[1].score)[0];
+
+        let comparisonHTML;
+        if (topOther) {
+            const won = myResult.score >= topOther[1].score;
+            comparisonHTML = `
+                <div class="flex gap-3 mt-4 mb-4">
+                    <div class="flex-1 bg-${won ? 'green' : 'slate'}-50 border border-${won ? 'green' : 'slate'}-200 rounded-xl p-3 text-center">
+                        <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">You</div>
+                        <div class="text-3xl font-black text-slate-800">${myResult.score}</div>
+                        ${won ? '<div class="text-xs font-bold text-green-600 mt-1">Winner!</div>' : ''}
+                    </div>
+                    <div class="flex items-center text-slate-400 font-bold text-lg">vs</div>
+                    <div class="flex-1 bg-${!won ? 'green' : 'slate'}-50 border border-${!won ? 'green' : 'slate'}-200 rounded-xl p-3 text-center">
+                        <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">${topOther[1].name}</div>
+                        <div class="text-3xl font-black text-slate-800">${topOther[1].score}</div>
+                        ${!won ? '<div class="text-xs font-bold text-green-600 mt-1">Winner!</div>' : ''}
+                    </div>
+                </div>`;
+        } else {
+            comparisonHTML = `
+                <div class="my-4">
+                    <p class="text-5xl font-black text-slate-800 mb-2">${myResult.score}</p>
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
+                        <p class="text-sm font-semibold text-yellow-700">Waiting for your friend to play...</p>
+                        <p class="text-xs text-yellow-600 mt-1">Share the link below so they can take the challenge.</p>
+                    </div>
+                </div>`;
+        }
+
+        endGameModalContent.innerHTML = `
+            <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
+                <h2 class="text-2xl font-black text-purple-500">Challenge ${topOther ? 'Results' : 'Complete!'}</h2>
+                ${comparisonHTML}
+                <div class="bg-slate-50 border border-slate-200 rounded-lg p-2 mb-4">
+                    <p class="text-xs text-slate-500 mb-1">Challenge link</p>
+                    <div class="flex items-center gap-2">
+                        <p class="text-xs text-slate-600 font-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap">${challengeUrl}</p>
+                        <button id="copy-result-link" class="text-purple-500 hover:text-purple-700 flex-shrink-0" title="Copy link">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.337c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" /></svg>
+                        </button>
+                    </div>
+                </div>
+                <button id="challenge-return-home" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl text-base">Return Home</button>
+            </div>`;
+
+        if (isNewSubmission) triggerEndGameConfetti(endGameModalContent.querySelector('div'));
+
+        document.getElementById('challenge-return-home').onclick = () => { currentChallengeId = null; resetGame(); };
+        document.getElementById('copy-result-link').onclick = async () => {
+            try { await navigator.clipboard.writeText(challengeUrl); } catch(e) {}
+        };
+    }
 
     function showAccountModal() {
         const accountModal = document.getElementById('account-modal');
@@ -3027,8 +3638,10 @@ function getTileCenter(tile) {
             if (messageModal.classList.contains('hidden')) return false;
             const step = sequence[i];
             const tile = document.getElementById(`tut-tile-${step.index}`);
+            if (!tile) return false;
             if (i > 0) {
                 const prevTile = document.getElementById(`tut-tile-${sequence[i-1].index}`);
+                if (!prevTile) return false;
                 drawLine(prevTile, tile);
                 await new Promise(r => setTimeout(r, 100));
             }
