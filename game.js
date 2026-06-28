@@ -49,18 +49,19 @@
             const result = await linkWithPopup(auth.currentUser, provider);
             const user = result.user;
             userId = user.uid;
+            let isNewUser = false;
+            let suggestedName = null;
             if (db) {
                 const playerDocRef = doc(db, "players", user.uid);
                 const snap = await getDoc(playerDocRef);
                 if (!snap.exists() || !snap.data().hasSubmittedName) {
-                    const name = (user.displayName || 'Player').split(' ')[0];
-                    await setDoc(playerDocRef, { name, hasSubmittedName: true }, { merge: true });
-                    localStorage.setItem('wordRushPlayerName', name);
+                    isNewUser = true;
+                    suggestedName = (user.displayName || 'Player').split(' ')[0];
                 } else {
                     localStorage.setItem('wordRushPlayerName', snap.data().name);
                 }
             }
-            return user;
+            return { user, isNewUser, suggestedName };
         } catch (err) {
             if (err.code === 'auth/credential-already-in-use' || err.code === 'auth/email-already-in-use') {
                 const result = await signInWithPopup(auth, provider);
@@ -73,7 +74,7 @@
                         localStorage.setItem('wordRushPlayerName', snap.data().name);
                     }
                 }
-                return user;
+                return { user, isNewUser: false, suggestedName: null };
             }
             throw err;
         }
@@ -1946,9 +1947,13 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         btn.disabled = true;
                         btn.innerHTML = `<div class="flex items-center justify-center">${spinnerHtml}Signing in...</div>`;
                         try {
-                            await signInWithProvider(new GoogleAuthProvider());
-                            accountModal.classList.add('hidden');
-                            showWelcomeScreen();
+                            const { isNewUser, suggestedName } = await signInWithProvider(new GoogleAuthProvider());
+                            if (isNewUser) {
+                                renderNamePromptView(suggestedName);
+                            } else {
+                                accountModal.classList.add('hidden');
+                                showWelcomeScreen();
+                            }
                         } catch (e) {
                             console.error('Google sign-in failed:', e);
                             renderAuthModal('login', 'Sign-in failed. Please try again.');
@@ -2020,9 +2025,13 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         btn.disabled = true;
                         btn.innerHTML = `<div class="flex items-center justify-center">${spinnerHtml}Signing in...</div>`;
                         try {
-                            await signInWithProvider(new GoogleAuthProvider());
-                            accountModal.classList.add('hidden');
-                            showWelcomeScreen();
+                            const { isNewUser, suggestedName } = await signInWithProvider(new GoogleAuthProvider());
+                            if (isNewUser) {
+                                renderNamePromptView(suggestedName);
+                            } else {
+                                accountModal.classList.add('hidden');
+                                showWelcomeScreen();
+                            }
                         } catch (e) {
                             console.error('Google sign-in failed:', e);
                             renderAuthModal('signup', 'Sign-in failed. Please try again.');
@@ -2117,6 +2126,57 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         }
                     };
                 }
+            };
+
+            const renderNamePromptView = (suggestedName) => {
+                accountModalContent.innerHTML = `
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold text-slate-800">Choose your name</h2>
+                        <button id="close-account-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
+                    </div>
+                    <p class="text-sm text-slate-500 mb-5">This is how you'll appear on the leaderboard. You can change it later in your profile.</p>
+                    <div id="name-prompt-error" class="hidden text-xs text-red-500 mb-3"></div>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="${labelClass}">Display Name</label>
+                            <input id="name-prompt-input" type="text" value="${(suggestedName || '').replace(/"/g, '&quot;')}" maxlength="20" class="${inputClass}" autofocus>
+                        </div>
+                        <button id="name-prompt-submit" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-sm transition-colors">
+                            Let's Play!
+                        </button>
+                    </div>`;
+
+                document.getElementById('close-account-modal').onclick = () => accountModal.classList.add('hidden');
+                const input = document.getElementById('name-prompt-input');
+                input.focus();
+                input.setSelectionRange(input.value.length, input.value.length);
+
+                document.getElementById('name-prompt-submit').onclick = async () => {
+                    const name = input.value.trim();
+                    const errorEl = document.getElementById('name-prompt-error');
+                    if (!name) {
+                        errorEl.textContent = 'Please enter a display name.';
+                        errorEl.classList.remove('hidden');
+                        return;
+                    }
+                    const btn = document.getElementById('name-prompt-submit');
+                    btn.disabled = true;
+                    btn.innerHTML = `<div class="flex items-center justify-center">${spinnerHtml}Saving...</div>`;
+                    try {
+                        if (db && auth.currentUser) {
+                            await setDoc(doc(db, "players", auth.currentUser.uid), { name, hasSubmittedName: true }, { merge: true });
+                        }
+                        localStorage.setItem('wordRushPlayerName', name);
+                        accountModal.classList.add('hidden');
+                        showWelcomeScreen();
+                    } catch (e) {
+                        console.error('Failed to save display name:', e);
+                        btn.disabled = false;
+                        btn.textContent = "Let's Play!";
+                        errorEl.textContent = 'Something went wrong. Please try again.';
+                        errorEl.classList.remove('hidden');
+                    }
+                };
             };
 
             renderAuthModal('login');
