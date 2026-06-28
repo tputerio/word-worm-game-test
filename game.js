@@ -1,7 +1,7 @@
     // --- Firebase SDKs ---
     import { getApps, initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, getDocs, query, where, orderBy, limit, doc, getDoc, setDoc, updateDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, getDocs, query, where, orderBy, limit, doc, getDoc, getDocFromServer, setDoc, updateDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
      // --- Google Analytics ---
    // GOOGLE ANALYTICS -- import { getAnalytics, logEvent, setUserId } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-analytics.js";
@@ -2023,18 +2023,18 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     function renderCreateChallenge(container) {
         container.innerHTML = `
             <div class="flex justify-between items-center mb-5">
-                <h2 class="text-2xl font-bold text-slate-800 flex items-center">Challenge a Friend <span class="inline-block w-6 h-6 ml-2"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-slate-600"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg></span></h2>
+                <h2 class="text-lg font-bold text-slate-800 flex items-center">Challenge a Friend <span class="inline-block w-6 h-6 ml-2"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-slate-600"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg></span></h2>
                 <button id="close-challenge-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
             </div>
-            <p class="text-sm text-slate-500 mb-5">Generate a unique board and send the link to a friend. Whoever finds the most words in 60 seconds wins.</p>
-            <button id="generate-challenge-btn" class="w-full bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors border border-slate-200 flex items-center justify-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-slate-500"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" /></svg>
-                Generate Challenge Link
+            <p class="text-sm text-slate-500 mb-5">Send a board to a friend — most words in 60 seconds wins.</p>
+            <button id="generate-challenge-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors flex items-center justify-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
+                Send Challenge
             </button>
-            <div id="challenge-link-result" class="mt-4"></div>
+            <div id="challenge-link-result" class="mt-3"></div>
             <hr class="my-5 border-slate-200">
             <button id="view-my-challenges-btn" class="w-full flex items-center justify-center gap-2 text-slate-600 hover:text-slate-800 font-semibold py-2 text-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061A1.125 1.125 0 0 1 3 16.811V8.69ZM12.75 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061a1.125 1.125 0 0 1-1.683-.977V8.69Z" /></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" /></svg>
                 My Challenges
             </button>`;
 
@@ -2046,6 +2046,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         const btn = document.getElementById('generate-challenge-btn');
         const resultEl = document.getElementById('challenge-link-result');
         if (!btn || !resultEl) return;
+
+        const sendIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-white"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>`;
 
         if (!validationTrie || !fullDictionaryTrie) {
             resultEl.innerHTML = `<p class="text-sm text-red-500 text-center">Dictionaries still loading — try again in a moment.</p>`;
@@ -2070,113 +2072,204 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 results: {}
             });
 
-            // Track locally so it shows in My Challenges
             const stored = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
             stored.unshift(challengeRef.id);
             localStorage.setItem('wordWormChallenges', JSON.stringify(stored.slice(0, 20)));
 
             const challengeUrl = `${window.location.origin}${window.location.pathname}?c=${challengeRef.id}`;
 
-            resultEl.innerHTML = `
-                <div class="bg-slate-100 border border-slate-200 rounded-xl p-4">
-                    <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Your challenge link</p>
-                    <p id="challenge-link-text" class="text-sm text-slate-700 break-all font-mono mb-3">${challengeUrl}</p>
-                    <button id="copy-challenge-link" class="w-full bg-white hover:bg-slate-50 text-slate-700 font-bold py-2 px-4 rounded-lg text-sm shadow-sm border border-slate-200 flex items-center justify-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.337c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" /></svg>
-                        Copy Link
-                    </button>
-                </div>`;
+            let shared = false;
+            if (navigator.share) {
+                await navigator.share({
+                    text: `🐛 I challenge you to a game of Word Worm! Think you can beat me? ${challengeUrl}`,
+                });
+                shared = true;
+            } else {
+                await navigator.clipboard.writeText(challengeUrl);
+                btn.innerHTML = `${sendIcon} Link Copied!`;
+                setTimeout(() => { btn.innerHTML = `${sendIcon} Send Challenge`; }, 2000);
+                shared = true;
+            }
 
-            document.getElementById('copy-challenge-link').onclick = async () => {
-                try {
-                    await navigator.clipboard.writeText(challengeUrl);
-                    const copyBtn = document.getElementById('copy-challenge-link');
-                    if (copyBtn) { copyBtn.textContent = 'Copied!'; setTimeout(() => { if (copyBtn) copyBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.337c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" /></svg> Copy Link`; }, 2000); }
-                } catch(e) {
-                    const linkEl = document.getElementById('challenge-link-text');
-                    if (linkEl) linkEl.select?.();
-                }
-            };
+            if (shared) {
+                const cid = challengeRef.id;
+                resultEl.innerHTML = `
+                    <button id="play-own-challenge-btn" class="w-full mt-1 bg-white border border-green-300 hover:bg-green-50 text-green-700 font-bold py-2.5 px-4 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" /></svg>
+                        Play Your Challenge
+                    </button>`;
+                document.getElementById('play-own-challenge-btn').onclick = () => {
+                    document.getElementById('account-modal').classList.add('hidden');
+                    loadAndPlayChallenge(cid);
+                };
+            }
 
         } catch(e) {
-            console.error('Failed to generate challenge:', e);
-            resultEl.innerHTML = `<p class="text-sm text-red-500 text-center">Something went wrong. Please try again.</p>`;
+            if (e.name !== 'AbortError') {
+                console.error('Failed to generate challenge:', e);
+                resultEl.innerHTML = `<p class="text-sm text-red-500 text-center">Something went wrong. Please try again.</p>`;
+            }
         } finally {
             btn.disabled = false;
-            btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-slate-500"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" /></svg> Generate New Challenge`;
+            if (!btn.innerHTML.includes('Link Copied')) {
+                btn.innerHTML = `${sendIcon} Send Challenge`;
+            }
         }
     }
 
     async function renderMyChallenges(container) {
+        container.style.maxHeight = '70dvh';
+        container.style.display = 'flex';
+        container.style.flexDirection = 'column';
+        container.style.overflow = 'hidden';
+
         container.innerHTML = `
-            <div class="flex items-center mb-5">
+            <div class="flex items-center mb-4 flex-shrink-0">
                 <button id="my-challenges-back" class="text-slate-400 hover:text-slate-700 mr-3">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
                 </button>
-                <h2 class="text-xl font-black text-slate-800">My Challenges</h2>
+                <h2 class="text-lg font-black text-slate-800">My Challenges</h2>
                 <button id="close-challenge-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800 ml-auto">&times;</button>
             </div>
-            <div id="challenges-list" class="flex flex-col gap-3">
+            <div id="challenges-list" class="overflow-y-auto flex flex-col gap-2 pr-0.5" style="flex:1;min-height:0">
                 <div class="flex justify-center py-4"><svg class="animate-spin h-6 w-6 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>
             </div>`;
 
-        document.getElementById('my-challenges-back').onclick = () => renderCreateChallenge(container);
+        document.getElementById('my-challenges-back').onclick = () => {
+            container.style.maxHeight = '';
+            container.style.display = '';
+            container.style.flexDirection = '';
+            container.style.overflow = '';
+            renderCreateChallenge(container);
+        };
         document.getElementById('close-challenge-modal').onclick = () => document.getElementById('account-modal').classList.add('hidden');
 
         const listEl = document.getElementById('challenges-list');
 
+        const winIcon  = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5 text-green-500"><path fill-rule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm13.36-1.814a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z" clip-rule="evenodd" /></svg>`;
+        const lossIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5 text-red-400"><path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25Zm-1.72 6.97a.75.75 0 1 0-1.06 1.06L10.94 12l-1.72 1.72a.75.75 0 1 0 1.06 1.06L12 13.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L13.06 12l1.72-1.72a.75.75 0 1 0-1.06-1.06L12 10.94l-1.72-1.72Z" clip-rule="evenodd" /></svg>`;
+        const clockIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-slate-300"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>`;
+
+        const shareIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" /></svg>`;
+
+        const copyLinkIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 8.25V6a2.25 2.25 0 0 0-2.25-2.25H6A2.25 2.25 0 0 0 3.75 6v8.25A2.25 2.25 0 0 0 6 16.5h2.25m8.25-8.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-7.5A2.25 2.25 0 0 1 8.25 18v-1.5m8.25-8.25h-6a2.25 2.25 0 0 0-2.25 2.25v6" /></svg>`;
+
+        const buildCard = ({ id, data, myResult, otherResults, isCreator, expired }) => {
+            const topOther = [...otherResults].sort((a,b) => b[1].score - a[1].score)[0];
+            const myPlayed = !!myResult;
+            const friendPlayed = !!topOther;
+            const challengeUrl = `${window.location.origin}${window.location.pathname}?c=${id}`;
+
+            const isWin  = myPlayed && friendPlayed && myResult.score >= topOther[1].score;
+            const isLoss = myPlayed && friendPlayed && myResult.score <  topOther[1].score;
+            const borderStyle = isWin  ? 'border: 2px solid #4ade80;'
+                              : isLoss ? 'border: 2px solid #f87171;'
+                              :          'border: 1px solid #e2e8f0;';
+            const cardClass = 'rounded-xl px-4 shadow-md bg-white';
+
+            const friendName = friendPlayed
+                ? topOther[1].name
+                : isCreator ? '<span class="text-slate-400 font-medium">Pending…</span>' : data.createdByName || 'Friend';
+
+            let scoreDisplay;
+            if (myPlayed && friendPlayed) {
+                scoreDisplay = `<span class="text-xl font-bold text-slate-800">${myResult.score} – ${topOther[1].score}</span>`;
+            } else if (myPlayed) {
+                scoreDisplay = `<span class="text-xl font-bold text-slate-800">${myResult.score}</span>`;
+            } else if (friendPlayed) {
+                scoreDisplay = `<span class="text-xl font-bold text-slate-800">${topOther[1].score}</span>`;
+            } else {
+                scoreDisplay = `<span class="text-lg font-bold text-slate-300">—</span>`;
+            }
+
+            const copyBtn = `<button class="challenge-copy-btn p-1.5 text-slate-400 hover:text-blue-500 transition-colors" data-url="${challengeUrl}" title="Copy link">${copyLinkIcon}</button>`;
+
+            let rightEl;
+            if (myPlayed && friendPlayed) {
+                rightEl = isWin ? winIcon : lossIcon;
+            } else if (myPlayed) {
+                rightEl = `<button class="challenge-share-btn flex items-center gap-1 text-xs font-semibold text-blue-500 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-full transition-colors" data-url="${challengeUrl}">${shareIcon} Send</button>`;
+            } else if (!expired) {
+                rightEl = `<div class="flex items-center gap-1">${copyBtn}<button class="challenge-play-btn text-xs font-bold text-white bg-green-500 hover:bg-green-600 px-3 py-2 rounded-full" data-id="${id}">Play</button></div>`;
+            } else {
+                rightEl = `<span class="text-xs text-slate-400">Expired</span>`;
+            }
+
+            return `
+            <div class="${cardClass}" style="${borderStyle}" data-challenge-card="${id}">
+                <div class="flex items-center gap-3" style="height:64px">
+                    <div class="flex-1 min-w-0 text-sm font-bold text-slate-700 truncate">${friendName}</div>
+                    <div class="flex-shrink-0">${scoreDisplay}</div>
+                    <div class="ml-auto flex items-center">${rightEl}</div>
+                </div>
+            </div>`;
+        };
+
+        const attachPlayListeners = () => {
+            listEl.querySelectorAll('.challenge-play-btn').forEach(btn => {
+                btn.onclick = () => {
+                    document.getElementById('account-modal').classList.add('hidden');
+                    loadAndPlayChallenge(btn.dataset.id);
+                };
+            });
+            const handleShare = async (btn, url) => {
+                try {
+                    if (navigator.share) {
+                        await navigator.share({ text: `🐛 Play my Word Worm challenge! ${url}` });
+                    } else {
+                        await navigator.clipboard.writeText(url);
+                        const orig = btn.innerHTML;
+                        btn.textContent = 'Copied!';
+                        setTimeout(() => { btn.innerHTML = orig; }, 1500);
+                    }
+                } catch(e) {}
+            };
+            listEl.querySelectorAll('.challenge-share-btn').forEach(btn => {
+                btn.onclick = () => handleShare(btn, btn.dataset.url);
+            });
+            listEl.querySelectorAll('.challenge-copy-btn').forEach(btn => {
+                btn.onclick = () => handleShare(btn, btn.dataset.url);
+            });
+        };
+
         try {
-            // Gather IDs: ones the user created + ones saved locally (received via link)
             const localIds = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
             const idSet = new Set(localIds);
 
-            // Also query Firestore for challenges created by this user
             if (db && userId) {
-                const q = query(collection(db, 'challenges'), where('createdBy', '==', userId), orderBy('createdAt', 'desc'), limit(10));
+                const q = query(collection(db, 'challenges'), where('createdBy', '==', userId), limit(20));
                 const snap = await getDocs(q);
-                snap.docs.forEach(d => idSet.add(d.id));
+                snap.docs
+                    .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
+                    .slice(0, 10)
+                    .forEach(d => idSet.add(d.id));
             }
 
             if (idSet.size === 0) {
-                listEl.innerHTML = `<p class="text-center text-slate-500 text-sm py-6">No challenges yet. Generate one to get started!</p>`;
+                listEl.innerHTML = `<p class="text-center text-slate-500 text-sm py-6">No challenges yet.</p>`;
                 return;
             }
 
-            // Fetch each challenge doc
             const now = Date.now();
-            const cards = await Promise.all(Array.from(idSet).map(async id => {
+            const cards = await Promise.all(Array.from(idSet).slice(0, 5).map(async id => {
                 try {
-                    const snap = await getDoc(doc(db, 'challenges', id));
+                    const snap = await getDocFromServer(doc(db, 'challenges', id));
                     if (!snap.exists()) return null;
                     const data = snap.data();
                     const expired = data.expiresAt?.toDate ? data.expiresAt.toDate() < now : false;
                     const myResult = data.results?.[userId];
                     const otherResults = Object.entries(data.results || {}).filter(([uid]) => uid !== userId);
                     const isCreator = data.createdBy === userId;
-                    const challengeUrl = `${window.location.origin}${window.location.pathname}?c=${id}`;
-
-                    let statusHTML;
-                    if (myResult) {
-                        const top = otherResults.sort((a,b) => b[1].score - a[1].score)[0];
-                        if (top) {
-                            const won = myResult.score >= top[1].score;
-                            statusHTML = `<span class="text-xs font-bold px-2 py-1 rounded-full ${won ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">${won ? 'You won!' : 'You lost'}</span>`;
-                        } else {
-                            statusHTML = `<span class="text-xs font-bold px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">Waiting for friend</span>`;
-                        }
-                    } else if (expired) {
-                        statusHTML = `<span class="text-xs font-bold px-2 py-1 rounded-full bg-slate-100 text-slate-500">Expired</span>`;
-                    } else {
-                        statusHTML = `<span class="text-xs font-bold px-2 py-1 rounded-full bg-purple-100 text-purple-700">${isCreator ? 'Awaiting friend' : 'Not played yet'}</span>`;
-                    }
-
-                    return { id, data, myResult, otherResults, isCreator, challengeUrl, statusHTML, expired };
+                    return { id, data, myResult, otherResults, isCreator, expired };
                 } catch(e) { return null; }
             }));
 
+            const allIds = Array.from(idSet);
+            const remainingIds = allIds.slice(5);
+
             const valid = cards.filter(Boolean).sort((a,b) => {
-                const ta = a.data.createdAt?.toDate?.() || 0;
-                const tb = b.data.createdAt?.toDate?.() || 0;
+                const ta = a.data.createdAt?.toDate?.() ?? 0;
+                const tb = b.data.createdAt?.toDate?.() ?? 0;
                 return tb - ta;
             });
 
@@ -2185,43 +2278,39 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 return;
             }
 
-            listEl.innerHTML = valid.map(({ id, data, myResult, otherResults, isCreator, challengeUrl, statusHTML, expired }) => {
-                const createdDate = data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString() : '';
-                const myScore = myResult ? `<span class="font-bold text-slate-800">You: ${myResult.score}</span>` : '';
-                const topOther = otherResults.sort((a,b) => b[1].score - a[1].score)[0];
-                const otherScore = topOther ? `<span class="text-slate-500">${topOther[1].name}: ${topOther[1].score}</span>` : '';
-                const scoreRow = (myScore || otherScore) ? `<div class="flex gap-3 mt-1 text-sm">${myScore}${otherScore}</div>` : '';
-                const playBtn = !myResult && !expired ? `<button class="challenge-play-btn text-xs font-bold text-purple-600 hover:text-purple-800 underline" data-id="${id}">Play</button>` : '';
-                const copyBtn = isCreator && !expired ? `<button class="challenge-copy-btn text-xs text-slate-400 hover:text-slate-600" data-url="${challengeUrl}" title="Copy link"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.337c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" /></svg></button>` : '';
-                return `
-                <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
-                    <div class="flex items-start justify-between gap-2">
-                        <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-2 flex-wrap">
-                                <span class="text-xs text-slate-400">${isCreator ? 'You challenged' : `From ${data.createdByName}`} &bull; ${createdDate}</span>
-                                ${copyBtn}
-                            </div>
-                            ${scoreRow}
-                        </div>
-                        <div class="flex items-center gap-2 flex-shrink-0">
-                            ${statusHTML}
-                            ${playBtn}
-                        </div>
-                    </div>
-                </div>`;
-            }).join('');
+            const viewAllBtn = remainingIds.length > 0
+                ? `<button id="view-all-challenges" class="w-full text-xs text-slate-400 hover:text-slate-600 py-2 text-center">View ${remainingIds.length} more</button>`
+                : '';
 
-            listEl.querySelectorAll('.challenge-play-btn').forEach(btn => {
-                btn.onclick = () => {
-                    document.getElementById('account-modal').classList.add('hidden');
-                    loadAndPlayChallenge(btn.dataset.id);
+            listEl.innerHTML = valid.map(c => buildCard(c)).join('') + viewAllBtn;
+            attachPlayListeners();
+
+            if (remainingIds.length > 0) {
+                document.getElementById('view-all-challenges').onclick = async () => {
+                    const btn = document.getElementById('view-all-challenges');
+                    btn.textContent = 'Loading...';
+                    btn.disabled = true;
+                    const more = await Promise.all(remainingIds.map(async id => {
+                        try {
+                            const snap = await getDocFromServer(doc(db, 'challenges', id));
+                            if (!snap.exists()) return null;
+                            const data = snap.data();
+                            const expired = data.expiresAt?.toDate ? data.expiresAt.toDate() < now : false;
+                            const myResult = data.results?.[userId];
+                            const otherResults = Object.entries(data.results || {}).filter(([uid]) => uid !== userId);
+                            const isCreator = data.createdBy === userId;
+                            return { id, data, myResult, otherResults, isCreator, expired };
+                        } catch(e) { return null; }
+                    }));
+                    const moreValid = more.filter(Boolean).sort((a,b) => {
+                        const ta = a.data.createdAt?.toDate?.() ?? 0;
+                        const tb = b.data.createdAt?.toDate?.() ?? 0;
+                        return tb - ta;
+                    });
+                    btn.outerHTML = moreValid.map(c => buildCard(c)).join('');
+                    attachPlayListeners();
                 };
-            });
-            listEl.querySelectorAll('.challenge-copy-btn').forEach(btn => {
-                btn.onclick = async () => {
-                    try { await navigator.clipboard.writeText(btn.dataset.url); btn.title = 'Copied!'; } catch(e) {}
-                };
-            });
+            }
 
         } catch(e) {
             console.error('Failed to load challenges:', e);
@@ -2267,19 +2356,44 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             if (!stored.includes(challengeId)) { stored.unshift(challengeId); localStorage.setItem('wordWormChallenges', JSON.stringify(stored.slice(0, 20))); }
 
             const isSelf = data.createdBy === userId;
-            const challengerName = isSelf ? 'yourself' : data.createdByName;
+            const playIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" /></svg>`;
+            const logoHeader = `<h1 class="flex items-center justify-center text-2xl font-black text-slate-800 tracking-tighter mb-5"><img src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-8 h-8 mr-2" width="32" height="32">Word Worm</h1>`;
 
-            modalContent.innerHTML = `
-                <div class="bg-white rounded-2xl shadow-lg p-6 text-center">
-                    <div class="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center mx-auto mb-4">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-9 h-9 text-purple-600"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
-                    </div>
-                    <h2 class="text-2xl font-black text-slate-800 mb-1">You've been challenged!</h2>
-                    <p class="text-slate-500 mb-6">by <strong>${challengerName}</strong></p>
-                    ${otherResults.length > 0 ? `<p class="text-sm text-slate-500 mb-4">Their score: <strong>${otherResults[0][1].score}</strong> — can you beat it?</p>` : ''}
-                    <button id="accept-challenge-btn" class="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-4 rounded-xl text-lg mb-3">Play Now</button>
-                    <button id="challenge-go-home" class="w-full text-slate-500 hover:text-slate-700 font-semibold py-2 text-sm">Maybe later — Go Home</button>
-                </div>`;
+            if (isSelf) {
+                const topFriend = otherResults.sort((a,b) => b[1].score - a[1].score)[0];
+                const friendStatus = topFriend
+                    ? `<p class="text-sm text-slate-600 mb-6"><strong>${topFriend[1].name}</strong> scored <strong class="text-slate-800">${topFriend[1].score}</strong> — can you beat it?</p>`
+                    : `<p class="text-sm text-slate-500 mb-6">Your friend hasn't played yet.</p>`;
+
+                modalContent.innerHTML = `
+                    <div class="bg-white rounded-2xl shadow-lg p-6 text-center">
+                        ${logoHeader}
+                        <div class="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-9 h-9 text-green-600"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg>
+                        </div>
+                        <h2 class="text-2xl font-black text-slate-800 mb-2">Your Challenge</h2>
+                        ${friendStatus}
+                        <button id="accept-challenge-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl text-lg mb-3 flex items-center justify-center gap-2">
+                            ${playIcon} Play Now
+                        </button>
+                        <button id="challenge-go-home" class="w-full text-slate-500 hover:text-slate-700 font-semibold py-2 text-sm">Go Home</button>
+                    </div>`;
+            } else {
+                modalContent.innerHTML = `
+                    <div class="bg-white rounded-2xl shadow-lg p-6 text-center">
+                        ${logoHeader}
+                        <div class="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-9 h-9 text-green-600"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
+                        </div>
+                        <h2 class="text-2xl font-black text-slate-800 mb-1">You've been challenged!</h2>
+                        <p class="text-slate-500 mb-6">by <strong>${data.createdByName}</strong></p>
+                        ${otherResults.length > 0 ? `<p class="text-sm text-slate-500 mb-4">Their score: <strong>${otherResults[0][1].score}</strong> — can you beat it?</p>` : ''}
+                        <button id="accept-challenge-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl text-lg mb-3 flex items-center justify-center gap-2">
+                            ${playIcon} Play Now
+                        </button>
+                        <button id="challenge-go-home" class="w-full text-slate-500 hover:text-slate-700 font-semibold py-2 text-sm">Go Home</button>
+                    </div>`;
+            }
 
             document.getElementById('accept-challenge-btn').onclick = () => loadAndPlayChallenge(challengeId);
             document.getElementById('challenge-go-home').onclick = () => { history.replaceState(null,'',window.location.pathname); pendingChallengeId = null; showWelcomeScreen(); };
@@ -2312,7 +2426,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         endGameModal.classList.remove('hidden');
         endGameModalContent.innerHTML = `
             <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
-                <h2 class="text-2xl font-black text-purple-500">Challenge Complete!</h2>
+                <h2 class="text-2xl font-black text-green-500">Challenge Complete!</h2>
                 <p class="text-slate-600 my-4">Saving your score...</p>
                 <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mx-auto"></div>
             </div>`;
@@ -2350,9 +2464,9 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 completedAt: serverTimestamp()
             };
 
-            await setDoc(doc(db, 'challenges', currentChallengeId), {
+            await updateDoc(doc(db, 'challenges', currentChallengeId), {
                 [`results.${userId}`]: resultData
-            }, { merge: true });
+            });
 
             const snap = await getDoc(doc(db, 'challenges', currentChallengeId));
             const data = snap.data();
@@ -2369,19 +2483,18 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     function showChallengeNamePrompt(stats) {
         endGameModalContent.innerHTML = `
             <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
-                <h2 class="text-2xl font-black text-purple-500">Challenge Complete!</h2>
+                <h2 class="text-2xl font-black text-green-500">Challenge Complete!</h2>
                 <p class="text-5xl font-black text-slate-800 my-4">${stats.score}</p>
                 <p class="text-slate-600 mb-4">Enter your name to save your score:</p>
                 <div class="flex gap-2 mb-3">
                     <input id="challenge-name-input" type="text" maxlength="10" placeholder="Your name"
-                        class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-purple-400">
-                    <button id="challenge-name-submit" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-3 rounded-lg text-sm">Save</button>
+                        class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-green-400">
+                    <button id="challenge-name-submit" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg text-sm">Save</button>
                 </div>
-                <button id="challenge-create-account" class="text-xs text-purple-500 hover:underline flex items-center justify-center gap-1 mb-4">
+                <button id="challenge-create-account" class="text-xs text-green-500 hover:underline flex items-center justify-center gap-1 mb-4">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" /></svg>
                     Sign up to save stats across devices
                 </button>
-                <button id="challenge-skip-name" class="text-slate-400 hover:text-slate-600 text-xs underline">Skip</button>
             </div>`;
 
         const doSave = async (name) => {
@@ -2401,9 +2514,6 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             const name = (document.getElementById('challenge-name-input').value || '').trim().slice(0, 10);
             if (name) await doSave(name);
         };
-        document.getElementById('challenge-skip-name').onclick = async () => {
-            await saveAndShowChallengeResult(stats, 'Anonymous');
-        };
         document.getElementById('challenge-create-account').onclick = () => showAccountModal();
 
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -2416,8 +2526,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     }
 
     function showChallengeResultsScreen(challengeId, data, myResult, otherResults, isNewSubmission = false) {
-        const challengeUrl = `${window.location.origin}${window.location.pathname}?c=${challengeId}`;
         const topOther = otherResults.sort((a,b) => b[1].score - a[1].score)[0];
+        const sendIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>`;
 
         let comparisonHTML;
         if (topOther) {
@@ -2440,34 +2550,63 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             comparisonHTML = `
                 <div class="my-4">
                     <p class="text-5xl font-black text-slate-800 mb-2">${myResult.score}</p>
-                    <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
-                        <p class="text-sm font-semibold text-yellow-700">Waiting for your friend to play...</p>
-                        <p class="text-xs text-yellow-600 mt-1">Share the link below so they can take the challenge.</p>
+                    <div class="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                        <p class="text-sm font-semibold text-amber-700">Waiting for your friend to play...</p>
                     </div>
                 </div>`;
         }
 
         endGameModalContent.innerHTML = `
             <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
-                <h2 class="text-2xl font-black text-purple-500">Challenge ${topOther ? 'Results' : 'Complete!'}</h2>
+                <h2 class="text-2xl font-black text-green-500">Challenge ${topOther ? 'Results' : 'Complete!'}</h2>
                 ${comparisonHTML}
-                <div class="bg-slate-50 border border-slate-200 rounded-lg p-2 mb-4">
-                    <p class="text-xs text-slate-500 mb-1">Challenge link</p>
-                    <div class="flex items-center gap-2">
-                        <p class="text-xs text-slate-600 font-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap">${challengeUrl}</p>
-                        <button id="copy-result-link" class="text-purple-500 hover:text-purple-700 flex-shrink-0" title="Copy link">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.337c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" /></svg>
-                        </button>
-                    </div>
-                </div>
-                <button id="challenge-return-home" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl text-base">Return Home</button>
+                <button id="challenge-rematch-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl text-base mb-3 flex items-center justify-center gap-2">
+                    ${sendIcon} Rematch
+                </button>
+                <div id="rematch-result" class="mb-3"></div>
+                <button id="challenge-return-home" class="w-full text-slate-500 hover:text-slate-700 font-semibold py-2 text-sm">Return Home</button>
             </div>`;
 
         if (isNewSubmission) triggerEndGameConfetti(endGameModalContent.querySelector('div'));
 
         document.getElementById('challenge-return-home').onclick = () => { currentChallengeId = null; resetGame(); };
-        document.getElementById('copy-result-link').onclick = async () => {
-            try { await navigator.clipboard.writeText(challengeUrl); } catch(e) {}
+        document.getElementById('challenge-rematch-btn').onclick = async () => {
+            const rematchBtn = document.getElementById('challenge-rematch-btn');
+            const rematchResult = document.getElementById('rematch-result');
+            rematchBtn.disabled = true;
+            rematchBtn.innerHTML = `<svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Generating...`;
+            try {
+                const { board, allWords } = createDailyChallengeBoard();
+                const playerName = localStorage.getItem('wordRushPlayerName') || 'A friend';
+                const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+                const ref = await addDoc(collection(db, 'challenges'), {
+                    board, allWords: Array.from(allWords), createdBy: userId,
+                    createdByName: playerName, createdAt: serverTimestamp(), expiresAt, results: {}
+                });
+                const stored = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
+                stored.unshift(ref.id);
+                localStorage.setItem('wordWormChallenges', JSON.stringify(stored.slice(0, 20)));
+                const url = `${window.location.origin}${window.location.pathname}?c=${ref.id}`;
+                if (navigator.share) {
+                    await navigator.share({ text: `🐛 Rematch! Think you can beat me this time? ${url}` });
+                } else {
+                    await navigator.clipboard.writeText(url);
+                    rematchBtn.innerHTML = `${sendIcon} Link Copied!`;
+                    setTimeout(() => { rematchBtn.innerHTML = `${sendIcon} Rematch`; }, 2000);
+                }
+                const cid = ref.id;
+                rematchResult.innerHTML = `
+                    <button id="play-rematch-btn" class="w-full bg-white border border-green-300 hover:bg-green-50 text-green-700 font-bold py-2.5 px-4 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" /></svg>
+                        Play Your Rematch
+                    </button>`;
+                document.getElementById('play-rematch-btn').onclick = () => { endGameModal.classList.add('hidden'); loadAndPlayChallenge(cid); };
+            } catch(e) {
+                if (e.name !== 'AbortError') rematchResult.innerHTML = `<p class="text-sm text-red-500">Something went wrong. Try again.</p>`;
+            } finally {
+                rematchBtn.disabled = false;
+                if (!rematchBtn.innerHTML.includes('Link Copied')) rematchBtn.innerHTML = `${sendIcon} Rematch`;
+            }
         };
     }
 
