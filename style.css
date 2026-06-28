@@ -251,6 +251,10 @@ html.dark .tut-tile { background-color: #334155; border-color: #475569; color: #
 html.dark .shadow-inner { box-shadow: inset 0 2px 4px rgba(0,0,0,0.4) !important; }
 html.dark .dark-toggle-track { background-color: #475569; }
 html.dark .dark-toggle-track.active { background-color: #3b82f6; }
+html.dark #daily-stats-box,
+html.dark #accordion-trigger { border: 1px solid rgba(255,255,255,0.15) !important; }
+html.dark .auth-input { background-color: #334155 !important; border-color: #475569 !important; color: #e2e8f0 !important; }
+html.dark .auth-input::placeholder { color: #64748b !important; }
 
 /* Additional text colors */
 html.dark .text-slate-900 { color: #f1f5f9 !important; }
