@@ -1129,7 +1129,7 @@ function replaceSelectedTiles() {
             tile.dataset.points = points;
             tile.innerHTML = `<span>${letter}<sub class="text-xs font-semibold ml-1">${points}</sub></span>`;
 
-            const bonusType = getBonusType();
+            const bonusType = currentGamemode !== 'challenge' ? getBonusType() : null;
             if (bonusType) {
                 tile.dataset.bonus = bonusType.type;
                 tile.classList.add(bonusType.class);
@@ -2513,54 +2513,12 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
                 <h2 class="text-2xl font-black text-green-500">Challenge ${topOther ? 'Results' : 'Complete!'}</h2>
                 ${comparisonHTML}
-                <button id="challenge-rematch-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl text-base mb-3 flex items-center justify-center gap-2">
-                    ${sendIcon} Rematch
-                </button>
-                <div id="rematch-result" class="mb-3"></div>
                 <button id="challenge-return-home" class="w-full text-slate-500 hover:text-slate-700 font-semibold py-2 text-sm">Return Home</button>
             </div>`;
 
         if (isNewSubmission) triggerEndGameConfetti(endGameModalContent.querySelector('div'));
 
         document.getElementById('challenge-return-home').onclick = () => { currentChallengeId = null; resetGame(); };
-        document.getElementById('challenge-rematch-btn').onclick = async () => {
-            const rematchBtn = document.getElementById('challenge-rematch-btn');
-            const rematchResult = document.getElementById('rematch-result');
-            rematchBtn.disabled = true;
-            rematchBtn.innerHTML = `<svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Generating...`;
-            try {
-                const { board, allWords } = createDailyChallengeBoard();
-                const playerName = localStorage.getItem('wordRushPlayerName') || 'A friend';
-                const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-                const ref = await addDoc(collection(db, 'challenges'), {
-                    board, allWords: Array.from(allWords), createdBy: userId,
-                    createdByName: playerName, createdAt: serverTimestamp(), expiresAt, results: {}
-                });
-                const stored = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
-                stored.unshift(ref.id);
-                localStorage.setItem('wordWormChallenges', JSON.stringify(stored.slice(0, 20)));
-                const url = `${window.location.origin}${window.location.pathname}?c=${ref.id}`;
-                if (navigator.share) {
-                    await navigator.share({ text: `🐛 Rematch! Think you can beat me this time? ${url}` });
-                } else {
-                    await navigator.clipboard.writeText(url);
-                    rematchBtn.innerHTML = `${sendIcon} Link Copied!`;
-                    setTimeout(() => { rematchBtn.innerHTML = `${sendIcon} Rematch`; }, 2000);
-                }
-                const cid = ref.id;
-                rematchResult.innerHTML = `
-                    <button id="play-rematch-btn" class="w-full bg-white border border-green-300 hover:bg-green-50 text-green-700 font-bold py-2.5 px-4 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" /></svg>
-                        Play Your Rematch
-                    </button>`;
-                document.getElementById('play-rematch-btn').onclick = () => { endGameModal.classList.add('hidden'); loadAndPlayChallenge(cid); };
-            } catch(e) {
-                if (e.name !== 'AbortError') rematchResult.innerHTML = `<p class="text-sm text-red-500">Something went wrong. Try again.</p>`;
-            } finally {
-                rematchBtn.disabled = false;
-                if (!rematchBtn.innerHTML.includes('Link Copied')) rematchBtn.innerHTML = `${sendIcon} Rematch`;
-            }
-        };
     }
 
     function showAccountModal() {
