@@ -2239,7 +2239,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 } catch(e) { return null; }
             }));
 
-            const valid = cards.filter(Boolean).sort((a,b) => {
+            const valid = cards.filter(c => c && !c.expired).sort((a,b) => {
                 const ta = a.data.createdAt?.toDate?.() ?? 0;
                 const tb = b.data.createdAt?.toDate?.() ?? 0;
                 return tb - ta;
@@ -3324,11 +3324,12 @@ function setupEventListeners() {
     document.body.addEventListener('click', (e) => {
         if (e.target.closest('#menu-button')) {
             e.stopPropagation();
+            if (currentGamemode === 'challenge') return;
             clearInterval(timerInterval);
-            
+
             // ✅ FIX: Hides the 'New Game' button if the mode is 'daily', and shows it otherwise.
             restartButton.classList.toggle('hidden', currentGamemode === 'daily');
-            
+
             pauseModal.classList.remove('hidden');
         }
     });
