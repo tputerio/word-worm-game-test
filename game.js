@@ -1235,7 +1235,7 @@ function replaceSelectedTiles() {
             
             // GOOGLE ANALYTICS             if (analytics) { logEvent(analytics, 'submit_word', { word_length: word.length, score: finalScore, game_mode: isPracticeMode ? 'practice' : 'timed' }); }
 
-            if (timeBonus > 0 && !isPracticeMode) { timer += timeBonus; updateTimerUI(); }
+            if (timeBonus > 0 && !isPracticeMode && currentGamemode !== 'challenge') { timer += timeBonus; updateTimerUI(); }
 
             foundWords.push({ word, score: finalScore, length: word.length });
             createFlyingScore(finalScore, selectedTiles[0]);
@@ -1785,7 +1785,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             <div class="flex items-center justify-between mb-1">
                 <div class="w-8 h-8"></div>
                 <h1 class="flex items-center text-3xl font-black text-slate-800 tracking-tighter">
-                    <img src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-9 h-9 mr-2" width="36" height="36">
+                    <img src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-11 h-11 mr-2" width="44" height="44">
                     <span>Word Worm</span>
                 </h1>
                 <button id="settings-gear-btn" class="p-1 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors">
@@ -1796,41 +1796,33 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
 <div id="how-to-play-container" class="bg-slate-100 p-3 rounded-lg flex flex-col w-full"></div>
 
-     <div class="mt-4 relative">
-    <button id="play-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold h-10 px-4 rounded-xl text-base flex items-center justify-center transition-colors gap-2">
+     <div class="mt-4 flex flex-col gap-3">
+    <button id="mode-timed-btn" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold h-11 px-4 rounded-xl text-base flex items-center justify-center transition-colors gap-2">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg>
         <span>Play</span>
     </button>
-    <div id="mode-dropdown" style="position:absolute;top:100%;left:0;right:0;width:100%;z-index:10;max-height:0;opacity:0;overflow:hidden;transition:max-height 0.28s ease,opacity 0.2s ease;pointer-events:none;">
-        <div id="mode-dropdown-inner" style="margin-top:4px;background:#fff;border-radius:16px;padding:8px;box-shadow:0 8px 24px rgba(0,0,0,0.15);">
-            <div style="display:flex;flex-direction:column;gap:6px;">
-                <button id="mode-timed-btn" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:42px;background:#9ec25f;color:#fff;font-weight:700;font-size:0.875rem;border:none;border-radius:10px;cursor:pointer;">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width:18px;height:18px;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
-                    Timed Game (Classic)
-                </button>
-                <button id="mode-daily-btn" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:42px;background:#3b82f6;color:#fff;font-weight:700;font-size:0.875rem;border:none;border-radius:10px;cursor:pointer;">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width:18px;height:18px;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" /></svg>
-                    Daily Challenge<span id="daily-mode-badge" style="display:none;margin-left:6px;font-size:0.7rem;opacity:0.8;">✓</span>
-                </button>
-                <button id="mode-challenge-btn" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:42px;background:#64748b;color:#fff;font-weight:700;font-size:0.875rem;border:none;border-radius:10px;cursor:pointer;">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width:18px;height:18px;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
-                    Challenge a Friend
-                </button>
-            </div>
-        </div>
+    <div class="grid grid-cols-2 gap-3">
+        <button id="mode-daily-btn" class="flex items-center justify-center gap-2 bg-white border-2 text-blue-600 font-bold text-sm h-10 rounded-lg hover:bg-blue-50 transition-colors" style="border-color:#3b82f6;">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width:18px;height:18px;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M14.25 6.087c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003 0-1.036-1.007-1.875-2.25-1.875c-1.243 0-2.25.84-2.25 1.875 0 .369.128.713.349 1.003.215.283.401.604.401.959v0a.64.64 0 0 1-.657.643 48.39 48.39 0 0 1-4.163-.3c.186 1.613.293 3.25.315 4.907a.656.656 0 0 1-.658.663v0c-.355 0-.676-.186-.959-.401a1.647 1.647 0 0 0-1.003-.349c-1.036 0-1.875 1.007-1.875 2.25s.84 2.25 1.875 2.25c.369 0 .713-.128 1.003-.349.283-.215.604-.401.959-.401v0c.31 0 .555.26.532.57a48.039 48.039 0 0 1-.642 5.056c1.518.19 3.058.309 4.616.354a.64.64 0 0 0 .657-.643v0c0-.355-.186-.676-.401-.959a1.647 1.647 0 0 1-.349-1.003c0-1.035 1.008-1.875 2.25-1.875 1.243 0 2.25.84 2.25 1.875 0 .369-.128.713-.349 1.003-.215.283-.401.604-.401.959v0c0 .333.277.599.61.58a48.1 48.1 0 0 0 5.427-.63 48.05 48.05 0 0 0 .582-4.717.532.532 0 0 0-.533-.57v0c-.355 0-.676.186-.959.401-.29.221-.634.349-1.003.349-1.036 0-1.875-1.007-1.875-2.25s.84-2.25 1.875-2.25c.37 0 .713.128 1.003.349.283.215.604.401.959.401v0a.656.656 0 0 0 .658-.663 48.422 48.422 0 0 0-.37-5.36c-1.886.342-3.81.574-5.766.689a.578.578 0 0 1-.61-.58v0Z" /></svg>
+            Daily Puzzle<span id="daily-mode-badge" style="display:none;margin-left:4px;font-size:0.7rem;opacity:0.8;">✓</span>
+        </button>
+        <button id="mode-challenge-btn" class="flex items-center justify-center gap-2 bg-white border-2 text-green-600 font-bold h-10 rounded-lg hover:bg-green-50 transition-colors" style="border-color:#22c55e;font-size:0.8rem;">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width:18px;height:18px;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
+            Challenge a Friend
+        </button>
     </div>
 </div>
             
-            <div class="bg-slate-100 rounded-xl p-2 mt-4">
-                <div class="grid grid-cols-3 gap-1 text-center">
-                    <div class="bg-white rounded-lg shadow-sm p-1 flex flex-col items-center justify-center">
+            <div class="bg-white rounded-xl mt-4 overflow-hidden border border-slate-200">
+                <div class="grid grid-cols-3 text-center">
+                    <div class="p-2 flex flex-col items-center justify-center">
                         <div class="h-7 flex items-center justify-center">
-                            <span id="welcome-high-score" class="text-xl font-black text-purple-600">0</span>
+                            <span id="welcome-high-score" class="text-xl font-black text-sky-500">0</span>
                         </div>
                         <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Your High</div>
                     </div>
 
-                    <div class="bg-white rounded-lg shadow-sm p-1 flex flex-col items-center justify-center">
+                    <div class="p-2 flex flex-col items-center justify-center" style="border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">
                         <div class="h-7 flex items-center justify-center gap-1">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5" style="color:#f97316;"><path fill-rule="evenodd" d="M12.963 2.286a.75.75 0 0 0-1.071-.136 9.742 9.742 0 0 0-3.539 6.176 7.547 7.547 0 0 1-1.705-1.715.75.75 0 0 0-1.152-.082A9 9 0 1 0 15.68 4.534a7.46 7.46 0 0 1-2.717-2.248ZM15.75 14.25a3.75 3.75 0 1 1-7.313-1.172c.628.465 1.35.81 2.133 1a5.99 5.99 0 0 1 1.925-3.546 3.75 3.75 0 0 1 3.255 3.718Z" clip-rule="evenodd" /></svg>
                             <span id="welcome-streak" class="text-xl font-black" style="color:#f97316;">0</span>
@@ -1838,27 +1830,16 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Day Streak</div>
                     </div>
 
-                    <a href="#" id="welcome-leaderboard-button" class="bg-white rounded-lg shadow-sm p-1 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors">
+                    <a href="#" id="welcome-leaderboard-button" class="p-2 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors">
                         <div class="h-7 flex items-center justify-center text-green-500">
                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="m6.115 5.19.319 1.913A6 6 0 0 0 8.11 10.36L9.75 12l-.387.775c-.217.433-.132.956.21 1.298l1.348 1.348c.21.21.329.497.329.795v1.089c0 .426.24.815.622 1.006l.153.076c.433.217.956.132 1.298-.21l.723-.723a8.7 8.7 0 0 0 2.288-4.042 1.087 1.087 0 0 0-.358-1.099l-1.33-1.108c-.251-.21-.582-.299-.905-.245l-1.17.195a1.125 1.125 0 0 1-.98-.314l-.295-.295a1.125 1.125 0 0 1 0-1.591l.13-.132a1.125 1.125 0 0 1 1.3-.21l.603.302a.809.809 0 0 0 1.086-1.086L14.25 7.5l1.256-.837a4.5 4.5 0 0 0 1.528-1.732l.146-.292M6.115 5.19A9 9 0 1 0 17.18 4.64M6.115 5.19A8.965 8.965 0 0 1 12 3c1.929 0 3.716.607 5.18 1.64" /></svg>
                         </div>
                         <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Leaderboard</div>
                     </a>
                 </div>
-                <div class="border-t border-slate-200 mt-2 pt-2">
-                    <p id="player-greeting" class="text-xs text-slate-600 font-medium"></p>
-                </div>
             </div>
+            <p id="player-greeting" class="text-xs text-slate-500 font-medium mt-2 text-center"></p>
 
-            <div class="text-center text-xs text-slate-400 mt-4">
-  <p>&copy; 2026 Word Worm</p>
-  <p>
-    <a href="/about.html" class="hover:underline">About</a> &bull;
-    <a href="/contact.html" class="hover:underline">Contact</a> &bull;
-    <a href="/privacy.html" class="hover:underline">Privacy Policy</a> &bull;
-    <a href="/terms.html" class="hover:underline">Terms of Use</a>
-  </p>
-</div>
         </div>
     `;
 
@@ -1892,16 +1873,6 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     setupTutorial();
     menuContainer.classList.add('hidden');
     
-    const playBtn = document.getElementById('play-button');
-    const modeDropdown = document.getElementById('mode-dropdown');
-
-    playBtn.onclick = () => {
-        const isOpen = modeDropdown.style.maxHeight !== '0px' && modeDropdown.style.maxHeight !== '';
-        modeDropdown.style.maxHeight = isOpen ? '0px' : '250px';
-        modeDropdown.style.opacity = isOpen ? '0' : '1';
-        modeDropdown.style.pointerEvents = isOpen ? 'none' : 'auto';
-    };
-
     document.getElementById('mode-timed-btn').onclick = () => startGame(false, 'standard');
     document.getElementById('mode-challenge-btn').onclick = () => showChallengeFriendModal();
     document.getElementById('mode-daily-btn').onclick = () => startGame(false, 'daily');
@@ -2128,7 +2099,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 <button id="my-challenges-back" class="text-slate-400 hover:text-slate-700 mr-3">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
                 </button>
-                <h2 class="text-lg font-black text-slate-800">My Challenges</h2>
+                <h2 class="text-lg font-bold text-slate-800">My Challenges</h2>
                 <button id="close-challenge-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800 ml-auto">&times;</button>
             </div>
             <div id="challenges-list" class="overflow-y-auto flex flex-col gap-2 pr-0.5" style="flex:1;min-height:0">
@@ -2146,89 +2117,94 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
         const listEl = document.getElementById('challenges-list');
 
-        const winIcon  = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5 text-green-500"><path fill-rule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm13.36-1.814a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z" clip-rule="evenodd" /></svg>`;
-        const lossIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5 text-red-400"><path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25Zm-1.72 6.97a.75.75 0 1 0-1.06 1.06L10.94 12l-1.72 1.72a.75.75 0 1 0 1.06 1.06L12 13.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L13.06 12l1.72-1.72a.75.75 0 1 0-1.06-1.06L12 10.94l-1.72-1.72Z" clip-rule="evenodd" /></svg>`;
-        const clockIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-slate-300"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>`;
+        const IC_PLAY     = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clip-rule="evenodd"/></svg>`;
+        const IC_BELL     = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" /></svg>`;
+        const IC_REFRESH  = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>`;
+        const iconBtn = (cls, icon, bg, dataAttr = '') =>
+            `<button class="${cls} flex items-center justify-center text-white rounded-lg flex-shrink-0" style="width:32px;height:32px;background:${bg}" ${dataAttr}>${icon}</button>`;
 
-        const shareIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" /></svg>`;
-
-        const copyLinkIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 8.25V6a2.25 2.25 0 0 0-2.25-2.25H6A2.25 2.25 0 0 0 3.75 6v8.25A2.25 2.25 0 0 0 6 16.5h2.25m8.25-8.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-7.5A2.25 2.25 0 0 1 8.25 18v-1.5m8.25-8.25h-6a2.25 2.25 0 0 0-2.25 2.25v6" /></svg>`;
-
-        const buildCard = ({ id, data, myResult, otherResults, isCreator, expired }) => {
+        const buildCard = ({ id, data, myResult, otherResults, expired }) => {
             const topOther = [...otherResults].sort((a,b) => b[1].score - a[1].score)[0];
             const myPlayed = !!myResult;
             const friendPlayed = !!topOther;
             const challengeUrl = `${window.location.origin}${window.location.pathname}?c=${id}`;
 
-            const isWin  = myPlayed && friendPlayed && myResult.score >= topOther[1].score;
-            const isLoss = myPlayed && friendPlayed && myResult.score <  topOther[1].score;
-            const borderStyle = isWin  ? 'border: 2px solid #4ade80;'
-                              : isLoss ? 'border: 2px solid #f87171;'
-                              :          'border: 1px solid #e2e8f0;';
-            const cardClass = 'rounded-xl px-4 shadow-md bg-white';
+            let line1, line1Class, line2, borderStyle, btnHtml;
 
-            const friendName = friendPlayed
-                ? topOther[1].name
-                : isCreator ? '<span class="text-slate-400 font-medium">Pending…</span>' : data.createdByName || 'Friend';
-
-            let scoreDisplay;
-            if (myPlayed && friendPlayed) {
-                scoreDisplay = `<span class="text-xl font-bold text-slate-800">${myResult.score} – ${topOther[1].score}</span>`;
-            } else if (myPlayed) {
-                scoreDisplay = `<span class="text-xl font-bold text-slate-800">${myResult.score}</span>`;
-            } else if (friendPlayed) {
-                scoreDisplay = `<span class="text-xl font-bold text-slate-800">${topOther[1].score}</span>`;
+            if (!myPlayed && !friendPlayed && !expired) {
+                line1 = 'Waiting for opponent';
+                line1Class = 'text-slate-500';
+                line2 = 'Play first!';
+                borderStyle = 'border:2px solid #cbd5e1';
+                btnHtml = iconBtn('challenge-play-btn', IC_PLAY, '#22c55e', `data-id="${id}"`);
+            } else if (!myPlayed && friendPlayed && !expired) {
+                const fname = topOther[1].name || 'Friend';
+                line1 = `${fname} played`;
+                line1Class = 'text-slate-800 font-semibold';
+                line2 = 'Your turn to beat it';
+                borderStyle = 'border:2px solid #cbd5e1';
+                btnHtml = iconBtn('challenge-play-btn', IC_PLAY, '#22c55e', `data-id="${id}"`);
+            } else if (myPlayed && !friendPlayed) {
+                line1 = 'You played';
+                line1Class = 'text-slate-500';
+                line2 = `Your score: ${myResult.score}`;
+                borderStyle = 'border:2px solid #cbd5e1';
+                btnHtml = iconBtn('challenge-share-btn', IC_BELL, '#94a3b8', `data-url="${challengeUrl}"`);
+            } else if (myPlayed && friendPlayed) {
+                const fname = topOther[1].name || 'Friend';
+                const isWin = myResult.score >= topOther[1].score;
+                line1 = isWin ? `You beat ${fname}` : `You lost to ${fname}`;
+                line1Class = isWin ? 'text-green-700 font-semibold' : 'text-slate-800 font-semibold';
+                line2 = `${myResult.score} – ${topOther[1].score}`;
+                borderStyle = isWin ? 'border:2px solid #22c55e' : 'border:2px solid #cbd5e1';
+                btnHtml = iconBtn('challenge-rematch-btn', IC_REFRESH, '#818cf8');
             } else {
-                scoreDisplay = `<span class="text-lg font-bold text-slate-300">—</span>`;
-            }
-
-            const copyBtn = `<button class="challenge-copy-btn p-1.5 text-slate-400 hover:text-blue-500 transition-colors" data-url="${challengeUrl}" title="Copy link">${copyLinkIcon}</button>`;
-
-            let rightEl;
-            if (myPlayed && friendPlayed) {
-                rightEl = isWin ? winIcon : lossIcon;
-            } else if (myPlayed) {
-                rightEl = `<button class="challenge-share-btn flex items-center gap-1 text-xs font-semibold text-blue-500 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-full transition-colors" data-url="${challengeUrl}">${shareIcon} Send</button>`;
-            } else if (!expired) {
-                rightEl = `<div class="flex items-center gap-1">${copyBtn}<button class="challenge-play-btn text-xs font-bold text-white bg-green-500 hover:bg-green-600 px-3 py-2 rounded-full" data-id="${id}">Play</button></div>`;
-            } else {
-                rightEl = `<span class="text-xs text-slate-400">Expired</span>`;
+                line1 = 'Expired';
+                line1Class = 'text-slate-400';
+                line2 = '';
+                borderStyle = 'border:2px solid #e2e8f0';
+                btnHtml = '';
             }
 
             return `
-            <div class="${cardClass}" style="${borderStyle}" data-challenge-card="${id}">
-                <div class="flex items-center gap-3" style="height:64px">
-                    <div class="flex-1 min-w-0 text-sm font-bold text-slate-700 truncate">${friendName}</div>
-                    <div class="flex-shrink-0">${scoreDisplay}</div>
-                    <div class="ml-auto flex items-center">${rightEl}</div>
+            <div class="flex items-center justify-between px-4 py-2.5 rounded-xl bg-white gap-3" style="${borderStyle}">
+                <div class="flex flex-col min-w-0">
+                    <span class="text-xs font-semibold ${line1Class} truncate">${line1}</span>
+                    <span class="text-xs text-slate-400 mt-0.5">${line2 || '&nbsp;'}</span>
                 </div>
+                ${btnHtml}
             </div>`;
         };
 
-        const attachPlayListeners = () => {
+        const attachListeners = () => {
             listEl.querySelectorAll('.challenge-play-btn').forEach(btn => {
                 btn.onclick = () => {
                     document.getElementById('account-modal').classList.add('hidden');
                     loadAndPlayChallenge(btn.dataset.id);
                 };
             });
-            const handleShare = async (btn, url) => {
-                try {
-                    if (navigator.share) {
-                        await navigator.share({ text: `🐛 Play my Word Worm challenge! ${url}` });
-                    } else {
-                        await navigator.clipboard.writeText(url);
-                        const orig = btn.innerHTML;
-                        btn.textContent = 'Copied!';
-                        setTimeout(() => { btn.innerHTML = orig; }, 1500);
-                    }
-                } catch(e) {}
-            };
             listEl.querySelectorAll('.challenge-share-btn').forEach(btn => {
-                btn.onclick = () => handleShare(btn, btn.dataset.url);
+                btn.onclick = async () => {
+                    try {
+                        if (navigator.share) {
+                            await navigator.share({ text: `🐛 Play my Word Worm challenge! ${btn.dataset.url}` });
+                        } else {
+                            await navigator.clipboard.writeText(btn.dataset.url);
+                            const orig = btn.textContent;
+                            btn.textContent = 'Copied!';
+                            setTimeout(() => { btn.textContent = orig; }, 1500);
+                        }
+                    } catch(e) {}
+                };
             });
-            listEl.querySelectorAll('.challenge-copy-btn').forEach(btn => {
-                btn.onclick = () => handleShare(btn, btn.dataset.url);
+            listEl.querySelectorAll('.challenge-rematch-btn').forEach(btn => {
+                btn.onclick = () => {
+                    container.style.maxHeight = '';
+                    container.style.display = '';
+                    container.style.flexDirection = '';
+                    container.style.overflow = '';
+                    renderCreateChallenge(container);
+                };
             });
         };
 
@@ -2251,7 +2227,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             }
 
             const now = Date.now();
-            const cards = await Promise.all(Array.from(idSet).slice(0, 5).map(async id => {
+            const cards = await Promise.all(Array.from(idSet).map(async id => {
                 try {
                     const snap = await getDocFromServer(doc(db, 'challenges', id));
                     if (!snap.exists()) return null;
@@ -2259,13 +2235,9 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     const expired = data.expiresAt?.toDate ? data.expiresAt.toDate() < now : false;
                     const myResult = data.results?.[userId];
                     const otherResults = Object.entries(data.results || {}).filter(([uid]) => uid !== userId);
-                    const isCreator = data.createdBy === userId;
-                    return { id, data, myResult, otherResults, isCreator, expired };
+                    return { id, data, myResult, otherResults, expired };
                 } catch(e) { return null; }
             }));
-
-            const allIds = Array.from(idSet);
-            const remainingIds = allIds.slice(5);
 
             const valid = cards.filter(Boolean).sort((a,b) => {
                 const ta = a.data.createdAt?.toDate?.() ?? 0;
@@ -2278,37 +2250,18 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 return;
             }
 
-            const viewAllBtn = remainingIds.length > 0
-                ? `<button id="view-all-challenges" class="w-full text-xs text-slate-400 hover:text-slate-600 py-2 text-center">View ${remainingIds.length} more</button>`
+            const visible = valid.slice(0, 4);
+            const hidden = valid.slice(4);
+            const viewAllBtn = hidden.length > 0
+                ? `<div class="border-t border-slate-200 pt-2 text-center"><span id="view-all-challenges" class="text-xs text-slate-500 cursor-pointer hover:text-slate-700">View All (${valid.length})</span></div>`
                 : '';
+            listEl.innerHTML = visible.map(c => buildCard(c)).join('') + viewAllBtn;
+            attachListeners();
 
-            listEl.innerHTML = valid.map(c => buildCard(c)).join('') + viewAllBtn;
-            attachPlayListeners();
-
-            if (remainingIds.length > 0) {
-                document.getElementById('view-all-challenges').onclick = async () => {
-                    const btn = document.getElementById('view-all-challenges');
-                    btn.textContent = 'Loading...';
-                    btn.disabled = true;
-                    const more = await Promise.all(remainingIds.map(async id => {
-                        try {
-                            const snap = await getDocFromServer(doc(db, 'challenges', id));
-                            if (!snap.exists()) return null;
-                            const data = snap.data();
-                            const expired = data.expiresAt?.toDate ? data.expiresAt.toDate() < now : false;
-                            const myResult = data.results?.[userId];
-                            const otherResults = Object.entries(data.results || {}).filter(([uid]) => uid !== userId);
-                            const isCreator = data.createdBy === userId;
-                            return { id, data, myResult, otherResults, isCreator, expired };
-                        } catch(e) { return null; }
-                    }));
-                    const moreValid = more.filter(Boolean).sort((a,b) => {
-                        const ta = a.data.createdAt?.toDate?.() ?? 0;
-                        const tb = b.data.createdAt?.toDate?.() ?? 0;
-                        return tb - ta;
-                    });
-                    btn.outerHTML = moreValid.map(c => buildCard(c)).join('');
-                    attachPlayListeners();
+            if (hidden.length > 0) {
+                document.getElementById('view-all-challenges').onclick = () => {
+                    document.getElementById('view-all-challenges').parentElement.outerHTML = hidden.map(c => buildCard(c)).join('');
+                    attachListeners();
                 };
             }
 
