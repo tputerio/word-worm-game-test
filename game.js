@@ -586,15 +586,28 @@ function showGameMessage(message, type = 'info', startTile = null) {
         if (welcomeHighScoreEl) welcomeHighScoreEl.textContent = highScore.toLocaleString();
 
         const welcomeStreakEl = document.getElementById('welcome-streak');
-        if (welcomeStreakEl) welcomeStreakEl.textContent = playStreak;
+        const streakFlameEl = document.getElementById('welcome-streak-flame');
+        const streakLabelEl = document.getElementById('welcome-streak-label');
+        if (welcomeStreakEl) {
+            if (!playStreak || playStreak === 0) {
+                welcomeStreakEl.style.display = 'none';
+                if (streakFlameEl) streakFlameEl.style.color = '#94a3b8';
+                if (streakLabelEl) { streakLabelEl.textContent = 'Start a streak!'; streakLabelEl.style.fontSize = '8px'; }
+            } else {
+                welcomeStreakEl.textContent = playStreak;
+                welcomeStreakEl.style.display = '';
+                if (streakFlameEl) streakFlameEl.style.color = '#f97316';
+                if (streakLabelEl) { streakLabelEl.textContent = 'Day Streak'; streakLabelEl.style.fontSize = '10px'; }
+            }
+        }
 
         const playerGreetingEl = document.getElementById('player-greeting');
         if (playerGreetingEl) {
             if (playerName !== 'Anonymous') {
                 if (isUserSignedIn()) {
-                    playerGreetingEl.innerHTML = `Welcome back, <strong class="font-bold">${playerName}</strong>!`;
+                    playerGreetingEl.innerHTML = `Welcome back, <strong class="font-bold">${playerName}</strong>! 👋`;
                 } else {
-                    playerGreetingEl.innerHTML = `Welcome back, <strong class="font-bold">${playerName}</strong>! &bull; <span id="greeting-signin-link" class="text-blue-500 hover:underline cursor-pointer">Sign up</span>`;
+                    playerGreetingEl.innerHTML = `Welcome back, <strong class="font-bold">${playerName}</strong>! 👋 &bull; <span id="greeting-signin-link" class="text-blue-500 hover:underline cursor-pointer">Sign up</span>`;
                     setTimeout(() => {
                         const link = document.getElementById('greeting-signin-link');
                         if (link) link.onclick = () => showAccountModal();
@@ -1792,7 +1805,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path fill-rule="evenodd" d="M11.078 2.25c-.917 0-1.699.663-1.85 1.567L9.05 4.889c-.02.12-.115.26-.297.348a7.493 7.493 0 0 0-.986.57c-.166.115-.334.126-.45.083L6.3 5.508a1.875 1.875 0 0 0-2.282.819l-.922 1.597a1.875 1.875 0 0 0 .432 2.385l.84.692c.095.078.17.229.154.43a7.598 7.598 0 0 0 0 1.139c.015.2-.059.352-.153.43l-.841.692a1.875 1.875 0 0 0-.432 2.385l.922 1.597a1.875 1.875 0 0 0 2.282.818l1.019-.382c.115-.043.283-.031.45.082.312.214.641.405.985.57.182.088.277.228.297.35l.178 1.071c.151.904.933 1.567 1.85 1.567h1.844c.916 0 1.699-.663 1.85-1.567l.178-1.072c.02-.12.114-.26.297-.349.344-.165.673-.356.985-.57.167-.114.335-.125.45-.082l1.02.382a1.875 1.875 0 0 0 2.28-.819l.923-1.597a1.875 1.875 0 0 0-.432-2.385l-.84-.692c-.095-.078-.17-.229-.154-.43a7.614 7.614 0 0 0 0-1.139c-.016-.2.059-.352.153-.43l.84-.692c.708-.582.891-1.59.433-2.385l-.922-1.597a1.875 1.875 0 0 0-2.282-.818l-1.02.382c-.114.043-.282.031-.449-.083a7.49 7.49 0 0 0-.985-.57c-.183-.087-.277-.227-.297-.348l-.179-1.072a1.875 1.875 0 0 0-1.85-1.567h-1.843ZM12 15.75a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5Z" clip-rule="evenodd" /></svg>
                 </button>
             </div>
-            <p class="text-slate-500 text-sm mb-3">The fast-paced word finding game!</p>
+            <p id="player-greeting" class="text-slate-500 text-sm mb-3 font-medium text-center"></p>
 
 <div id="how-to-play-container" class="bg-slate-100 p-3 rounded-lg flex flex-col w-full"></div>
 
@@ -1806,8 +1819,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width:18px;height:18px;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M14.25 6.087c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003 0-1.036-1.007-1.875-2.25-1.875c-1.243 0-2.25.84-2.25 1.875 0 .369.128.713.349 1.003.215.283.401.604.401.959v0a.64.64 0 0 1-.657.643 48.39 48.39 0 0 1-4.163-.3c.186 1.613.293 3.25.315 4.907a.656.656 0 0 1-.658.663v0c-.355 0-.676-.186-.959-.401a1.647 1.647 0 0 0-1.003-.349c-1.036 0-1.875 1.007-1.875 2.25s.84 2.25 1.875 2.25c.369 0 .713-.128 1.003-.349.283-.215.604-.401.959-.401v0c.31 0 .555.26.532.57a48.039 48.039 0 0 1-.642 5.056c1.518.19 3.058.309 4.616.354a.64.64 0 0 0 .657-.643v0c0-.355-.186-.676-.401-.959a1.647 1.647 0 0 1-.349-1.003c0-1.035 1.008-1.875 2.25-1.875 1.243 0 2.25.84 2.25 1.875 0 .369-.128.713-.349 1.003-.215.283-.401.604-.401.959v0c0 .333.277.599.61.58a48.1 48.1 0 0 0 5.427-.63 48.05 48.05 0 0 0 .582-4.717.532.532 0 0 0-.533-.57v0c-.355 0-.676.186-.959.401-.29.221-.634.349-1.003.349-1.036 0-1.875-1.007-1.875-2.25s.84-2.25 1.875-2.25c.37 0 .713.128 1.003.349.283.215.604.401.959.401v0a.656.656 0 0 0 .658-.663 48.422 48.422 0 0 0-.37-5.36c-1.886.342-3.81.574-5.766.689a.578.578 0 0 1-.61-.58v0Z" /></svg>
             Daily Puzzle<span id="daily-mode-badge" style="display:none;margin-left:4px;font-size:0.7rem;opacity:0.8;">✓</span>
         </button>
-        <button id="mode-challenge-btn" class="flex items-center justify-center gap-2 bg-white border-2 text-green-600 font-bold h-10 rounded-lg hover:bg-green-50 transition-colors" style="border-color:#22c55e;font-size:0.8rem;">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width:18px;height:18px;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
+        <button id="mode-challenge-btn" class="flex items-center justify-center gap-2 bg-white border-2 text-slate-600 font-bold h-10 rounded-lg hover:bg-slate-50 transition-colors" style="border-color:#64748b;font-size:0.8rem;">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:18px;height:18px;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>
             Challenge a Friend
         </button>
     </div>
@@ -1816,18 +1829,18 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             <div class="bg-white rounded-xl mt-4 overflow-hidden border border-slate-200">
                 <div class="grid grid-cols-3 text-center">
                     <div class="p-2 flex flex-col items-center justify-center">
+                        <div class="h-7 flex items-center justify-center gap-1">
+                            <svg id="welcome-streak-flame" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5" style="color:#94a3b8;"><path fill-rule="evenodd" d="M12.963 2.286a.75.75 0 0 0-1.071-.136 9.742 9.742 0 0 0-3.539 6.176 7.547 7.547 0 0 1-1.705-1.715.75.75 0 0 0-1.152-.082A9 9 0 1 0 15.68 4.534a7.46 7.46 0 0 1-2.717-2.248ZM15.75 14.25a3.75 3.75 0 1 1-7.313-1.172c.628.465 1.35.81 2.133 1a5.99 5.99 0 0 1 1.925-3.546 3.75 3.75 0 0 1 3.255 3.718Z" clip-rule="evenodd" /></svg>
+                            <span id="welcome-streak" class="text-xl font-black" style="color:#f97316;display:none;">0</span>
+                        </div>
+                        <div id="welcome-streak-label" class="font-bold text-slate-500 uppercase tracking-wider" style="font-size:8px;white-space:nowrap;">Start a streak!</div>
+                    </div>
+
+                    <div class="p-2 flex flex-col items-center justify-center" style="border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">
                         <div class="h-7 flex items-center justify-center">
                             <span id="welcome-high-score" class="text-xl font-black text-sky-500">0</span>
                         </div>
                         <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Your High</div>
-                    </div>
-
-                    <div class="p-2 flex flex-col items-center justify-center" style="border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">
-                        <div class="h-7 flex items-center justify-center gap-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5" style="color:#f97316;"><path fill-rule="evenodd" d="M12.963 2.286a.75.75 0 0 0-1.071-.136 9.742 9.742 0 0 0-3.539 6.176 7.547 7.547 0 0 1-1.705-1.715.75.75 0 0 0-1.152-.082A9 9 0 1 0 15.68 4.534a7.46 7.46 0 0 1-2.717-2.248ZM15.75 14.25a3.75 3.75 0 1 1-7.313-1.172c.628.465 1.35.81 2.133 1a5.99 5.99 0 0 1 1.925-3.546 3.75 3.75 0 0 1 3.255 3.718Z" clip-rule="evenodd" /></svg>
-                            <span id="welcome-streak" class="text-xl font-black" style="color:#f97316;">0</span>
-                        </div>
-                        <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Day Streak</div>
                     </div>
 
                     <a href="#" id="welcome-leaderboard-button" class="p-2 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors">
@@ -1838,7 +1851,6 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     </a>
                 </div>
             </div>
-            <p id="player-greeting" class="text-xs text-slate-500 font-medium mt-2 text-center"></p>
 
         </div>
     `;
@@ -3008,7 +3020,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                             await setDoc(doc(db, 'players', userId), { name: newName, hasSubmittedName: true }, { merge: true });
                         }
                         const greetingEl = document.getElementById('player-greeting');
-                        if (greetingEl) greetingEl.innerHTML = `Welcome back, <strong class="font-bold">${newName}</strong>!`;
+                        if (greetingEl) greetingEl.innerHTML = `Welcome back, <strong class="font-bold">${newName}</strong>! 👋`;
                         msgEl.textContent = 'Saved!';
                         msgEl.className = 'text-xs mt-1 text-green-600 min-h-[16px]';
                         setTimeout(() => { if (msgEl) msgEl.textContent = ''; }, 2000);
