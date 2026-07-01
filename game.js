@@ -234,6 +234,7 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
             } catch (error) {
                 console.error("Error marking daily challenge as complete:", error);
             }
+            await updatePlayStreak(userId);
         }
     }
     
@@ -1117,10 +1118,6 @@ function setupDailyUI(challengeData) {
        //     time_taken_seconds: isPracticeMode ? practiceTimeElapsed : GAME_TIME
       //  });
   //  }
-
-        if (!isPracticeMode && db && userId) {
-            processEndOfGame(score, foundWords, userId);
-    }
 }
 
 function replaceSelectedTiles() {
@@ -1460,11 +1457,33 @@ function getTileFromEvent(e) {
     
     function clearSelection() { selectedTiles.forEach(t => t.classList.remove('selected')); selectedTiles = []; updateCurrentWord(); drawLines(); }
     
+ async function updatePlayStreak(uId) {
+    if (!db || !uId) return;
+    const playerDocRef = doc(db, "players", uId);
+    try {
+        const playerDoc = await getDoc(playerDocRef);
+        const oldData = playerDoc.exists() ? playerDoc.data() : {};
+
+        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
+        const playStreak = (oldData.lastPlayDate === yesterdayStr) ? (oldData.playStreak || 0) + 1
+            : (oldData.lastPlayDate === todayStr) ? (oldData.playStreak || 1)
+            : 1;
+
+        await setDoc(playerDocRef, { lastPlayed: serverTimestamp(), lastPlayDate: todayStr, playStreak }, { merge: true });
+    } catch (e) {
+        console.error("Failed to update play streak:", e);
+    }
+}
+
  async function processEndOfGame(finalScore, words, uId) {
     if (!db || !uId || isPracticeMode) return;
 
     const playerDocRef = doc(db, "players", uId);
-    
+
     // --- PART 1: GET PLAYER NAME IF NEEDED ---
     let finalPlayerName = localStorage.getItem('wordRushPlayerName') || 'Anonymous';
     let needsToSubmitName = finalPlayerName === 'Anonymous';
@@ -2443,6 +2462,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             await updateDoc(doc(db, 'challenges', currentChallengeId), {
                 [`results.${userId}`]: resultData
             });
+            await updatePlayStreak(userId);
 
             const snap = await getDoc(doc(db, 'challenges', currentChallengeId));
             const data = snap.data();
