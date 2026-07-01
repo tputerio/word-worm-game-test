@@ -607,10 +607,10 @@ function showGameMessage(message, type = 'info', startTile = null) {
                 if (isUserSignedIn()) {
                     playerGreetingEl.innerHTML = `Welcome back, <strong class="font-bold">${playerName}</strong>! 👋`;
                 } else {
-                    playerGreetingEl.innerHTML = `Welcome back, <strong class="font-bold">${playerName}</strong>! 👋 &bull; <span id="greeting-signin-link" class="text-blue-500 hover:underline cursor-pointer">Sign up</span>`;
+                    playerGreetingEl.innerHTML = `Welcome back, <strong class="font-bold">${playerName}</strong>! 👋 &bull; <span id="greeting-signin-link" class="text-blue-500 hover:underline cursor-pointer">Add email</span>`;
                     setTimeout(() => {
                         const link = document.getElementById('greeting-signin-link');
-                        if (link) link.onclick = () => showAccountModal();
+                        if (link) link.onclick = () => showAccountModal('signup');
                     }, 0);
                 }
             } else {
@@ -663,14 +663,14 @@ function showGameMessage(message, type = 'info', startTile = null) {
                 tile.dataset.bonus = bonusInfo.type;
             }
         } else {
-            if (currentGamemode !== 'daily' && currentGamemode !== 'challenge') {
-                const randomBonus = getBonusType();
+            if (currentGamemode !== 'daily') {
+                const randomBonus = currentGamemode === 'challenge' ? getBonusTypeNoTime() : getBonusType();
                 if (randomBonus) {
                     bonusType = randomBonus;
                     tile.dataset.bonus = randomBonus.type;
                 }
+            }
         }
-    }
 
         if (bonusType) {
             tile.classList.add(bonusType.class);
@@ -691,6 +691,14 @@ function showGameMessage(message, type = 'info', startTile = null) {
     function getBonusType() {
         const rand = Math.random();
         if (rand < 0.08) return { type: 'Time', label: '+5s', class: 'bonus-Time' };
+        if (rand < 0.18) return { type: 'DW', label: 'DW', class: 'bonus-DW' };
+        if (rand < 0.28) return { type: 'TL', label: 'TL', class: 'bonus-TL' };
+        if (rand < 0.40) return { type: 'DL', label: 'DL', class: 'bonus-DL' };
+        return null;
+    }
+
+    function getBonusTypeNoTime() {
+        const rand = Math.random();
         if (rand < 0.18) return { type: 'DW', label: 'DW', class: 'bonus-DW' };
         if (rand < 0.28) return { type: 'TL', label: 'TL', class: 'bonus-TL' };
         if (rand < 0.40) return { type: 'DL', label: 'DL', class: 'bonus-DL' };
@@ -1142,7 +1150,7 @@ function replaceSelectedTiles() {
             tile.dataset.points = points;
             tile.innerHTML = `<span>${letter}<sub class="text-xs font-semibold ml-1">${points}</sub></span>`;
 
-            const bonusType = currentGamemode !== 'challenge' ? getBonusType() : null;
+            const bonusType = currentGamemode === 'challenge' ? getBonusTypeNoTime() : getBonusType();
             if (bonusType) {
                 tile.dataset.bonus = bonusType.type;
                 tile.classList.add(bonusType.class);
@@ -2000,7 +2008,6 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         }
 
         accountModal.classList.remove('hidden');
-        document.getElementById('close-challenge-modal').onclick = () => accountModal.classList.add('hidden');
     }
 
     function renderCreateChallenge(container) {
@@ -2009,36 +2016,32 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 <h2 class="text-lg font-bold text-slate-800 flex items-center">Challenge a Friend <span class="inline-block w-6 h-6 ml-2"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-slate-600"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg></span></h2>
                 <button id="close-challenge-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
             </div>
-            <p class="text-sm text-slate-500 mb-5">Send a board to a friend — most words in 60 seconds wins.</p>
+            <p class="text-sm text-slate-500 mb-5">Send a board to a friend. Most words in 60 seconds wins.</p>
             <button id="generate-challenge-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors flex items-center justify-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
                 Send Challenge
             </button>
             <div id="challenge-link-result" class="mt-3"></div>
             <hr class="my-5 border-slate-200">
-            <button id="view-my-challenges-btn" class="w-full flex items-center justify-center gap-2 text-slate-600 hover:text-slate-800 font-semibold py-2 text-sm">
+            <button id="view-my-challenges-btn" class="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold py-2.5 px-4 rounded-lg text-sm transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" /></svg>
                 My Challenges
             </button>`;
 
         document.getElementById('generate-challenge-btn').onclick = () => generateAndSaveChallenge();
         document.getElementById('view-my-challenges-btn').onclick = () => renderMyChallenges(container);
+        document.getElementById('close-challenge-modal').onclick = () => document.getElementById('account-modal').classList.add('hidden');
     }
 
-    async function generateAndSaveChallenge() {
-        const btn = document.getElementById('generate-challenge-btn');
-        const resultEl = document.getElementById('challenge-link-result');
-        if (!btn || !resultEl) return;
-
-        const sendIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-white"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>`;
-
+    async function _createAndShareChallenge(btnEl, resultEl, playBtnHandler) {
         if (!validationTrie || !fullDictionaryTrie) {
             resultEl.innerHTML = `<p class="text-sm text-red-500 text-center">Dictionaries still loading — try again in a moment.</p>`;
             return;
         }
 
-        btn.disabled = true;
-        btn.innerHTML = `<svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Generating...</span>`;
+        const origHTML = btnEl.innerHTML;
+        btnEl.disabled = true;
+        btnEl.innerHTML = `<svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Generating...</span>`;
 
         try {
             const { board, allWords } = createDailyChallengeBoard();
@@ -2069,22 +2072,20 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 shared = true;
             } else {
                 await navigator.clipboard.writeText(challengeUrl);
-                btn.innerHTML = `${sendIcon} Link Copied!`;
-                setTimeout(() => { btn.innerHTML = `${sendIcon} Send Challenge`; }, 2000);
+                btnEl.innerHTML = `Link Copied!`;
+                setTimeout(() => { btnEl.innerHTML = origHTML; btnEl.disabled = false; }, 2000);
                 shared = true;
             }
 
             if (shared) {
                 const cid = challengeRef.id;
+                const btnId = `play-challenge-btn-${Date.now()}`;
                 resultEl.innerHTML = `
-                    <button id="play-own-challenge-btn" class="w-full mt-1 bg-white border border-green-300 hover:bg-green-50 text-green-700 font-bold py-2.5 px-4 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors">
+                    <button id="${btnId}" class="w-full mt-1 bg-white border border-green-300 hover:bg-green-50 text-green-700 font-bold py-2.5 px-4 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" /></svg>
                         Play Your Challenge
                     </button>`;
-                document.getElementById('play-own-challenge-btn').onclick = () => {
-                    document.getElementById('account-modal').classList.add('hidden');
-                    loadAndPlayChallenge(cid);
-                };
+                document.getElementById(btnId).onclick = () => playBtnHandler(cid);
             }
 
         } catch(e) {
@@ -2093,11 +2094,21 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 resultEl.innerHTML = `<p class="text-sm text-red-500 text-center">Something went wrong. Please try again.</p>`;
             }
         } finally {
-            btn.disabled = false;
-            if (!btn.innerHTML.includes('Link Copied')) {
-                btn.innerHTML = `${sendIcon} Send Challenge`;
+            btnEl.disabled = false;
+            if (!btnEl.innerHTML.includes('Link Copied')) {
+                btnEl.innerHTML = origHTML;
             }
         }
+    }
+
+    async function generateAndSaveChallenge() {
+        const btn = document.getElementById('generate-challenge-btn');
+        const resultEl = document.getElementById('challenge-link-result');
+        if (!btn || !resultEl) return;
+        await _createAndShareChallenge(btn, resultEl, (cid) => {
+            document.getElementById('account-modal').classList.add('hidden');
+            loadAndPlayChallenge(cid);
+        });
     }
 
     async function renderMyChallenges(container) {
@@ -2168,7 +2179,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 line1 = isWin ? `You beat ${fname}` : `You lost to ${fname}`;
                 line1Class = isWin ? 'text-green-700 font-semibold' : 'text-slate-800 font-semibold';
                 line2 = `${myResult.score} – ${topOther[1].score}`;
-                borderStyle = isWin ? 'border:2px solid #22c55e' : 'border:2px solid #cbd5e1';
+                borderStyle = isWin ? 'border:2px solid #22c55e' : 'border:2px solid #ef4444';
                 btnHtml = iconBtn('challenge-rematch-btn', IC_REFRESH, '#818cf8');
             } else {
                 line1 = 'Expired';
@@ -2181,8 +2192,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             return `
             <div class="flex items-center justify-between px-4 py-2.5 rounded-xl bg-white gap-3" style="${borderStyle}">
                 <div class="flex flex-col min-w-0">
-                    <span class="text-xs font-semibold ${line1Class} truncate">${line1}</span>
-                    <span class="text-xs text-slate-400 mt-0.5">${line2 || '&nbsp;'}</span>
+                    <span class="text-sm font-semibold ${line1Class} truncate">${line1}</span>
+                    <span class="text-sm text-slate-400 mt-0.5">${line2 || '&nbsp;'}</span>
                 </div>
                 ${btnHtml}
             </div>`;
@@ -2491,8 +2502,11 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     }
 
     function showChallengeResultsScreen(challengeId, data, myResult, otherResults, isNewSubmission = false) {
+        endGameModal.classList.remove('hidden');
+        messageModal.classList.add('hidden');
         const topOther = otherResults.sort((a,b) => b[1].score - a[1].score)[0];
-        const sendIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>`;
+        const homeIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg>`;
+        const refreshIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>`;
 
         let comparisonHTML;
         if (topOther) {
@@ -2521,19 +2535,42 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 </div>`;
         }
 
+        const buttonsHTML = topOther ? `
+                <div id="rematch-result" class="mb-2"></div>
+                <button id="challenge-rematch-btn" class="w-full bg-indigo-400 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg text-base mb-2 flex items-center justify-center gap-2">
+                    ${refreshIcon} Rematch
+                </button>
+                <button id="challenge-return-home" class="w-full flex items-center justify-center gap-2 text-slate-500 hover:text-slate-700 font-semibold py-2 text-sm">
+                    ${homeIcon} Return Home
+                </button>` : `
+                <button id="challenge-return-home" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">
+                    ${homeIcon} Return Home
+                </button>`;
+
         endGameModalContent.innerHTML = `
             <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
                 <h2 class="text-2xl font-black text-green-500">Challenge ${topOther ? 'Results' : 'Complete!'}</h2>
                 ${comparisonHTML}
-                <button id="challenge-return-home" class="w-full text-slate-500 hover:text-slate-700 font-semibold py-2 text-sm">Return Home</button>
+                ${buttonsHTML}
             </div>`;
 
         if (isNewSubmission) triggerEndGameConfetti(endGameModalContent.querySelector('div'));
 
+        if (topOther) {
+            document.getElementById('challenge-rematch-btn').onclick = async () => {
+                const rematchBtn = document.getElementById('challenge-rematch-btn');
+                const rematchResult = document.getElementById('rematch-result');
+                await _createAndShareChallenge(rematchBtn, rematchResult, (cid) => {
+                    endGameModal.classList.add('hidden');
+                    currentChallengeId = null;
+                    loadAndPlayChallenge(cid);
+                });
+            };
+        }
         document.getElementById('challenge-return-home').onclick = () => { currentChallengeId = null; resetGame(); };
     }
 
-    function showAccountModal() {
+    function showAccountModal(initialTab = 'login') {
         const accountModal = document.getElementById('account-modal');
         const accountModalContent = document.getElementById('account-modal-content');
 
@@ -2659,13 +2696,14 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         }
                     };
                 } else {
+                    const prefillName = (localStorage.getItem('wordRushPlayerName') || '').replace(/"/g, '&quot;');
                     accountModalContent.innerHTML = `
                         ${viewHeader('Sign Up')}
                         ${errorMsg ? `<p class="text-xs text-red-500 mb-3">${errorMsg}</p>` : ''}
                         <div class="space-y-3">
                             <div>
                                 <label class="${labelClass}">Display Name</label>
-                                <input id="create-name" type="text" placeholder="Shown on leaderboard (max 10 chars)" maxlength="10" class="${inputClass}">
+                                <input id="create-name" type="text" value="${prefillName}" placeholder="Shown on leaderboard (max 10 chars)" maxlength="10" class="${inputClass}">
                             </div>
                             <div>
                                 <label class="${labelClass}">Email Address</label>
@@ -2852,7 +2890,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 };
             };
 
-            renderAuthModal('login');
+            renderAuthModal(initialTab);
         }
 
         accountModal.classList.remove('hidden');
@@ -2951,11 +2989,15 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 return;
             }
 
+            const savedName = localStorage.getItem('wordRushPlayerName');
+
             let body;
-            if (signedIn) {
-                const playerName = localStorage.getItem('wordRushPlayerName') || user.displayName?.split(' ')[0] || 'Player';
-                const isEmailUser = user.providerData?.some(p => p.providerId === 'password');
-                const isGoogleUser = user.providerData?.some(p => p.providerId === 'google.com');
+            {
+                const playerName = signedIn
+                    ? (localStorage.getItem('wordRushPlayerName') || user.displayName?.split(' ')[0] || 'Player')
+                    : (savedName || '');
+                const isEmailUser = signedIn && user.providerData?.some(p => p.providerId === 'password');
+                const isGoogleUser = signedIn && user.providerData?.some(p => p.providerId === 'google.com');
 
                 const providerSection = isEmailUser ? `
                     <div class="border-t border-slate-100 pt-2">
@@ -2975,36 +3017,45 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     <div class="border-t border-slate-100 pt-4 flex items-center gap-2">
                         ${googleSvg}
                         <span class="text-xs text-slate-400">Signed in with Google</span>
+                    </div>` : !signedIn ? `
+                    <div class="border-t border-slate-100 pt-4">
+                        <p class="text-xs text-slate-500 mb-2">Your scores are only saved on this device. Add an email to sync your stats everywhere.</p>
+                        <button id="profile-add-email-btn" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-2.5 px-4 rounded-lg text-sm transition-colors">Add Email</button>
+                    </div>` : '';
+
+                const emailSection = (signedIn && user.email) ? `
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Email</label>
+                        <p class="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-600">${user.email.replace(/</g, '&lt;')}</p>
+                    </div>` : '';
+
+                const signOutSection = signedIn ? `
+                    <div class="border-t border-slate-100 pt-4">
+                        <button id="profile-signout-btn" class="w-full flex items-center justify-center text-red-500 hover:text-red-700 font-semibold py-2.5 px-4 rounded-lg text-sm border border-red-200 hover:border-red-300 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" /></svg>
+                            Sign Out
+                        </button>
                     </div>` : '';
 
                 body = `<div class="space-y-3">
                     <div>
                         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Username</label>
                         <div class="flex gap-2">
-                            <input id="profile-username" type="text" value="${playerName.replace(/"/g, '&quot;')}" maxlength="20" class="${inputCls} flex-1">
+                            <input id="profile-username" type="text" value="${playerName.replace(/"/g, '&quot;')}" placeholder="Choose a username" maxlength="20" class="${inputCls} flex-1">
                             <button id="save-username-btn" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg text-sm transition-colors whitespace-nowrap">Save</button>
                         </div>
                         <p id="username-msg" class="text-xs mt-1 min-h-[16px]"></p>
                     </div>
+                    ${emailSection}
                     ${providerSection}
-                    <div class="border-t border-slate-100 pt-4">
-                        <button id="profile-signout-btn" class="w-full flex items-center justify-center text-red-500 hover:text-red-700 font-semibold py-2.5 px-4 rounded-lg text-sm border border-red-200 hover:border-red-300 transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" /></svg>
-                            Sign Out
-                        </button>
-                    </div>
-                </div>`;
-            } else {
-                body = `<div class="text-center py-8">
-                    <p class="text-slate-500 mb-5 text-sm">Sign in to manage your profile and sync your stats across devices.</p>
-                    <button id="profile-signin-btn" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 px-4 rounded-lg text-sm transition-colors">Sign In / Sign Up</button>
+                    ${signOutSection}
                 </div>`;
             }
 
             statsModalContent.innerHTML = wrapModal(body);
             attachShared();
 
-            if (signedIn) {
+            {
                 document.getElementById('save-username-btn').onclick = async () => {
                     const newName = document.getElementById('profile-username').value.trim();
                     const msgEl = document.getElementById('username-msg');
@@ -3020,7 +3071,15 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                             await setDoc(doc(db, 'players', userId), { name: newName, hasSubmittedName: true }, { merge: true });
                         }
                         const greetingEl = document.getElementById('player-greeting');
-                        if (greetingEl) greetingEl.innerHTML = `Welcome back, <strong class="font-bold">${newName}</strong>! 👋`;
+                        if (greetingEl) greetingEl.innerHTML = signedIn
+                            ? `Welcome back, <strong class="font-bold">${newName}</strong>! 👋`
+                            : `Welcome back, <strong class="font-bold">${newName}</strong>! 👋 &bull; <span id="greeting-signin-link" class="text-blue-500 hover:underline cursor-pointer">Add email</span>`;
+                        if (!signedIn) {
+                            setTimeout(() => {
+                                const link = document.getElementById('greeting-signin-link');
+                                if (link) link.onclick = () => showAccountModal('signup');
+                            }, 0);
+                        }
                         msgEl.textContent = 'Saved!';
                         msgEl.className = 'text-xs mt-1 text-green-600 min-h-[16px]';
                         setTimeout(() => { if (msgEl) msgEl.textContent = ''; }, 2000);
@@ -3029,6 +3088,16 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         msgEl.className = 'text-xs mt-1 text-red-500 min-h-[16px]';
                     }
                 };
+
+                if (!signedIn) {
+                    const addEmailBtn = document.getElementById('profile-add-email-btn');
+                    if (addEmailBtn) {
+                        addEmailBtn.onclick = () => {
+                            statsModal.classList.add('hidden');
+                            showAccountModal('signup');
+                        };
+                    }
+                }
 
                 const toggleBtn = document.getElementById('change-pw-toggle');
                 if (toggleBtn) {
@@ -3086,18 +3155,16 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     };
                 }
 
-                document.getElementById('profile-signout-btn').onclick = async () => {
-                    await signOut(auth);
-                    await signInAnonymously(auth);
-                    localStorage.removeItem('wordRushPlayerName');
-                    statsModal.classList.add('hidden');
-                    showWelcomeScreen();
-                };
-            } else {
-                document.getElementById('profile-signin-btn').onclick = () => {
-                    statsModal.classList.add('hidden');
-                    showAccountModal();
-                };
+                const signOutBtn = document.getElementById('profile-signout-btn');
+                if (signOutBtn) {
+                    signOutBtn.onclick = async () => {
+                        await signOut(auth);
+                        await signInAnonymously(auth);
+                        localStorage.removeItem('wordRushPlayerName');
+                        statsModal.classList.add('hidden');
+                        showWelcomeScreen();
+                    };
+                }
             }
         };
 
