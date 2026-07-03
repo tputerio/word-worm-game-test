@@ -70,6 +70,8 @@ service cloud.firestore {
       allow update: if isSignedIn() &&
                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['results']) &&
                        request.resource.data.results.diff(resource.data.get('results', {})).affectedKeys().hasOnly([request.auth.uid]);
+      // Creators may revoke (delete) their own challenges.
+      allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
     }
 
     // --- USERNAMES (unique username registry: usernames/{lowercased} -> uid) ---

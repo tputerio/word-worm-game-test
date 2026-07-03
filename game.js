@@ -2132,7 +2132,9 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         }));
 
         const now = Date.now();
+        const hidden = new Set(getHiddenChallenges());
         return Array.from(map.entries())
+            .filter(([id]) => !hidden.has(id))
             .map(([id, data]) => ({
                 id,
                 data,
@@ -2144,6 +2146,44 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     }
 
     const isIncomingChallenge = (c) => c.data.toUid === userId && !c.myResult;
+
+    // ---- Removing challenges: decline (recipient), revoke (creator), hide (local) ----
+
+    // Declining is recorded as a special result — the existing security rule
+    // ("you may only write your own results entry") already covers it, and every
+    // list/dot that keys off "do I have a result?" drops the challenge automatically.
+    async function declineChallenge(challengeId) {
+        const name = localStorage.getItem('wordRushPlayerName') || 'Player';
+        await updateDoc(doc(db, 'challenges', challengeId), {
+            [`results.${userId}`]: { declined: true, name, completedAt: serverTimestamp() }
+        });
+    }
+
+    // Deleting a challenge you created revokes it — it disappears from the
+    // recipient's incoming list too.
+    async function revokeChallenge(challengeId) {
+        await deleteDoc(doc(db, 'challenges', challengeId));
+        removeLocalChallengeId(challengeId);
+    }
+
+    const HIDDEN_CHALLENGES_KEY = 'wordWormHiddenChallenges';
+    function getHiddenChallenges() {
+        try { return JSON.parse(localStorage.getItem(HIDDEN_CHALLENGES_KEY) || '[]'); } catch(e) { return []; }
+    }
+    // Local-only removal, for challenges this player neither created nor can decline.
+    function hideChallengeLocally(challengeId) {
+        const hidden = getHiddenChallenges();
+        if (!hidden.includes(challengeId)) {
+            hidden.unshift(challengeId);
+            localStorage.setItem(HIDDEN_CHALLENGES_KEY, JSON.stringify(hidden.slice(0, 50)));
+        }
+        removeLocalChallengeId(challengeId);
+    }
+
+    function removeLocalChallengeId(challengeId) {
+        const stored = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
+        localStorage.setItem('wordWormChallenges', JSON.stringify(stored.filter(id => id !== challengeId)));
+    }
 
     // Tracks how many opponent results the player has already seen per challenge,
     // so "your friend finished" only notifies once.
@@ -2158,7 +2198,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         localStorage.setItem(SEEN_RESULTS_KEY, JSON.stringify(seen));
     }
     function hasUnseenResults(c) {
-        return !!c.myResult && c.otherResults.length > (getSeenResults()[c.id] || 0);
+        return !!c.myResult && !c.myResult.declined && c.otherResults.length > (getSeenResults()[c.id] || 0);
     }
 
     // A challenge needs attention if it's an unplayed incoming one, or an
@@ -2256,20 +2296,27 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             if (!sectionEl.isConnected || incoming.length === 0) return;
 
             const playIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clip-rule="evenodd"/></svg>`;
+            const xIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>`;
+            const visible = incoming.slice(0, 3);
+            const extra = incoming.length - visible.length;
             sectionEl.innerHTML = `
                 <p class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2 text-left flex items-center gap-1.5">
                     <span style="display:inline-block;width:8px;height:8px;background:#ef4444;border-radius:9999px;"></span>
                     Incoming Challenges
                 </p>
                 <div class="flex flex-col gap-2 mb-4">
-                    ${incoming.map(c => `
+                    ${visible.map(c => `
                         <div class="flex items-center justify-between px-4 py-2.5 rounded-xl bg-white gap-3" style="border:2px solid #22c55e">
                             <div class="flex flex-col min-w-0 text-left">
                                 <span class="text-sm font-semibold text-slate-800 truncate">${c.data.createdByName || 'A friend'} challenged you!</span>
                                 <span class="text-sm text-slate-400 mt-0.5">${c.data.results?.[c.data.createdBy] ? `Their score: ${c.data.results[c.data.createdBy].score}` : 'They haven’t played yet'}</span>
                             </div>
-                            <button class="incoming-play-btn flex items-center justify-center text-white rounded-lg flex-shrink-0" style="width:32px;height:32px;background:#22c55e" data-id="${c.id}">${playIcon}</button>
+                            <div class="flex items-center gap-1.5 flex-shrink-0">
+                                <button class="incoming-decline-btn flex items-center justify-center rounded-lg" style="width:32px;height:32px;background:#f1f5f9;color:#94a3b8;border:1px solid #e2e8f0" title="Decline" data-id="${c.id}">${xIcon}</button>
+                                <button class="incoming-play-btn flex items-center justify-center text-white rounded-lg" style="width:32px;height:32px;background:#22c55e" data-id="${c.id}">${playIcon}</button>
+                            </div>
                         </div>`).join('')}
+                    ${extra > 0 ? `<button id="incoming-more-link" class="text-xs text-slate-500 hover:text-slate-700 text-center py-1">+${extra} more in My Challenges</button>` : ''}
                 </div>`;
 
             sectionEl.querySelectorAll('.incoming-play-btn').forEach(btn => {
@@ -2283,6 +2330,20 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     showChallengeAcceptScreen(btn.dataset.id);
                 };
             });
+            sectionEl.querySelectorAll('.incoming-decline-btn').forEach(btn => {
+                btn.onclick = async () => {
+                    btn.disabled = true;
+                    try {
+                        await declineChallenge(btn.dataset.id);
+                        renderCreateChallenge(document.getElementById('account-modal-content'));
+                    } catch(e) {
+                        console.error('Failed to decline challenge:', e);
+                        btn.disabled = false;
+                    }
+                };
+            });
+            const moreLink = document.getElementById('incoming-more-link');
+            if (moreLink) moreLink.onclick = () => renderMyChallenges(document.getElementById('account-modal-content'));
         } catch(e) {
             console.error('Failed to load incoming challenges:', e);
         }
@@ -2348,8 +2409,27 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     setUsernameMsg(msgEl, "That's you! Enter a friend's username.", false);
                     return;
                 }
+                const toUid = snap.data().uid;
                 const toName = snap.data().displayName || uname;
-                const cid = await createChallengeDoc({ toUid: snap.data().uid, toName });
+
+                // Reuse an open (unfinished, undeclined) challenge to this friend
+                // instead of stacking up duplicates in their queue.
+                const existingSnap = await getDocs(query(collection(db, 'challenges'),
+                    where('createdBy', '==', userId), where('toUid', '==', toUid), limit(10)));
+                const now = Date.now();
+                const open = existingSnap.docs.find(d => {
+                    const dd = d.data();
+                    if (dd.expiresAt?.toDate && dd.expiresAt.toDate() < now) return false;
+                    const theirResult = dd.results?.[toUid];
+                    if (theirResult?.declined) return false;
+                    return !(dd.results?.[userId] && theirResult); // finished games get a fresh board
+                });
+                if (open) {
+                    goToChallengeScreen(open.id);
+                    return;
+                }
+
+                const cid = await createChallengeDoc({ toUid, toName });
                 goToChallengeScreen(cid);
             } catch(e) {
                 console.error('Failed to send username challenge:', e);
@@ -2509,20 +2589,35 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         const IC_PLAY     = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clip-rule="evenodd"/></svg>`;
         const IC_BELL     = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" /></svg>`;
         const IC_REFRESH  = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>`;
+        const IC_X        = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>`;
         const iconBtn = (cls, icon, bg, dataAttr = '') =>
             `<button class="${cls} flex items-center justify-center text-white rounded-lg flex-shrink-0" style="width:32px;height:32px;background:${bg}" ${dataAttr}>${icon}</button>`;
 
         const buildCard = ({ id, data, myResult, otherResults, expired }) => {
-            const topOther = [...otherResults].sort((a,b) => b[1].score - a[1].score)[0];
+            const realOthers = otherResults.filter(([, r]) => r && !r.declined);
+            const declinedByOther = otherResults.find(([, r]) => r && r.declined);
+            const topOther = [...realOthers].sort((a,b) => b[1].score - a[1].score)[0];
             const myPlayed = !!myResult;
             const friendPlayed = !!topOther;
             const isIncoming = data.toUid === userId;
+            const isMine = data.createdBy === userId;
             const friendName = isIncoming ? (data.createdByName || 'A friend') : data.toName;
             const challengeUrl = `${window.location.origin}${window.location.pathname}?c=${id}`;
 
+            // × removes the card: decline if it's an unplayed incoming challenge,
+            // revoke (delete) if the player created it, otherwise hide locally.
+            const removeAction = (isIncoming && !myPlayed) ? 'decline' : (isMine ? 'revoke' : 'hide');
+            const removeBtn = `<button class="challenge-remove-btn flex items-center justify-center rounded-lg flex-shrink-0" style="width:32px;height:32px;background:#f1f5f9;color:#94a3b8;border:1px solid #e2e8f0" title="Remove" data-id="${id}" data-action="${removeAction}">${IC_X}</button>`;
+
             let line1, line1Class, line2, borderStyle, btnHtml;
 
-            if (!myPlayed && !friendPlayed && !expired) {
+            if (declinedByOther && !friendPlayed && !expired) {
+                line1 = `${data.toName || declinedByOther[1].name || 'Friend'} declined`;
+                line1Class = 'text-slate-500';
+                line2 = myPlayed ? `Your score: ${myResult.score}` : '';
+                borderStyle = 'border:2px solid #ef4444';
+                btnHtml = '';
+            } else if (!myPlayed && !friendPlayed && !expired) {
                 line1 = isIncoming ? `${friendName} challenged you!` : (friendName ? `Waiting for ${friendName}` : 'Waiting for opponent');
                 line1Class = isIncoming ? 'text-slate-800 font-semibold' : 'text-slate-500';
                 line2 = isIncoming ? 'Play now!' : 'Play first!';
@@ -2563,7 +2658,10 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     <span class="text-sm font-semibold ${line1Class} truncate">${line1}</span>
                     <span class="text-sm text-slate-400 mt-0.5">${line2 || '&nbsp;'}</span>
                 </div>
-                ${btnHtml}
+                <div class="flex items-center gap-1.5 flex-shrink-0">
+                    ${removeBtn}
+                    ${btnHtml}
+                </div>
             </div>`;
         };
 
@@ -2597,11 +2695,26 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     renderCreateChallenge(container);
                 };
             });
+            listEl.querySelectorAll('.challenge-remove-btn').forEach(btn => {
+                btn.onclick = async () => {
+                    btn.disabled = true;
+                    try {
+                        if (btn.dataset.action === 'decline') await declineChallenge(btn.dataset.id);
+                        else if (btn.dataset.action === 'revoke') await revokeChallenge(btn.dataset.id);
+                        else hideChallengeLocally(btn.dataset.id);
+                        renderMyChallenges(container);
+                    } catch(e) {
+                        console.error('Failed to remove challenge:', e);
+                        btn.disabled = false;
+                    }
+                };
+            });
         };
 
         try {
             const all = await loadAllMyChallenges();
-            const valid = all.filter(c => !c.expired);
+            // Expired challenges and ones this player declined stay out of the list.
+            const valid = all.filter(c => !c.expired && !(c.myResult && c.myResult.declined));
 
             if (valid.length === 0) {
                 listEl.innerHTML = `<p class="text-center text-slate-500 text-sm py-6">No challenges yet.</p>`;
@@ -2658,9 +2771,10 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
             const data = snap.data();
             const myResult = data.results?.[userId];
-            const otherResults = Object.entries(data.results || {}).filter(([uid]) => uid !== userId);
+            const otherResults = Object.entries(data.results || {}).filter(([uid, r]) => uid !== userId && !r?.declined);
 
-            if (myResult) {
+            // A declined result doesn't lock the board — opening the link again lets them play.
+            if (myResult && !myResult.declined) {
                 showChallengeResultsScreen(challengeId, data, myResult, otherResults);
                 return;
             }
@@ -2848,7 +2962,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         endGameModal.classList.remove('hidden');
         messageModal.classList.add('hidden');
         if (challengeId) markChallengeResultsSeen(challengeId, otherResults.length);
-        const topOther = otherResults.sort((a,b) => b[1].score - a[1].score)[0];
+        const declinedOther = otherResults.find(([, r]) => r && r.declined);
+        const topOther = otherResults.filter(([, r]) => r && !r.declined).sort((a,b) => b[1].score - a[1].score)[0];
         const homeIcon = HOME_ICON;
         const refreshIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>`;
 
@@ -2871,12 +2986,17 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 </div>`;
         } else {
             const waitName = (data && (data.createdBy === userId ? data.toName : data.createdByName)) || 'your friend';
+            const statusHTML = declinedOther
+                ? `<div class="bg-red-50 border border-red-200 rounded-xl p-3">
+                        <p class="text-sm font-semibold text-red-500">${(data && data.toName) || declinedOther[1].name || 'Your friend'} declined this challenge.</p>
+                    </div>`
+                : `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                        <p class="text-sm font-semibold text-amber-700">Waiting for ${waitName} to play...</p>
+                    </div>`;
             comparisonHTML = `
                 <div class="my-4">
                     <p class="text-5xl font-black text-slate-800 mb-2">${myResult.score}</p>
-                    <div class="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                        <p class="text-sm font-semibold text-amber-700">Waiting for ${waitName} to play...</p>
-                    </div>
+                    ${statusHTML}
                 </div>`;
         }
 
