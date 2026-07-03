@@ -1,7 +1,7 @@
     // --- Firebase SDKs ---
     import { getApps, initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, getDocs, query, where, orderBy, limit, doc, getDoc, getDocFromServer, setDoc, updateDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, getDocs, query, where, orderBy, limit, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
      // --- Google Analytics ---
    // GOOGLE ANALYTICS -- import { getAnalytics, logEvent, setUserId } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-analytics.js";
@@ -283,10 +283,11 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
         summaryContainer.innerHTML = `
             <div class="w-full py-1">
                 <div class="flex gap-2">
-                    <input id="daily-name-input" type="text" maxlength="10" placeholder="Enter your name"
+                    <input id="daily-name-input" type="text" maxlength="15" placeholder="Enter a username"
                         class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-green-400">
                     <button id="daily-name-submit" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg text-sm">Submit</button>
                 </div>
+                <p id="daily-name-msg" class="text-xs mt-1 text-left min-h-[16px]"></p>
                 <button id="daily-create-account" class="text-xs text-green-500 hover:text-green-600 hover:underline mt-2 flex items-center py-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-1 flex-shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" /></svg>Sign up to save stats across devices</button>
             </div>`;
 
@@ -295,6 +296,7 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
             if (db && userId) {
                 try { await setDoc(doc(db, 'players', userId), { name, hasSubmittedName: true }, { merge: true }); } catch(e) {}
             }
+            claimUsername(name);
             await submitDailyScoreToLeaderboard(stats.score);
             showSummaryText();
         };
@@ -308,19 +310,16 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
             }
         });
 
-        document.getElementById('daily-name-submit').onclick = async () => {
-            const name = (document.getElementById('daily-name-input').value || '').trim().slice(0, 10);
+        attachUsernameCheck(document.getElementById('daily-name-input'), document.getElementById('daily-name-msg'));
+        const submitTypedDailyName = async () => {
+            const name = (document.getElementById('daily-name-input').value || '').trim().slice(0, 15);
             if (!name) return;
+            if (!(await validateNewUsername(name, document.getElementById('daily-name-msg')))) return;
             unsubscribeDailyAuth();
             await doSubmitName(name);
         };
-        document.getElementById('daily-name-input').onkeydown = async (e) => {
-            if (e.key !== 'Enter') return;
-            const name = (document.getElementById('daily-name-input').value || '').trim().slice(0, 10);
-            if (!name) return;
-            unsubscribeDailyAuth();
-            await doSubmitName(name);
-        };
+        document.getElementById('daily-name-submit').onclick = submitTypedDailyName;
+        document.getElementById('daily-name-input').onkeydown = (e) => { if (e.key === 'Enter') submitTypedDailyName(); };
         document.getElementById('daily-create-account').onclick = () => showAccountModal();
     } else {
         if (isNewSubmission) {
@@ -451,6 +450,7 @@ function showSubmitConfirmation() {
                     console.log("Firebase connected. User ID:", userId);
                     fetchGlobalStats();
                     fetchPlayerStats(userId);
+                    updateChallengeNotifDot();
                     if (pendingChallengeId) {
                         showChallengeAcceptScreen(pendingChallengeId);
                     }
@@ -578,6 +578,7 @@ function showGameMessage(message, type = 'info', startTile = null) {
         }
         if (playerName !== 'Anonymous') {
             localStorage.setItem('wordRushPlayerName', playerName);
+            claimUsername(playerName); // silent auto-claim; no-op if taken or already owned
         }
 
         const highScoreEl = document.getElementById('high-score');
@@ -1506,17 +1507,20 @@ function getTileFromEvent(e) {
         submissionContainer.innerHTML = `
             <div class="w-full py-1">
                 <div class="flex gap-2">
-                    <input id="endgame-name-input" type="text" maxlength="10" placeholder="Enter your name"
+                    <input id="endgame-name-input" type="text" maxlength="15" placeholder="Enter a username"
                         class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-green-400">
                     <button id="endgame-name-submit" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg text-sm">Submit</button>
                 </div>
+                <p id="endgame-name-msg" class="text-xs mt-1 text-left min-h-[16px]"></p>
                 <button id="endgame-create-account" class="text-xs text-green-500 hover:text-green-600 hover:underline mt-2 flex items-center py-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-1 flex-shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" /></svg>Sign up to save stats across devices</button>
             </div>`;
 
         const enteredName = await new Promise(resolve => {
-            const doSubmit = () => {
-                const name = (document.getElementById('endgame-name-input').value || '').trim().slice(0, 10);
-                if (name) resolve(name);
+            const doSubmit = async () => {
+                const name = (document.getElementById('endgame-name-input').value || '').trim().slice(0, 15);
+                if (!name) return;
+                if (!(await validateNewUsername(name, document.getElementById('endgame-name-msg')))) return;
+                resolve(name);
             };
             // Resolve automatically if the user completes sign-up via the account modal
             const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -1525,6 +1529,7 @@ function getTileFromEvent(e) {
                     resolve(localStorage.getItem('wordRushPlayerName') || user.displayName?.split(' ')[0] || 'Player');
                 }
             });
+            attachUsernameCheck(document.getElementById('endgame-name-input'), document.getElementById('endgame-name-msg'));
             document.getElementById('endgame-name-submit').onclick = doSubmit;
             document.getElementById('endgame-name-input').onkeydown = (e) => { if (e.key === 'Enter') doSubmit(); };
             document.getElementById('endgame-create-account').onclick = () => showAccountModal();
@@ -1575,7 +1580,9 @@ function getTileFromEvent(e) {
 
         // Update the document with merge: true to avoid update time conflicts
         await setDoc(playerDocRef, updateData, { merge: true });
-        
+        // Claim only freshly entered names here; existing names are auto-claimed at app open.
+        if (needsToSubmitName && finalPlayerName !== 'Anonymous') claimUsername(finalPlayerName);
+
         didBeatDailyHighScore = oldData.dailyHighScoreLastUpdated !== todayStr || finalScore > (oldData.dailyHighScore || 0);
         updatedStats = { ...oldData, ...updateData };
     } catch (e) {
@@ -1915,6 +1922,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     document.getElementById('mode-timed-btn').onclick = () => startGame(false, 'standard');
     document.getElementById('mode-challenge-btn').onclick = () => showChallengeFriendModal();
     document.getElementById('mode-daily-btn').onclick = () => startGame(false, 'daily');
+    updateChallengeNotifDot();
 
     // Check daily completion status
     (async () => {
@@ -2014,6 +2022,172 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         dailyBtn.onclick = () => startGame(false, 'daily');
     }
 
+    // ---- Usernames (unique, searchable player identities) ----
+    // usernames/{lowercased} -> { uid, displayName }. Claimed silently after games;
+    // uniqueness is only enforced among claimed names, so legacy duplicate display
+    // names keep working until their owner opts into the challenge feature.
+
+    const normalizeUsername = (name) => (name || '').trim().toLowerCase();
+    const isValidUsername = (name) => /^[a-z0-9_-]{2,15}$/.test(normalizeUsername(name));
+
+    // Returns 'invalid' | 'available' | 'mine' | 'taken'. Throws on network failure.
+    async function checkUsernameStatus(name) {
+        const uname = normalizeUsername(name);
+        if (!isValidUsername(uname)) return 'invalid';
+        const snap = await getDoc(doc(db, 'usernames', uname));
+        if (!snap.exists()) return 'available';
+        return snap.data().uid === userId ? 'mine' : 'taken';
+    }
+
+    // Tries to claim `displayName` for the current player. Returns true if the
+    // player owns the username afterwards. Never throws — losing the claim
+    // (name taken, race, offline) is always a silent no-op.
+    async function claimUsername(displayName) {
+        try {
+            if (!db || !userId) return false;
+            const uname = normalizeUsername(displayName);
+            if (!isValidUsername(uname)) return false;
+
+            const playerRef = doc(db, 'players', userId);
+            const playerSnap = await getDoc(playerRef);
+            const oldUsername = playerSnap.exists() ? playerSnap.data().username : null;
+            if (oldUsername === uname) return true;
+
+            const status = await checkUsernameStatus(uname);
+            if (status === 'taken' || status === 'invalid') return false;
+            if (status === 'available') {
+                // Security rules only allow creating a usernames doc that doesn't
+                // exist yet, so simultaneous claims are settled server-side.
+                await setDoc(doc(db, 'usernames', uname), {
+                    uid: userId,
+                    displayName: (displayName || '').trim(),
+                    createdAt: serverTimestamp()
+                });
+            }
+            await setDoc(playerRef, { username: uname }, { merge: true });
+            if (oldUsername && oldUsername !== uname) {
+                try { await deleteDoc(doc(db, 'usernames', oldUsername)); } catch(e) {}
+            }
+            return true;
+        } catch(e) {
+            return false;
+        }
+    }
+
+    const USERNAME_RULES_MSG = '2–15 characters: letters, numbers, - or _';
+
+    // Live availability feedback for a name input (new players picking a name).
+    function attachUsernameCheck(inputEl, msgEl) {
+        let debounceId;
+        inputEl.addEventListener('input', () => {
+            clearTimeout(debounceId);
+            const name = inputEl.value.trim();
+            if (!name) { msgEl.textContent = ''; return; }
+            debounceId = setTimeout(async () => {
+                try {
+                    const status = await checkUsernameStatus(name);
+                    if (status === 'invalid') setUsernameMsg(msgEl, USERNAME_RULES_MSG, false);
+                    else if (status === 'taken') setUsernameMsg(msgEl, 'That username is taken.', false);
+                    else setUsernameMsg(msgEl, 'Available!', true);
+                } catch(e) { msgEl.textContent = ''; }
+            }, 400);
+        });
+    }
+
+    function setUsernameMsg(msgEl, text, ok) {
+        msgEl.textContent = text;
+        msgEl.className = `text-xs mt-1 text-left min-h-[16px] ${ok ? 'text-green-600' : 'text-red-500'}`;
+    }
+
+    // Submit-time gate for first-time name entry. Fails open on network errors
+    // so a Firestore hiccup never blocks saving a score.
+    async function validateNewUsername(name, msgEl) {
+        try {
+            const status = await checkUsernameStatus(name);
+            if (status === 'invalid') { setUsernameMsg(msgEl, USERNAME_RULES_MSG, false); return false; }
+            if (status === 'taken') { setUsernameMsg(msgEl, 'That username is taken — try another.', false); return false; }
+            return true;
+        } catch(e) {
+            return true;
+        }
+    }
+
+    // Every challenge this player is involved in: ones they created, ones sent
+    // to them by username, and link challenges they've opened (localStorage).
+    async function loadAllMyChallenges() {
+        if (!db || !userId) return [];
+        const map = new Map();
+        const [createdSnap, incomingSnap] = await Promise.all([
+            getDocs(query(collection(db, 'challenges'), where('createdBy', '==', userId), limit(20))),
+            getDocs(query(collection(db, 'challenges'), where('toUid', '==', userId), limit(20)))
+        ]);
+        [...createdSnap.docs, ...incomingSnap.docs].forEach(d => map.set(d.id, d.data()));
+
+        const localIds = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
+        await Promise.all(localIds.filter(id => !map.has(id)).map(async id => {
+            try {
+                const snap = await getDocFromServer(doc(db, 'challenges', id));
+                if (snap.exists()) map.set(id, snap.data());
+            } catch(e) {}
+        }));
+
+        const now = Date.now();
+        return Array.from(map.entries())
+            .map(([id, data]) => ({
+                id,
+                data,
+                myResult: data.results?.[userId],
+                otherResults: Object.entries(data.results || {}).filter(([uid]) => uid !== userId),
+                expired: data.expiresAt?.toDate ? data.expiresAt.toDate() < now : false
+            }))
+            .sort((a, b) => (b.data.createdAt?.toMillis?.() ?? 0) - (a.data.createdAt?.toMillis?.() ?? 0));
+    }
+
+    const isIncomingChallenge = (c) => c.data.toUid === userId && !c.myResult;
+
+    // Tracks how many opponent results the player has already seen per challenge,
+    // so "your friend finished" only notifies once.
+    const SEEN_RESULTS_KEY = 'wordWormSeenResults';
+    function getSeenResults() {
+        try { return JSON.parse(localStorage.getItem(SEEN_RESULTS_KEY) || '{}'); } catch(e) { return {}; }
+    }
+    function markChallengeResultsSeen(challengeId, otherResultsCount) {
+        const seen = getSeenResults();
+        if ((seen[challengeId] || 0) >= otherResultsCount) return;
+        seen[challengeId] = otherResultsCount;
+        localStorage.setItem(SEEN_RESULTS_KEY, JSON.stringify(seen));
+    }
+    function hasUnseenResults(c) {
+        return !!c.myResult && c.otherResults.length > (getSeenResults()[c.id] || 0);
+    }
+
+    // A challenge needs attention if it's an unplayed incoming one, or an
+    // opponent finished it since the player last looked.
+    function challengeNeedsAttention(c) {
+        return !c.expired && (isIncomingChallenge(c) || hasUnseenResults(c));
+    }
+
+    const NOTIF_DOT_HTML = `<span class="challenge-notif-dot" style="position:absolute;top:-5px;right:-5px;width:14px;height:14px;background:#ef4444;border-radius:9999px;border:2px solid #fff;"></span>`;
+
+    function addNotifDot(btn) {
+        if (!btn || btn.querySelector('.challenge-notif-dot')) return;
+        btn.style.position = 'relative';
+        btn.insertAdjacentHTML('beforeend', NOTIF_DOT_HTML);
+    }
+
+    async function updateChallengeNotifDot() {
+        try {
+            if (!document.getElementById('mode-challenge-btn')) return;
+            const all = await loadAllMyChallenges();
+            const needsAttention = all.some(challengeNeedsAttention);
+            const btn = document.getElementById('mode-challenge-btn');
+            if (!btn) return;
+            const existing = btn.querySelector('.challenge-notif-dot');
+            if (!needsAttention) { if (existing) existing.remove(); return; }
+            addNotifDot(btn);
+        } catch(e) {}
+    }
+
     // ---- Challenge a Friend ----
 
     function showChallengeFriendModal(view = 'create') {
@@ -2035,21 +2209,226 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 <h2 class="text-lg font-bold text-slate-800 flex items-center">Challenge a Friend <span class="inline-block w-6 h-6 ml-2"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-slate-600"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg></span></h2>
                 <button id="close-challenge-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
             </div>
-            <p class="text-sm text-slate-500 mb-5">Send a board to a friend. Most words in 60 seconds wins.</p>
+            <div id="incoming-challenges"></div>
+            <div id="username-challenge-section" class="mb-4"></div>
             <button id="generate-challenge-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors flex items-center justify-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
-                Send Challenge
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" /></svg>
+                Share Challenge Link
             </button>
             <div id="challenge-link-result" class="mt-3"></div>
-            <hr class="my-5 border-slate-200">
-            <button id="view-my-challenges-btn" class="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold py-2.5 px-4 rounded-lg text-sm transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" /></svg>
+            <button id="view-my-challenges-btn" class="mt-3 w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold py-2.5 px-4 rounded-lg text-sm transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5m4-1v5l4 2" /></svg>
                 My Challenges
             </button>`;
 
         document.getElementById('generate-challenge-btn').onclick = () => generateAndSaveChallenge();
         document.getElementById('view-my-challenges-btn').onclick = () => renderMyChallenges(container);
         document.getElementById('close-challenge-modal').onclick = () => document.getElementById('account-modal').classList.add('hidden');
+
+        populateIncomingChallenges(document.getElementById('incoming-challenges'), document.getElementById('view-my-challenges-btn'));
+        populateUsernameChallengeSection(document.getElementById('username-challenge-section'));
+    }
+
+    // Renders pending challenges sent directly to this player at the top of the
+    // modal, and dots the My Challenges button if anything in there needs attention.
+    async function populateIncomingChallenges(sectionEl, myChallengesBtn) {
+        try {
+            const all = await loadAllMyChallenges();
+            if (myChallengesBtn && myChallengesBtn.isConnected && all.some(challengeNeedsAttention)) {
+                addNotifDot(myChallengesBtn);
+            }
+            const incoming = all.filter(c => !c.expired && isIncomingChallenge(c));
+            if (!sectionEl.isConnected || incoming.length === 0) return;
+
+            const playIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clip-rule="evenodd"/></svg>`;
+            sectionEl.innerHTML = `
+                <p class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2 text-left flex items-center gap-1.5">
+                    <span style="display:inline-block;width:8px;height:8px;background:#ef4444;border-radius:9999px;"></span>
+                    Incoming Challenges
+                </p>
+                <div class="flex flex-col gap-2 mb-4">
+                    ${incoming.map(c => `
+                        <div class="flex items-center justify-between px-4 py-2.5 rounded-xl bg-white gap-3" style="border:2px solid #22c55e">
+                            <div class="flex flex-col min-w-0 text-left">
+                                <span class="text-sm font-semibold text-slate-800 truncate">${c.data.createdByName || 'A friend'} challenged you!</span>
+                                <span class="text-sm text-slate-400 mt-0.5">${c.data.results?.[c.data.createdBy] ? `Their score: ${c.data.results[c.data.createdBy].score}` : 'They haven’t played yet'}</span>
+                            </div>
+                            <button class="incoming-play-btn flex items-center justify-center text-white rounded-lg flex-shrink-0" style="width:32px;height:32px;background:#22c55e" data-id="${c.id}">${playIcon}</button>
+                        </div>`).join('')}
+                </div>`;
+
+            sectionEl.querySelectorAll('.incoming-play-btn').forEach(btn => {
+                btn.onclick = () => {
+                    const stored = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
+                    if (!stored.includes(btn.dataset.id)) {
+                        stored.unshift(btn.dataset.id);
+                        localStorage.setItem('wordWormChallenges', JSON.stringify(stored.slice(0, 20)));
+                    }
+                    document.getElementById('account-modal').classList.add('hidden');
+                    showChallengeAcceptScreen(btn.dataset.id);
+                };
+            });
+        } catch(e) {
+            console.error('Failed to load incoming challenges:', e);
+        }
+    }
+
+    // Renders either the send-to-username form (player owns a username) or a
+    // one-time claim prompt (their display name is unclaimed or owned by someone else).
+    async function populateUsernameChallengeSection(sectionEl) {
+        let myUsername = null;
+        try {
+            if (db && userId) {
+                const snap = await getDoc(doc(db, 'players', userId));
+                myUsername = snap.exists() ? snap.data().username : null;
+                if (!myUsername) {
+                    // Legacy player: try a silent claim of their display name first.
+                    const displayName = localStorage.getItem('wordRushPlayerName');
+                    if (displayName && await claimUsername(displayName)) {
+                        myUsername = normalizeUsername(displayName);
+                    }
+                }
+            }
+        } catch(e) {}
+        if (!sectionEl.isConnected) return;
+
+        if (myUsername) {
+            renderSendToUsername(sectionEl, myUsername);
+        } else {
+            renderClaimUsernamePrompt(sectionEl);
+        }
+    }
+
+    function renderSendToUsername(sectionEl, myUsername) {
+        sectionEl.innerHTML = `
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 text-left">Send to a username</label>
+            <div class="flex gap-2">
+                <input id="challenge-username-input" type="text" maxlength="15" placeholder="Friend's username"
+                    class="flex-1 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+                <button id="challenge-username-send" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg text-sm">Send</button>
+            </div>
+            <p id="challenge-username-msg" class="text-xs mt-1 text-left min-h-[16px]"></p>
+            <div class="relative my-2"><div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div><div class="relative flex justify-center text-xs"><span class="bg-white px-2 text-slate-400 font-semibold">OR</span></div></div>`;
+
+        const inputEl = document.getElementById('challenge-username-input');
+        const msgEl = document.getElementById('challenge-username-msg');
+        const sendBtn = document.getElementById('challenge-username-send');
+
+        const doSend = async () => {
+            const uname = normalizeUsername(inputEl.value);
+            if (!uname) return;
+            if (uname === myUsername) { setUsernameMsg(msgEl, "That's you! Enter a friend's username.", false); return; }
+            if (!validationTrie || !fullDictionaryTrie) { setUsernameMsg(msgEl, 'Dictionaries still loading — try again in a moment.', false); return; }
+
+            sendBtn.disabled = true;
+            msgEl.textContent = 'Searching...';
+            msgEl.className = 'text-xs mt-1 text-left text-slate-500 min-h-[16px]';
+            try {
+                const snap = await getDoc(doc(db, 'usernames', uname));
+                if (!snap.exists()) {
+                    setUsernameMsg(msgEl, 'No player found with that username.', false);
+                    return;
+                }
+                if (snap.data().uid === userId) {
+                    setUsernameMsg(msgEl, "That's you! Enter a friend's username.", false);
+                    return;
+                }
+                const toName = snap.data().displayName || uname;
+                const cid = await createChallengeDoc({ toUid: snap.data().uid, toName });
+                setUsernameMsg(msgEl, `Challenge sent to ${toName}! They'll see it next time they open the game.`, true);
+                inputEl.value = '';
+
+                const resultEl = document.getElementById('challenge-link-result');
+                if (resultEl) {
+                    const btnId = `play-challenge-btn-${Date.now()}`;
+                    resultEl.innerHTML = `
+                        <button id="${btnId}" class="w-full mt-1 bg-white border border-green-300 hover:bg-green-50 text-green-700 font-bold py-2.5 px-4 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" /></svg>
+                            Play Your Challenge
+                        </button>`;
+                    document.getElementById(btnId).onclick = () => {
+                        document.getElementById('account-modal').classList.add('hidden');
+                        loadAndPlayChallenge(cid);
+                    };
+                }
+            } catch(e) {
+                console.error('Failed to send username challenge:', e);
+                setUsernameMsg(msgEl, 'Something went wrong. Please try again.', false);
+            } finally {
+                sendBtn.disabled = false;
+            }
+        };
+
+        sendBtn.onclick = doSend;
+        inputEl.onkeydown = (e) => { if (e.key === 'Enter') doSend(); };
+    }
+
+    function renderClaimUsernamePrompt(sectionEl) {
+        const displayName = localStorage.getItem('wordRushPlayerName');
+        const takenNote = displayName && isValidUsername(displayName)
+            ? `"${displayName}" is already taken — pick another to challenge friends directly:`
+            : 'Claim a username so friends can find and challenge you:';
+
+        sectionEl.innerHTML = `
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 text-left">Your username</label>
+            <p class="text-xs text-slate-500 mb-2 text-left">${takenNote}</p>
+            <div class="flex gap-2">
+                <input id="claim-username-input" type="text" maxlength="15" placeholder="Pick a username"
+                    class="flex-1 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+                <button id="claim-username-btn" class="bg-slate-800 hover:bg-slate-700 text-white font-bold py-2 px-4 rounded-lg text-sm">Claim</button>
+            </div>
+            <p id="claim-username-msg" class="text-xs mt-1 text-left min-h-[16px]"></p>
+            <div class="relative my-2"><div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div><div class="relative flex justify-center text-xs"><span class="bg-white px-2 text-slate-400 font-semibold">OR</span></div></div>`;
+
+        const inputEl = document.getElementById('claim-username-input');
+        const msgEl = document.getElementById('claim-username-msg');
+        attachUsernameCheck(inputEl, msgEl);
+
+        const doClaim = async () => {
+            const name = inputEl.value.trim();
+            if (!name) return;
+            if (!isValidUsername(name)) { setUsernameMsg(msgEl, USERNAME_RULES_MSG, false); return; }
+            msgEl.textContent = 'Claiming...';
+            msgEl.className = 'text-xs mt-1 text-left text-slate-500 min-h-[16px]';
+            const claimed = await claimUsername(name);
+            if (!claimed) {
+                setUsernameMsg(msgEl, 'That username is taken — try another.', false);
+                return;
+            }
+            // The claimed username becomes the player's display name too.
+            localStorage.setItem('wordRushPlayerName', name);
+            try { await setDoc(doc(db, 'players', userId), { name, hasSubmittedName: true }, { merge: true }); } catch(e) {}
+            renderSendToUsername(sectionEl, normalizeUsername(name));
+        };
+
+        document.getElementById('claim-username-btn').onclick = doClaim;
+        inputEl.onkeydown = (e) => { if (e.key === 'Enter') doClaim(); };
+    }
+
+    // Generates a fresh board and writes the challenge doc. `extraFields` lets a
+    // caller direct the challenge at a specific player (toUid/toName).
+    async function createChallengeDoc(extraFields = {}) {
+        const board = generateAndValidateBoard();
+        const allWords = solveBoard(board, fullDictionaryTrie);
+        const playerName = localStorage.getItem('wordRushPlayerName') || 'A friend';
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+        const challengeRef = await addDoc(collection(db, 'challenges'), {
+            board,
+            allWords: Array.from(allWords),
+            createdBy: userId,
+            createdByName: playerName,
+            createdAt: serverTimestamp(),
+            expiresAt,
+            results: {},
+            ...extraFields
+        });
+
+        const stored = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
+        stored.unshift(challengeRef.id);
+        localStorage.setItem('wordWormChallenges', JSON.stringify(stored.slice(0, 20)));
+
+        return challengeRef.id;
     }
 
     async function _createAndShareChallenge(btnEl, resultEl, playBtnHandler) {
@@ -2063,26 +2442,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         btnEl.innerHTML = `<svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Generating...</span>`;
 
         try {
-            const board = generateAndValidateBoard();
-            const allWords = solveBoard(board, fullDictionaryTrie);
-            const playerName = localStorage.getItem('wordRushPlayerName') || 'A friend';
-            const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-            const challengeRef = await addDoc(collection(db, 'challenges'), {
-                board,
-                allWords: Array.from(allWords),
-                createdBy: userId,
-                createdByName: playerName,
-                createdAt: serverTimestamp(),
-                expiresAt,
-                results: {}
-            });
-
-            const stored = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
-            stored.unshift(challengeRef.id);
-            localStorage.setItem('wordWormChallenges', JSON.stringify(stored.slice(0, 20)));
-
-            const challengeUrl = `${window.location.origin}${window.location.pathname}?c=${challengeRef.id}`;
+            const challengeId = await createChallengeDoc();
+            const challengeUrl = `${window.location.origin}${window.location.pathname}?c=${challengeId}`;
 
             let shared = false;
             if (navigator.share) {
@@ -2098,7 +2459,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             }
 
             if (shared) {
-                const cid = challengeRef.id;
+                const cid = challengeId;
                 const btnId = `play-challenge-btn-${Date.now()}`;
                 resultEl.innerHTML = `
                     <button id="${btnId}" class="w-full mt-1 bg-white border border-green-300 hover:bg-green-50 text-green-700 font-bold py-2.5 px-4 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors">
@@ -2170,25 +2531,27 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             const topOther = [...otherResults].sort((a,b) => b[1].score - a[1].score)[0];
             const myPlayed = !!myResult;
             const friendPlayed = !!topOther;
+            const isIncoming = data.toUid === userId;
+            const friendName = isIncoming ? (data.createdByName || 'A friend') : data.toName;
             const challengeUrl = `${window.location.origin}${window.location.pathname}?c=${id}`;
 
             let line1, line1Class, line2, borderStyle, btnHtml;
 
             if (!myPlayed && !friendPlayed && !expired) {
-                line1 = 'Waiting for opponent';
-                line1Class = 'text-slate-500';
-                line2 = 'Play first!';
+                line1 = isIncoming ? `${friendName} challenged you!` : (friendName ? `Waiting for ${friendName}` : 'Waiting for opponent');
+                line1Class = isIncoming ? 'text-slate-800 font-semibold' : 'text-slate-500';
+                line2 = isIncoming ? 'Play now!' : 'Play first!';
                 borderStyle = 'border:2px solid #cbd5e1';
                 btnHtml = iconBtn('challenge-play-btn', IC_PLAY, '#22c55e', `data-id="${id}"`);
             } else if (!myPlayed && friendPlayed && !expired) {
-                const fname = topOther[1].name || 'Friend';
-                line1 = `${fname} played`;
+                const fname = topOther[1].name || friendName || 'Friend';
+                line1 = isIncoming ? `${fname} challenged you!` : `${fname} played`;
                 line1Class = 'text-slate-800 font-semibold';
                 line2 = 'Your turn to beat it';
                 borderStyle = 'border:2px solid #cbd5e1';
                 btnHtml = iconBtn('challenge-play-btn', IC_PLAY, '#22c55e', `data-id="${id}"`);
             } else if (myPlayed && !friendPlayed) {
-                line1 = 'You played';
+                line1 = friendName ? `Waiting for ${friendName}` : 'You played';
                 line1Class = 'text-slate-500';
                 line2 = `Your score: ${myResult.score}`;
                 borderStyle = 'border:2px solid #cbd5e1';
@@ -2252,46 +2615,16 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         };
 
         try {
-            const localIds = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
-            const idSet = new Set(localIds);
+            const all = await loadAllMyChallenges();
+            const valid = all.filter(c => !c.expired);
 
-            if (db && userId) {
-                const q = query(collection(db, 'challenges'), where('createdBy', '==', userId), limit(20));
-                const snap = await getDocs(q);
-                snap.docs
-                    .sort((a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0))
-                    .slice(0, 10)
-                    .forEach(d => idSet.add(d.id));
-            }
-
-            if (idSet.size === 0) {
+            if (valid.length === 0) {
                 listEl.innerHTML = `<p class="text-center text-slate-500 text-sm py-6">No challenges yet.</p>`;
                 return;
             }
 
-            const now = Date.now();
-            const cards = await Promise.all(Array.from(idSet).map(async id => {
-                try {
-                    const snap = await getDocFromServer(doc(db, 'challenges', id));
-                    if (!snap.exists()) return null;
-                    const data = snap.data();
-                    const expired = data.expiresAt?.toDate ? data.expiresAt.toDate() < now : false;
-                    const myResult = data.results?.[userId];
-                    const otherResults = Object.entries(data.results || {}).filter(([uid]) => uid !== userId);
-                    return { id, data, myResult, otherResults, expired };
-                } catch(e) { return null; }
-            }));
-
-            const valid = cards.filter(c => c && !c.expired).sort((a,b) => {
-                const ta = a.data.createdAt?.toDate?.() ?? 0;
-                const tb = b.data.createdAt?.toDate?.() ?? 0;
-                return tb - ta;
-            });
-
-            if (valid.length === 0) {
-                listEl.innerHTML = `<p class="text-center text-slate-500 text-sm py-6">No challenges found.</p>`;
-                return;
-            }
+            // Everything shown here counts as seen for notification purposes.
+            valid.forEach(c => { if (c.myResult) markChallengeResultsSeen(c.id, c.otherResults.length); });
 
             const visible = valid.slice(0, 4);
             const hidden = valid.slice(4);
@@ -2482,12 +2815,13 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
                 <h2 class="text-2xl font-black text-green-500">Challenge Complete!</h2>
                 <p class="text-5xl font-black text-slate-800 my-4">${stats.score}</p>
-                <p class="text-slate-600 mb-4">Enter your name to save your score:</p>
-                <div class="flex gap-2 mb-3">
-                    <input id="challenge-name-input" type="text" maxlength="10" placeholder="Your name"
+                <p class="text-slate-600 mb-4">Enter a username to save your score:</p>
+                <div class="flex gap-2">
+                    <input id="challenge-name-input" type="text" maxlength="15" placeholder="Your username"
                         class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-green-400">
                     <button id="challenge-name-submit" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg text-sm">Save</button>
                 </div>
+                <p id="challenge-name-msg" class="text-xs mt-1 mb-2 text-left min-h-[16px]"></p>
                 <button id="challenge-create-account" class="text-xs text-green-500 hover:underline flex items-center justify-center gap-1 mb-4">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" /></svg>
                     Sign up to save stats across devices
@@ -2499,18 +2833,19 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             if (db && userId) {
                 try { await setDoc(doc(db, 'players', userId), { name, hasSubmittedName: true }, { merge: true }); } catch(e) {}
             }
+            claimUsername(name);
             await saveAndShowChallengeResult(stats, name);
         };
 
-        document.getElementById('challenge-name-submit').onclick = async () => {
-            const name = (document.getElementById('challenge-name-input').value || '').trim().slice(0, 10);
-            if (name) await doSave(name);
+        attachUsernameCheck(document.getElementById('challenge-name-input'), document.getElementById('challenge-name-msg'));
+        const submitTypedChallengeName = async () => {
+            const name = (document.getElementById('challenge-name-input').value || '').trim().slice(0, 15);
+            if (!name) return;
+            if (!(await validateNewUsername(name, document.getElementById('challenge-name-msg')))) return;
+            await doSave(name);
         };
-        document.getElementById('challenge-name-input').onkeydown = async (e) => {
-            if (e.key !== 'Enter') return;
-            const name = (document.getElementById('challenge-name-input').value || '').trim().slice(0, 10);
-            if (name) await doSave(name);
-        };
+        document.getElementById('challenge-name-submit').onclick = submitTypedChallengeName;
+        document.getElementById('challenge-name-input').onkeydown = (e) => { if (e.key === 'Enter') submitTypedChallengeName(); };
         document.getElementById('challenge-create-account').onclick = () => showAccountModal();
 
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -2525,6 +2860,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     function showChallengeResultsScreen(challengeId, data, myResult, otherResults, isNewSubmission = false) {
         endGameModal.classList.remove('hidden');
         messageModal.classList.add('hidden');
+        if (challengeId) markChallengeResultsSeen(challengeId, otherResults.length);
         const topOther = otherResults.sort((a,b) => b[1].score - a[1].score)[0];
         const homeIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg>`;
         const refreshIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>`;
@@ -2547,11 +2883,12 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     </div>
                 </div>`;
         } else {
+            const waitName = (data && (data.createdBy === userId ? data.toName : data.createdByName)) || 'your friend';
             comparisonHTML = `
                 <div class="my-4">
                     <p class="text-5xl font-black text-slate-800 mb-2">${myResult.score}</p>
                     <div class="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                        <p class="text-sm font-semibold text-amber-700">Waiting for your friend to play...</p>
+                        <p class="text-sm font-semibold text-amber-700">Waiting for ${waitName} to play...</p>
                     </div>
                 </div>`;
         }
@@ -2561,7 +2898,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 <button id="challenge-rematch-btn" class="w-full bg-indigo-400 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg text-base mb-2 flex items-center justify-center gap-2">
                     ${refreshIcon} Rematch
                 </button>
-                <button id="challenge-return-home" class="w-full flex items-center justify-center gap-2 text-slate-500 hover:text-slate-700 font-semibold py-2 text-sm">
+                <button id="challenge-return-home" class="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-lg text-base">
                     ${homeIcon} Return Home
                 </button>` : `
                 <button id="challenge-return-home" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">
@@ -3062,7 +3399,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     <div>
                         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Username</label>
                         <div class="flex gap-2">
-                            <input id="profile-username" type="text" value="${playerName.replace(/"/g, '&quot;')}" placeholder="Choose a username" maxlength="20" class="${inputCls} flex-1">
+                            <input id="profile-username" type="text" value="${playerName.replace(/"/g, '&quot;')}" placeholder="Choose a username" maxlength="15" class="${inputCls} flex-1">
                             <button id="save-username-btn" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg text-sm transition-colors whitespace-nowrap">Save</button>
                         </div>
                         <p id="username-msg" class="text-xs mt-1 min-h-[16px]"></p>
@@ -3077,12 +3414,24 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             attachShared();
 
             {
+                attachUsernameCheck(document.getElementById('profile-username'), document.getElementById('username-msg'));
                 document.getElementById('save-username-btn').onclick = async () => {
                     const newName = document.getElementById('profile-username').value.trim();
                     const msgEl = document.getElementById('username-msg');
                     if (!newName) {
                         msgEl.textContent = 'Name cannot be empty.';
                         msgEl.className = 'text-xs mt-1 text-red-500 min-h-[16px]';
+                        return;
+                    }
+                    if (!isValidUsername(newName)) {
+                        setUsernameMsg(msgEl, USERNAME_RULES_MSG, false);
+                        return;
+                    }
+                    msgEl.textContent = 'Checking...';
+                    msgEl.className = 'text-xs mt-1 text-slate-500 min-h-[16px]';
+                    const claimed = await claimUsername(newName);
+                    if (!claimed) {
+                        setUsernameMsg(msgEl, 'That username is taken — try another.', false);
                         return;
                     }
                     try {

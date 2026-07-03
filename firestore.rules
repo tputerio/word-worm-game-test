@@ -64,9 +64,25 @@ service cloud.firestore {
 
     // --- CHALLENGES (Friend challenge boards) ---
     match /challenges/{challengeId} {
-      allow create: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.createdBy == request.auth.uid;
       allow read:   if isSignedIn();
-      allow update: if isSignedIn();
+      // Players may only add or change their own entry in the results map.
+      allow update: if isSignedIn() &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['results']) &&
+                       request.resource.data.results.diff(resource.data.get('results', {})).affectedKeys().hasOnly([request.auth.uid]);
+    }
+
+    // --- USERNAMES (unique username registry: usernames/{lowercased} -> uid) ---
+    match /usernames/{name} {
+      allow get: if isSignedIn();
+      // Create only succeeds if the doc doesn't exist yet — first come, first served.
+      allow create: if isSignedIn() &&
+                       request.resource.data.uid == request.auth.uid &&
+                       name.matches('[a-z0-9_-]{2,15}');
+      allow update: if isSignedIn() &&
+                       resource.data.uid == request.auth.uid &&
+                       request.resource.data.uid == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
     }
   }
 }
