@@ -264,7 +264,7 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
             <div id="share-link-container" class="h-10 flex items-center justify-center mt-4"></div>
             <div class="flex space-x-2 mt-2">
                 <button id="endgame-leaderboard-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-base flex-1">Leaderboard</button>
-                <button id="return-home-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex-1">Return Home</button>
+                <button id="return-home-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex-1 flex items-center justify-center gap-2">${HOME_ICON} Return Home</button>
             </div>
             <div class="text-center text-xs text-slate-400 mt-4">
                 <p>&copy; 2026 Word Worm</p>
@@ -769,7 +769,7 @@ async function getDailyPuzzleWithTimeout() {
         gameContentEl.style.display = 'block';
         currentGamemode = 'challenge';
         isPracticeMode = false;
-        menuContainer.classList.remove('hidden');
+        menuContainer.classList.add('hidden'); // pause menu does nothing in challenge mode
         messageModal.classList.add('hidden');
         score = 0;
         foundWords = [];
@@ -2190,6 +2190,18 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
     // ---- Challenge a Friend ----
 
+    const HOME_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg>`;
+
+    // Lands on the challenge screen ("Playing against X" / Play Now) from
+    // anywhere — after sending a challenge, a rematch, etc.
+    function goToChallengeScreen(challengeId) {
+        const accountModal = document.getElementById('account-modal');
+        if (accountModal) accountModal.classList.add('hidden');
+        endGameModal.classList.add('hidden');
+        currentChallengeId = null;
+        showChallengeAcceptScreen(challengeId);
+    }
+
     function showChallengeFriendModal(view = 'create') {
         const accountModal = document.getElementById('account-modal');
         const accountModalContent = document.getElementById('account-modal-content');
@@ -2234,7 +2246,10 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     async function populateIncomingChallenges(sectionEl, myChallengesBtn) {
         try {
             const all = await loadAllMyChallenges();
-            if (myChallengesBtn && myChallengesBtn.isConnected && all.some(challengeNeedsAttention)) {
+            // My Challenges also dots for any challenge the player still needs to
+            // play — their own boards included — not just incoming/unseen ones.
+            const stillToPlay = (c) => !c.expired && !c.myResult;
+            if (myChallengesBtn && myChallengesBtn.isConnected && all.some(c => challengeNeedsAttention(c) || stillToPlay(c))) {
                 addNotifDot(myChallengesBtn);
             }
             const incoming = all.filter(c => !c.expired && isIncomingChallenge(c));
@@ -2335,22 +2350,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 }
                 const toName = snap.data().displayName || uname;
                 const cid = await createChallengeDoc({ toUid: snap.data().uid, toName });
-                setUsernameMsg(msgEl, `Challenge sent to ${toName}! They'll see it next time they open the game.`, true);
-                inputEl.value = '';
-
-                const resultEl = document.getElementById('challenge-link-result');
-                if (resultEl) {
-                    const btnId = `play-challenge-btn-${Date.now()}`;
-                    resultEl.innerHTML = `
-                        <button id="${btnId}" class="w-full mt-1 bg-white border border-green-300 hover:bg-green-50 text-green-700 font-bold py-2.5 px-4 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" /></svg>
-                            Play Your Challenge
-                        </button>`;
-                    document.getElementById(btnId).onclick = () => {
-                        document.getElementById('account-modal').classList.add('hidden');
-                        loadAndPlayChallenge(cid);
-                    };
-                }
+                goToChallengeScreen(cid);
             } catch(e) {
                 console.error('Failed to send username challenge:', e);
                 setUsernameMsg(msgEl, 'Something went wrong. Please try again.', false);
@@ -2431,7 +2431,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         return challengeRef.id;
     }
 
-    async function _createAndShareChallenge(btnEl, resultEl, playBtnHandler) {
+    async function _createAndShareChallenge(btnEl, resultEl) {
         if (!validationTrie || !fullDictionaryTrie) {
             resultEl.innerHTML = `<p class="text-sm text-red-500 text-center">Dictionaries still loading — try again in a moment.</p>`;
             return;
@@ -2445,28 +2445,16 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             const challengeId = await createChallengeDoc();
             const challengeUrl = `${window.location.origin}${window.location.pathname}?c=${challengeId}`;
 
-            let shared = false;
             if (navigator.share) {
                 await navigator.share({
                     text: `🐛 I challenge you to a game of Word Worm! Think you can beat me? ${challengeUrl}`,
                 });
-                shared = true;
+                goToChallengeScreen(challengeId);
             } else {
                 await navigator.clipboard.writeText(challengeUrl);
                 btnEl.innerHTML = `Link Copied!`;
-                setTimeout(() => { btnEl.innerHTML = origHTML; btnEl.disabled = false; }, 2000);
-                shared = true;
-            }
-
-            if (shared) {
-                const cid = challengeId;
-                const btnId = `play-challenge-btn-${Date.now()}`;
-                resultEl.innerHTML = `
-                    <button id="${btnId}" class="w-full mt-1 bg-white border border-green-300 hover:bg-green-50 text-green-700 font-bold py-2.5 px-4 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" /></svg>
-                        Play Your Challenge
-                    </button>`;
-                document.getElementById(btnId).onclick = () => playBtnHandler(cid);
+                // Brief confirmation the link is on the clipboard, then land on the challenge screen.
+                setTimeout(() => goToChallengeScreen(challengeId), 1200);
             }
 
         } catch(e) {
@@ -2486,10 +2474,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         const btn = document.getElementById('generate-challenge-btn');
         const resultEl = document.getElementById('challenge-link-result');
         if (!btn || !resultEl) return;
-        await _createAndShareChallenge(btn, resultEl, (cid) => {
-            document.getElementById('account-modal').classList.add('hidden');
-            loadAndPlayChallenge(cid);
-        });
+        await _createAndShareChallenge(btn, resultEl);
     }
 
     async function renderMyChallenges(container) {
@@ -2666,7 +2651,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         try {
             const snap = await getDoc(doc(db, 'challenges', challengeId));
             if (!snap.exists()) {
-                modalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-lg p-6 text-center"><p class="text-slate-700 font-bold mb-4">Challenge not found.</p><button id="challenge-go-home" class="bg-green-500 text-white font-bold py-2 px-6 rounded-lg">Go Home</button></div>`;
+                modalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-lg p-6 text-center"><p class="text-slate-700 font-bold mb-4">Challenge not found.</p><button id="challenge-go-home" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">${HOME_ICON} Return Home</button></div>`;
                 document.getElementById('challenge-go-home').onclick = () => { history.replaceState(null,'',window.location.pathname); pendingChallengeId = null; showWelcomeScreen(); };
                 return;
             }
@@ -2690,9 +2675,10 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
             if (isSelf) {
                 const topFriend = otherResults.sort((a,b) => b[1].score - a[1].score)[0];
+                const oppName = data.toName;
                 const friendStatus = topFriend
                     ? `<p class="text-sm text-slate-600 mb-6"><strong>${topFriend[1].name}</strong> scored <strong class="text-slate-800">${topFriend[1].score}</strong> — can you beat it?</p>`
-                    : `<p class="text-sm text-slate-500 mb-6">Your friend hasn't played yet.</p>`;
+                    : `<p class="text-sm text-slate-500 mb-6">${oppName ? `${oppName} hasn't played yet.` : `Your friend hasn't played yet.`}</p>`;
 
                 modalContent.innerHTML = `
                     <div class="bg-white rounded-2xl shadow-lg p-6 text-center">
@@ -2701,11 +2687,12 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-9 h-9 text-green-600"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg>
                         </div>
                         <h2 class="text-2xl font-black text-slate-800 mb-2">Your Challenge</h2>
+                        ${oppName ? `<p class="text-slate-500 mb-2">Playing against <strong>${oppName}</strong></p>` : ''}
                         ${friendStatus}
                         <button id="accept-challenge-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl text-lg mb-3 flex items-center justify-center gap-2">
                             ${playIcon} Play Now
                         </button>
-                        <button id="challenge-go-home" class="w-full text-slate-500 hover:text-slate-700 font-semibold py-2 text-sm">Go Home</button>
+                        <button id="challenge-go-home" class="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-lg text-base">${HOME_ICON} Return Home</button>
                     </div>`;
             } else {
                 modalContent.innerHTML = `
@@ -2720,7 +2707,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         <button id="accept-challenge-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl text-lg mb-3 flex items-center justify-center gap-2">
                             ${playIcon} Play Now
                         </button>
-                        <button id="challenge-go-home" class="w-full text-slate-500 hover:text-slate-700 font-semibold py-2 text-sm">Go Home</button>
+                        <button id="challenge-go-home" class="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-lg text-base">${HOME_ICON} Return Home</button>
                     </div>`;
             }
 
@@ -2729,7 +2716,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
         } catch(e) {
             console.error('Error loading challenge:', e);
-            modalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-lg p-6 text-center"><p class="text-red-500 mb-4">Failed to load challenge.</p><button id="challenge-go-home" class="bg-green-500 text-white font-bold py-2 px-6 rounded-lg">Go Home</button></div>`;
+            modalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-lg p-6 text-center"><p class="text-red-500 mb-4">Failed to load challenge.</p><button id="challenge-go-home" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">${HOME_ICON} Return Home</button></div>`;
             document.getElementById('challenge-go-home').onclick = () => { history.replaceState(null,'',window.location.pathname); pendingChallengeId = null; showWelcomeScreen(); };
         }
     }
@@ -2862,7 +2849,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         messageModal.classList.add('hidden');
         if (challengeId) markChallengeResultsSeen(challengeId, otherResults.length);
         const topOther = otherResults.sort((a,b) => b[1].score - a[1].score)[0];
-        const homeIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg>`;
+        const homeIcon = HOME_ICON;
         const refreshIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>`;
 
         let comparisonHTML;
@@ -2918,11 +2905,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             document.getElementById('challenge-rematch-btn').onclick = async () => {
                 const rematchBtn = document.getElementById('challenge-rematch-btn');
                 const rematchResult = document.getElementById('rematch-result');
-                await _createAndShareChallenge(rematchBtn, rematchResult, (cid) => {
-                    endGameModal.classList.add('hidden');
-                    currentChallengeId = null;
-                    loadAndPlayChallenge(cid);
-                });
+                await _createAndShareChallenge(rematchBtn, rematchResult);
             };
         }
         document.getElementById('challenge-return-home').onclick = () => { currentChallengeId = null; resetGame(); };
