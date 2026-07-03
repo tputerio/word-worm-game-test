@@ -40,7 +40,10 @@
     setDarkMode(localStorage.getItem('wordWormDarkMode') === 'true');
 
     // --- Haptics (vibration on found words; toggle in Settings and Pause) ---
-    const hapticsSupported = 'vibrate' in navigator;
+    // Requires both the Vibration API and a touch device: desktop Chrome exposes
+    // navigator.vibrate but laptops can't vibrate, and iOS Safari has no
+    // Vibration API at all (web pages can't trigger haptics on iPhone).
+    const hapticsSupported = 'vibrate' in navigator && window.matchMedia('(pointer: coarse)').matches;
     function hapticsEnabled() {
         return hapticsSupported && localStorage.getItem('wordWormHaptics') !== 'false';
     }
