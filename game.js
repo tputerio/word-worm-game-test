@@ -39,6 +39,22 @@
     }
     setDarkMode(localStorage.getItem('wordWormDarkMode') === 'true');
 
+    // --- Haptics (vibration on found words; toggle in Settings and Pause) ---
+    const hapticsSupported = 'vibrate' in navigator;
+    function hapticsEnabled() {
+        return hapticsSupported && localStorage.getItem('wordWormHaptics') !== 'false';
+    }
+    function setHaptics(on) {
+        localStorage.setItem('wordWormHaptics', on ? 'true' : 'false');
+        document.querySelectorAll('.haptics-toggle-track').forEach(el => {
+            el.classList.toggle('active', on);
+            el.setAttribute('aria-checked', String(on));
+        });
+    }
+    function vibrateOnWord() {
+        if (hapticsEnabled()) navigator.vibrate(35);
+    }
+
     // --- Firebase State ---
     let auth, db, userId;
    // GOOGLE ANALYTICS -- let auth, db, userId, analytics;
@@ -89,8 +105,8 @@
     let practiceTimeElapsed = 0;
     let animationInterval;
     let currentGamemode = 'standard';
-    let dailyChallengeData = null;
     let allDailyWords = new Set();
+    let lastKnownStreak = 0;
     let currentChallengeId = null;
     let pendingChallengeId = new URLSearchParams(window.location.search).get('c') || null;
     let activeGridEl;
@@ -113,94 +129,6 @@
     }
 
 
-    // Creates a seed (a number) from any string (like a date)
-function stringToSeed(str) {
-    let hash = 0;
-    if (str.length === 0) return hash;
-    for (let i = 0; i < str.length; i++) {
-        const char = str.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash |= 0; // Convert to 32bit integer
-    }
-    return hash;
-}
-
-// A simple seeded random number generator (PRNG)
-function mulberry32(seed) {
-    return function() {
-      let t = seed += 0x6D2B79F5;
-      t = Math.imul(t ^ t >>> 15, t | 1);
-      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-      return ((t ^ t >>> 14) >>> 0) / 4294967296;
-    }
-}
-
-/**
- * Creates the board for the daily challenge, ensuring it meets specific quality criteria.
- * @returns {Object} An object containing the board array and the set of all possible words.
- */
-function createDailyChallengeBoard() {
-    const todayStr = new Date().toLocaleDateString('en-CA');
-    let attempt = 0;
-
-    while (attempt < 2000) {
-        const seed = stringToSeed(`${todayStr}-${attempt}`);
-        const rng = mulberry32(seed);
-        const board = new Array(GRID_SIZE).fill(null).map(() => getRandomLetterSeeded(rng));
-
-        // --- 1. Basic Board Health Checks ---
-        const vowelCount = board.filter(letter => VOWELS.includes(letter)).length;
-        if (vowelCount < 4 || vowelCount > 8) { attempt++; continue; }
-        const hardConsonantCount = board.filter(letter => HARD_CONSONANTS.includes(letter)).length;
-        if (hardConsonantCount > 2) { attempt++; continue; }
-        const qIndex = board.indexOf("Q");
-        if (qIndex !== -1 && !getNeighbors(qIndex, board).some(letter => letter === "U")) { attempt++; continue; }
-        if (!checkNoClumps(board)) { attempt++; continue; }
-
-        // --- 2. Word-Based Validation ---
-        const commonWords = solveBoard(board, validationTrie);
-        const allWords = solveBoard(board, fullDictionaryTrie);
-
-        // ✅ FIX: The rule is now simpler: just require at least one word that is 6+ letters long.
-        const hasLongWord = Array.from(allWords).some(w => w.length >= 6);
-
-        // Check our main rules plus the new long word rule.
-        if (commonWords.size >= 30 && allWords.size <= 60 && hasLongWord) {
-            console.log(`Daily board found for ${todayStr} in ${attempt + 1} attempts.`);
-            console.log(`Board Stats: ${commonWords.size} common, ${allWords.size - commonWords.size} non-common. Total: ${allWords.size}.`);
-            console.log("All possible daily words:", Array.from(allWords).sort());
-            
-            const indices = Array.from({length: 16}, (_, i) => i);
-            let bonusTypes = ['DW', 'DW', 'TL', 'DL', 'DL', 'DL'];
-
-            for (let i = indices.length - 1; i > 0; i--) {
-                const j = Math.floor(rng() * (i + 1));
-                [indices[i], indices[j]] = [indices[j], indices[i]];
-            }
-            for (let i = bonusTypes.length - 1; i > 0; i--) {
-                const j = Math.floor(rng() * (i + 1));
-                [bonusTypes[i], bonusTypes[j]] = [bonusTypes[j], bonusTypes[i]];
-            }
-
-            const bonuses = indices.slice(0, 6).map((tileIndex, i) => ({
-                index: tileIndex,
-                type: bonusTypes[i]
-            }));
-
-            return {
-                board: board,
-                allWords: allWords,
-                bonuses: []
-            };
-        }
-        
-        attempt++;
-    }
-
-    console.error("Failed to generate a daily board that meets the criteria.");
-    return { board: ['W','O','R','D','W','O','R','M','G','A','M','E','P','L','A','Y'], allWords: new Set(), bonuses: [] };
-}
-
     // --- Init ---
     function main() {
         setupEventListeners();
@@ -217,7 +145,7 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
     endGameModal.classList.remove('hidden');
     endGameModalContent.innerHTML = `
         <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
-            <h2 class="text-2xl font-black text-green-500">Daily Challenge Complete!</h2>
+            <h2 class="text-2xl font-black text-green-500">Daily Puzzle Complete!</h2>
             <p class="text-slate-600 my-4">Calculating your final results...</p>
             <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mx-auto"></div>
         </div>`;
@@ -252,7 +180,7 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
 
     endGameModalContent.innerHTML = `
         <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
-             <h2 class="text-2xl font-black text-green-500">Daily Challenge Complete!</h2>
+             <h2 class="text-2xl font-black text-green-500">Daily Puzzle Complete!</h2>
             <p class="text-slate-600 mb-2 mt-2">Your final score is:</p>
             <p id="final-score-display" class="text-6xl font-black text-slate-800 mb-3">${stats.score}</p>
             <div id="daily-summary-container" class="flex items-center justify-center"></div>
@@ -266,6 +194,7 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
                 <button id="endgame-leaderboard-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-base flex-1">Leaderboard</button>
                 <button id="return-home-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex-1 flex items-center justify-center gap-2">${HOME_ICON} Return Home</button>
             </div>
+            <p id="next-puzzle-countdown" class="text-xs font-semibold text-slate-500 mt-3"></p>
             <div class="text-center text-xs text-slate-400 mt-4">
                 <p>&copy; 2026 Word Worm</p>
                 <p><a href="/about.html" class="hover:underline">About</a> &bull; <a href="/contact.html" class="hover:underline">Contact</a> &bull; <a href="/privacy.html" class="hover:underline">Privacy Policy</a> &bull; <a href="/terms.html" class="hover:underline">Terms of Use</a></p>
@@ -332,15 +261,36 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
     if (scoreDisplay) {
         triggerEndGameConfetti(scoreDisplay);
     }
-    
+
     document.getElementById('return-home-button').onclick = resetGame;
     document.getElementById('endgame-leaderboard-button').onclick = () => showLeaderboardModal(currentGamemode === 'daily' ? 'challenge' : 'daily');
 
+    startNextPuzzleCountdown();
+
     const shareLinkContainer = document.getElementById('share-link-container');
     if (navigator.share || navigator.clipboard) {
-        const shareIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-1"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" /></svg>`;        shareLinkContainer.innerHTML = `<a href="#" id="share-score-link" class="flex items-center text-blue-500 hover:underline font-bold">${shareIcon} Share Score</a>`;
-        document.getElementById('share-score-link').onclick = (e) => { e.preventDefault(); shareScore(); };
+        const shareIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-1"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" /></svg>`;        shareLinkContainer.innerHTML = `<a href="#" id="share-score-link" class="flex items-center text-blue-500 hover:underline font-bold">${shareIcon} Share Result</a>`;
+        document.getElementById('share-score-link').onclick = (e) => { e.preventDefault(); shareDailyResult({ score: stats.score, foundCount, totalCount }); };
     }
+}
+
+// Ticks the "Next puzzle in Xh Ym" line on the daily end screen. The interval
+// self-clears once the element is gone (modal closed or re-rendered).
+let nextPuzzleCountdownInterval;
+function startNextPuzzleCountdown() {
+    clearInterval(nextPuzzleCountdownInterval);
+    const update = () => {
+        const el = document.getElementById('next-puzzle-countdown');
+        if (!el) { clearInterval(nextPuzzleCountdownInterval); return; }
+        const nyNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+        const nextMidnight = new Date(nyNow);
+        nextMidnight.setHours(24, 0, 0, 0);
+        const diffMins = Math.max(0, Math.round((nextMidnight - nyNow) / 60000));
+        const h = Math.floor(diffMins / 60), m = diffMins % 60;
+        el.textContent = `⏳ Next Daily Puzzle in ${h}h ${m}m`;
+    };
+    update();
+    nextPuzzleCountdownInterval = setInterval(update, 30000);
 }
 
 function showSubmitConfirmation() {
@@ -356,7 +306,7 @@ function showSubmitConfirmation() {
                 </svg>
             </div>
             <h3 class="text-xl font-bold text-slate-800">You've found ${foundWords.length}/${allDailyWords.size} words!</h3>
-            <p class="text-sm text-slate-500 mt-2 mb-6">Ready to submit? You can only play the daily challenge once per day.</p>
+            <p class="text-sm text-slate-500 mt-2 mb-6">Ready to submit? You can only play the Daily Puzzle once per day.</p>
             <div class="flex space-x-2">
                 <button id="cancel-submit-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-base flex-1">Cancel</button>
                 <button id="confirm-submit-button" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base flex-1">Submit</button>
@@ -380,7 +330,7 @@ function showSubmitConfirmation() {
         endGameModal.classList.remove('hidden');
         endGameModalContent.innerHTML = `
             <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
-                <h2 class="text-2xl font-black text-green-500">Daily Challenge Complete!</h2>
+                <h2 class="text-2xl font-black text-green-500">Daily Puzzle Complete!</h2>
                 <p class="text-slate-600 my-4">Submitting your score...</p>
                 <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mx-auto"></div>
             </div>`;
@@ -570,6 +520,7 @@ function showGameMessage(message, type = 'info', startTile = null) {
             playerName = playerData.name && playerData.name !== 'Anonymous' ? playerData.name : 'Anonymous';
             playStreak = playerData.playStreak || 0;
         }
+        lastKnownStreak = playStreak;
 
         // For signed-in users Firestore is authoritative; for anonymous users prefer localStorage
         // so a saved guest name isn't overwritten by 'Anonymous' from an empty Firestore doc.
@@ -684,12 +635,7 @@ function showGameMessage(message, type = 'info', startTile = null) {
 }
     
     function getRandomLetter() { return LETTER_BAG_STRING[Math.floor(Math.random() * LETTER_BAG_STRING.length)]; }
-   
-   function getRandomLetterSeeded(rng) {
-    // This is the same logic, but uses our predictable 'rng' function
-    return LETTER_BAG_STRING[Math.floor(rng() * LETTER_BAG_STRING.length)];
-}
-   
+
     function getBonusType() {
         const rand = Math.random();
         if (rand < 0.08) return { type: 'Time', label: '+5s', class: 'bonus-Time' };
@@ -706,15 +652,6 @@ function showGameMessage(message, type = 'info', startTile = null) {
         if (rand < 0.40) return { type: 'DL', label: 'DL', class: 'bonus-DL' };
         return null;
     }
-
-    function getBonusTypeSeeded(rng) {
-    // This is the same logic, but uses our predictable 'rng' function
-    const rand = rng(); 
-    if (rand < 0.18) return { type: 'DW', label: 'DW', class: 'bonus-DW' };
-    if (rand < 0.28) return { type: 'TL', label: 'TL', class: 'bonus-TL' };
-    if (rand < 0.40) return { type: 'DL', label: 'DL', class: 'bonus-DL' };
-    return null;
-}
 
 async function getDailyPuzzleWithTimeout() {
     const startTime = Date.now();
@@ -769,11 +706,10 @@ async function getDailyPuzzleWithTimeout() {
         gameContentEl.style.display = 'block';
         currentGamemode = 'challenge';
         isPracticeMode = false;
-        menuContainer.classList.add('hidden'); // pause menu does nothing in challenge mode
+        menuContainer.classList.remove('hidden');
         messageModal.classList.add('hidden');
         score = 0;
         foundWords = [];
-        allDailyWords = challengeData.allWords;
         updateScoreDisplay();
         timer = GAME_TIME;
         topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">0</div>`;
@@ -783,7 +719,7 @@ async function getDailyPuzzleWithTimeout() {
         activeGridEl = document.getElementById('grid');
         activeCanvasEl = document.getElementById('line-canvas');
         activeCtx = activeCanvasEl.getContext('2d');
-        createGrid(challengeData.board, activeGridEl);
+        createGrid(challengeData.board, activeGridEl, challengeData.bonuses || []);
         attachGridListeners(activeGridEl);
         activeGridEl.style.pointerEvents = 'auto';
         return;
@@ -910,51 +846,48 @@ function resetGame() {
     topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${currentHighScore}</div>`;
     
     showWelcomeScreen();
-    // ✅ FIX: Manually re-fetch player stats to update the welcome screen
-    if (userId) {
-        fetchPlayerStats(userId);
-    }
 }
 
- // ✅ ADD THIS ENTIRE NEW FUNCTION
+const startInteraction = e => {
+    e.preventDefault();
+    isMouseDown = true;
+    clearSelection();
+    const tile = getTileFromEvent(e);
+    handleInteraction(tile);
+};
+
+const moveInteraction = e => {
+    if (!isMouseDown) return;
+    e.preventDefault();
+    const tile = getTileFromEvent(e);
+    handleInteraction(tile);
+};
+
+const endInteraction = () => {
+    if (!isMouseDown) return;
+    submitWord();
+    isMouseDown = false;
+};
+
+let resizeListenerAttached = false;
 function attachGridListeners(gridEl) {
     if (!gridEl) return;
 
-    const startInteraction = e => {
-        e.preventDefault();
-        isMouseDown = true;
-        clearSelection();
-        const tile = getTileFromEvent(e);
-        handleInteraction(tile);
-    };
-    
-    const moveInteraction = e => {
-        if (!isMouseDown) return;
-        e.preventDefault();
-        const tile = getTileFromEvent(e);
-        handleInteraction(tile);
-    };
+    // Attach at most once per grid element — the handlers are shared module-level
+    // functions, so re-running this for the same element would double-fire them.
+    if (!gridEl.dataset.listenersAttached) {
+        gridEl.addEventListener('pointerdown', startInteraction);
+        gridEl.addEventListener('pointermove', moveInteraction);
+        gridEl.addEventListener('pointerup', endInteraction);
+        gridEl.addEventListener('pointerleave', endInteraction);
+        gridEl.dataset.listenersAttached = 'true';
+    }
 
-    const endInteraction = () => {
-        if (!isMouseDown) return;
-        submitWord();
-        isMouseDown = false;
-    };
-
-    // Remove old listeners to prevent duplicates, then add new ones
-    gridEl.removeEventListener('pointerdown', startInteraction);
-    gridEl.removeEventListener('pointermove', moveInteraction);
-    gridEl.removeEventListener('pointerup', endInteraction);
-    gridEl.removeEventListener('pointerleave', endInteraction);
-
-    gridEl.addEventListener('pointerdown', startInteraction);
-    gridEl.addEventListener('pointermove', moveInteraction);
-    gridEl.addEventListener('pointerup', endInteraction);
-    gridEl.addEventListener('pointerleave', endInteraction);
-
-    // Initial resize and setup listener for window resizing
     resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
+    if (!resizeListenerAttached) {
+        window.addEventListener('resize', resizeCanvas);
+        resizeListenerAttached = true;
+    }
 }
 
 function setupDailyUI(challengeData) {
@@ -1003,7 +936,7 @@ function setupDailyUI(challengeData) {
             <div id="accordion-container" class="relative z-30 mb-3">
                 <button id="accordion-trigger" class="w-full flex justify-between items-center p-3 bg-white rounded-xl shadow-md">
                     <div id="collapsed-view" class="flex-grow flex items-center gap-2 overflow-hidden pr-2">
-                        <div id="instruction-text" class="text-xs text-slate-500 w-full pr-2"><strong>Daily Challenge (${dateString}):</strong> Find as many words as possible, then hit Submit when done!</div>
+                        <div id="instruction-text" class="text-xs text-slate-500 w-full pr-2"><strong>Daily Puzzle (${dateString}):</strong> Find as many words as possible, then hit Submit when done!</div>
                         <div id="last-found-view" class="hidden flex-grow flex items-center gap-2 overflow-hidden">
                             <span class="text-xs font-bold text-slate-500 shrink-0">LAST FOUND:</span>
                             <div id="recent-words-display" class="flex gap-2 flex-nowrap"></div>
@@ -1230,9 +1163,10 @@ function replaceSelectedTiles() {
         updateDailyChallengeUI(); 
         
         saveDailyProgress();
-        
+
         createFlyingScore(finalScore, selectedTiles[0]);
         triggerConfetti(selectedTiles);
+        vibrateOnWord();
 
     } else { // --- Standard & Practice Mode Logic ---
         if (word.length >= 3 && fullDictionaryTrie.search(word)) {
@@ -1259,6 +1193,7 @@ function replaceSelectedTiles() {
             foundWords.push({ word, score: finalScore, length: word.length });
             createFlyingScore(finalScore, selectedTiles[0]);
             triggerConfetti(selectedTiles);
+            vibrateOnWord();
              score += finalScore;
             updateScoreDisplay();
             replaceSelectedTiles();
@@ -1373,18 +1308,6 @@ function updateDailyChallengeUI() {
     }
 }
 
-async function endDailyChallenge() {
-    if (activeGridEl) {
-        activeGridEl.style.pointerEvents = 'none';
-    }
-
-    showDailyEndScreen({
-        score: score,
-        foundWords: foundWords,
-        totalCount: allDailyWords.size,
-    });
-}
-
 async function submitDailyScoreToLeaderboard(finalScore) {
     if (!db || !userId) {
         console.warn("Firebase not ready, can't submit daily score.");
@@ -1392,7 +1315,7 @@ async function submitDailyScoreToLeaderboard(finalScore) {
     }
     const playerName = localStorage.getItem('wordRushPlayerName') || 'Player';
 
-    const todayStr = new Date().toLocaleDateString('en-CA');
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
     const leaderboardRef = doc(db, "leaderboards", "dailyChallenge");
 
     const newScore = {
@@ -1473,6 +1396,7 @@ function getTileFromEvent(e) {
         const playStreak = (oldData.lastPlayDate === yesterdayStr) ? (oldData.playStreak || 0) + 1
             : (oldData.lastPlayDate === todayStr) ? (oldData.playStreak || 1)
             : 1;
+        lastKnownStreak = playStreak;
 
         await setDoc(playerDocRef, { lastPlayed: serverTimestamp(), lastPlayDate: todayStr, playStreak }, { merge: true });
     } catch (e) {
@@ -1924,6 +1848,10 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     document.getElementById('mode-daily-btn').onclick = () => startGame(false, 'daily');
     updateChallengeNotifDot();
 
+    // Always repopulate the greeting/stats — sign-up links the anonymous account
+    // in place (same uid), so onAuthStateChanged doesn't re-fire for it.
+    if (userId) fetchPlayerStats(userId);
+
     // Check daily completion status
     (async () => {
         try {
@@ -1938,89 +1866,6 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         } catch(e) {}
     })();
 }
-
-    // ---- Mode Picker ----
-
-    function showModePickerModal() {
-        const spinnerHTML = `<svg class="animate-spin h-5 w-5 text-blue-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
-        const chevron = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 text-slate-400 flex-shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>`;
-
-        modalContent.innerHTML = `
-        <div class="bg-white rounded-2xl shadow-lg p-6">
-            <div class="flex items-center mb-5">
-                <button id="mode-picker-back" class="text-slate-400 hover:text-slate-700 mr-3">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
-                </button>
-                <h2 class="text-xl font-black text-slate-800">Choose Mode</h2>
-            </div>
-
-            <div class="flex flex-col gap-3">
-                <button id="mode-timed-btn" class="w-full flex items-center gap-4 bg-slate-50 hover:bg-orange-50 border border-slate-200 hover:border-orange-300 rounded-xl p-4 text-left transition-colors">
-                    <div class="w-11 h-11 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-orange-500"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
-                    </div>
-                    <div class="flex-1">
-                        <div class="font-bold text-slate-800">Timed Challenge</div>
-                        <div class="text-sm text-slate-500">Classic 60-second word finding</div>
-                    </div>
-                    ${chevron}
-                </button>
-
-                <button id="mode-daily-btn" class="w-full flex items-center gap-4 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl p-4 text-left transition-colors">
-                    <div class="w-11 h-11 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-blue-600"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" /></svg>
-                    </div>
-                    <div class="flex-1">
-                        <div class="font-bold text-slate-800">Daily Challenge</div>
-                        <div class="text-sm text-slate-500">Today's shared puzzle</div>
-                    </div>
-                    <div id="daily-mode-status">${spinnerHTML}</div>
-                </button>
-
-                <button id="mode-challenge-btn" class="w-full flex items-center gap-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 rounded-xl p-4 text-left transition-colors">
-                    <div class="w-11 h-11 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-slate-500"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
-                    </div>
-                    <div class="flex-1">
-                        <div class="font-bold text-slate-800">Challenge a Friend</div>
-                        <div class="text-sm text-slate-500">Send a board, compare scores</div>
-                    </div>
-                    ${chevron}
-                </button>
-            </div>
-        </div>`;
-
-        menuContainer.classList.add('hidden');
-        messageModal.classList.remove('hidden');
-
-        document.getElementById('mode-picker-back').onclick = () => showWelcomeScreen();
-        document.getElementById('mode-timed-btn').onclick = () => startGame(false, 'standard');
-        document.getElementById('mode-challenge-btn').onclick = () => showChallengeFriendModal();
-
-        // Check daily challenge completion status and update button
-        const dailyBtn = document.getElementById('mode-daily-btn');
-        const dailyStatusEl = document.getElementById('daily-mode-status');
-        (async () => {
-            try {
-                const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-                if (db && userId) {
-                    const dailyDocRef = doc(db, `players/${userId}/dailyChallenges`, todayStr);
-                    const docSnap = await getDoc(dailyDocRef);
-                    if (docSnap.exists() && docSnap.data().completed) {
-                        dailyStatusEl.innerHTML = `<span class="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">Done ✓</span>`;
-                    } else {
-                        dailyStatusEl.innerHTML = chevron;
-                    }
-                } else {
-                    dailyStatusEl.innerHTML = chevron;
-                }
-            } catch(e) {
-                dailyStatusEl.innerHTML = chevron;
-            }
-        })();
-
-        dailyBtn.onclick = () => startGame(false, 'daily');
-    }
 
     // ---- Usernames (unique, searchable player identities) ----
     // usernames/{lowercased} -> { uid, displayName }. Claimed silently after games;
@@ -2309,7 +2154,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         <div class="flex items-center justify-between px-4 py-2.5 rounded-xl bg-white gap-3" style="border:2px solid #22c55e">
                             <div class="flex flex-col min-w-0 text-left">
                                 <span class="text-sm font-semibold text-slate-800 truncate">${c.data.createdByName || 'A friend'} challenged you!</span>
-                                <span class="text-sm text-slate-400 mt-0.5">${c.data.results?.[c.data.createdBy] ? `Their score: ${c.data.results[c.data.createdBy].score}` : 'They haven’t played yet'}</span>
+                                <span class="text-xs text-slate-400 mt-0.5 whitespace-nowrap">${c.data.results?.[c.data.createdBy] ? `Their score: ${c.data.results[c.data.createdBy].score}` : 'They haven’t played yet'}</span>
                             </div>
                             <div class="flex items-center gap-1.5 flex-shrink-0">
                                 <button class="incoming-decline-btn flex items-center justify-center rounded-lg" style="width:32px;height:32px;background:#f1f5f9;color:#94a3b8;border:1px solid #e2e8f0" title="Decline" data-id="${c.id}">${xIcon}</button>
@@ -2489,13 +2334,19 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     // caller direct the challenge at a specific player (toUid/toName).
     async function createChallengeDoc(extraFields = {}) {
         const board = generateAndValidateBoard();
-        const allWords = solveBoard(board, fullDictionaryTrie);
+        // Bonus tiles are rolled once here and stored on the doc so both players
+        // start from an identical board, bonuses included.
+        const bonuses = [];
+        for (let i = 0; i < GRID_SIZE; i++) {
+            const b = getBonusTypeNoTime();
+            if (b) bonuses.push({ index: i, type: b.type });
+        }
         const playerName = localStorage.getItem('wordRushPlayerName') || 'A friend';
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
         const challengeRef = await addDoc(collection(db, 'challenges'), {
             board,
-            allWords: Array.from(allWords),
+            bonuses,
             createdBy: userId,
             createdByName: playerName,
             createdAt: serverTimestamp(),
@@ -2638,12 +2489,13 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 btnHtml = iconBtn('challenge-share-btn', IC_BELL, '#94a3b8', `data-url="${challengeUrl}"`);
             } else if (myPlayed && friendPlayed) {
                 const fname = topOther[1].name || 'Friend';
-                const isWin = myResult.score >= topOther[1].score;
-                line1 = isWin ? `You beat ${fname}` : `You lost to ${fname}`;
+                const isTie = myResult.score === topOther[1].score;
+                const isWin = myResult.score > topOther[1].score;
+                line1 = isTie ? `You tied ${fname}` : isWin ? `You beat ${fname}` : `You lost to ${fname}`;
                 line1Class = isWin ? 'text-green-700 font-semibold' : 'text-slate-800 font-semibold';
                 line2 = `${myResult.score} – ${topOther[1].score}`;
-                borderStyle = isWin ? 'border:2px solid #22c55e' : 'border:2px solid #ef4444';
-                btnHtml = iconBtn('challenge-rematch-btn', IC_REFRESH, '#818cf8');
+                borderStyle = isTie ? 'border:2px solid #f59e0b' : isWin ? 'border:2px solid #22c55e' : 'border:2px solid #ef4444';
+                btnHtml = iconBtn('challenge-rematch-btn', IC_REFRESH, '#818cf8', `data-touid="${topOther[0]}" data-toname="${(topOther[1].name || '').replace(/"/g, '&quot;')}"`);
             } else {
                 line1 = 'Expired';
                 line1Class = 'text-slate-400';
@@ -2687,12 +2539,23 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 };
             });
             listEl.querySelectorAll('.challenge-rematch-btn').forEach(btn => {
-                btn.onclick = () => {
+                btn.onclick = async () => {
                     container.style.maxHeight = '';
                     container.style.display = '';
                     container.style.flexDirection = '';
                     container.style.overflow = '';
-                    renderCreateChallenge(container);
+                    // A rematch targets the same opponent so it lands in their
+                    // incoming list; fall back to the create screen if we somehow
+                    // don't know who they are.
+                    if (!btn.dataset.touid) { renderCreateChallenge(container); return; }
+                    btn.disabled = true;
+                    try {
+                        const cid = await createChallengeDoc({ toUid: btn.dataset.touid, toName: btn.dataset.toname || 'A friend' });
+                        goToChallengeScreen(cid);
+                    } catch(e) {
+                        console.error('Failed to create rematch:', e);
+                        btn.disabled = false;
+                    }
                 };
             });
             listEl.querySelectorAll('.challenge-remove-btn').forEach(btn => {
@@ -2721,8 +2584,10 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 return;
             }
 
-            // Everything shown here counts as seen for notification purposes.
+            // Everything shown here counts as seen for notification purposes,
+            // so refresh the home-screen dot right away.
             valid.forEach(c => { if (c.myResult) markChallengeResultsSeen(c.id, c.otherResults.length); });
+            updateChallengeNotifDot();
 
             const visible = valid.slice(0, 4);
             const hidden = valid.slice(4);
@@ -2843,7 +2708,9 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             currentChallengeId = challengeId;
             history.replaceState(null,'',window.location.pathname);
             pendingChallengeId = null;
-            await startGame(false, 'challenge', { board: data.board, allWords: new Set(data.allWords) });
+            // Older challenge docs have no stored bonuses — play those with none
+            // rather than rolling different random bonuses per player.
+            await startGame(false, 'challenge', { board: data.board, bonuses: data.bonuses || [] });
         } catch(e) {
             console.error('Failed to load challenge board:', e);
             showGameMessage('Failed to load challenge.', 'error');
@@ -2969,19 +2836,22 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
         let comparisonHTML;
         if (topOther) {
-            const won = myResult.score >= topOther[1].score;
+            const tie = myResult.score === topOther[1].score;
+            const won = myResult.score > topOther[1].score;
+            const lost = !won && !tie;
+            const tieBadge = '<div class="text-xs font-bold text-amber-700 mt-1">Tie!</div>';
             comparisonHTML = `
                 <div class="flex gap-3 mt-4 mb-4">
                     <div class="flex-1 bg-${won ? 'green' : 'slate'}-50 border border-${won ? 'green' : 'slate'}-200 rounded-xl p-3 text-center">
                         <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">You</div>
                         <div class="text-3xl font-black text-slate-800">${myResult.score}</div>
-                        ${won ? '<div class="text-xs font-bold text-green-600 mt-1">Winner!</div>' : ''}
+                        ${won ? '<div class="text-xs font-bold text-green-600 mt-1">Winner!</div>' : tie ? tieBadge : ''}
                     </div>
                     <div class="flex items-center text-slate-400 font-bold text-lg">vs</div>
-                    <div class="flex-1 bg-${!won ? 'green' : 'slate'}-50 border border-${!won ? 'green' : 'slate'}-200 rounded-xl p-3 text-center">
+                    <div class="flex-1 bg-${lost ? 'green' : 'slate'}-50 border border-${lost ? 'green' : 'slate'}-200 rounded-xl p-3 text-center">
                         <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">${topOther[1].name}</div>
                         <div class="text-3xl font-black text-slate-800">${topOther[1].score}</div>
-                        ${!won ? '<div class="text-xs font-bold text-green-600 mt-1">Winner!</div>' : ''}
+                        ${lost ? '<div class="text-xs font-bold text-green-600 mt-1">Winner!</div>' : tie ? tieBadge : ''}
                     </div>
                 </div>`;
         } else {
@@ -3025,7 +2895,18 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             document.getElementById('challenge-rematch-btn').onclick = async () => {
                 const rematchBtn = document.getElementById('challenge-rematch-btn');
                 const rematchResult = document.getElementById('rematch-result');
-                await _createAndShareChallenge(rematchBtn, rematchResult);
+                rematchBtn.disabled = true;
+                rematchBtn.innerHTML = `<svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Setting up rematch...</span>`;
+                try {
+                    // Rematch goes straight back at the same opponent.
+                    const cid = await createChallengeDoc({ toUid: topOther[0], toName: topOther[1].name || 'A friend' });
+                    goToChallengeScreen(cid);
+                } catch(e) {
+                    console.error('Failed to create rematch:', e);
+                    rematchBtn.disabled = false;
+                    rematchBtn.innerHTML = `${refreshIcon} Rematch`;
+                    if (rematchResult) rematchResult.innerHTML = `<p class="text-sm text-red-500 text-center">Something went wrong. Please try again.</p>`;
+                }
             };
         }
         document.getElementById('challenge-return-home').onclick = () => { currentChallengeId = null; resetGame(); };
@@ -3371,8 +3252,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 <button id="close-leaderboard-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
             </div>
             <div class="flex p-1 bg-slate-200 rounded-lg mb-4">
-                <button id="challenge-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">Challenge</button>
-                <button id="daily-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">Daily</button>
+                <button id="challenge-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">Daily</button>
+                <button id="daily-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">Timed</button>
                 <button id="all-time-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">All-Time</button>
             </div>
             <div id="leaderboard-loading-secondary" class="text-slate-500 p-2">Fetching Scores...</div>
@@ -3725,12 +3606,12 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         };
 
         if (type === 'challenge') {
-            const todayStr = new Date().toLocaleDateString('en-CA');
+            const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
             const leaderboardRef = doc(db, "leaderboards", "dailyChallenge");
             const docSnap = await getDoc(leaderboardRef);
 
             if (!docSnap.exists() || docSnap.data().date !== todayStr || !docSnap.data().topScores || docSnap.data().topScores.length === 0) {
-                html += `<p class="text-slate-500 text-center text-sm p-2">No scores yet for today's challenge. Be the first!</p>`;
+                html += `<p class="text-slate-500 text-center text-sm p-2">No scores yet for today's puzzle. Be the first!</p>`;
             } else {
                 html += `<h3 class="text-lg font-bold text-slate-800 my-2 sticky top-0 bg-white py-1 flex items-center gap-2">${icons.highScore} Score / Words Found</h3>`;
                 const players = docSnap.data().topScores;
@@ -3820,9 +3701,15 @@ function setupEventListeners() {
     const quitButton = document.getElementById('quit-game-button');
     const closePauseButton = document.getElementById('close-pause-modal-button');
 
+    // The board is hidden while paused so pausing can't be used to study the grid.
+    const setBoardHidden = (hidden) => {
+        if (activeGridEl) activeGridEl.style.visibility = hidden ? 'hidden' : 'visible';
+    };
+
     const resumeGame = () => {
         pauseModal.classList.add('hidden');
-        if (currentGamemode !== 'daily' && timer > 0) {
+        setBoardHidden(false);
+        if (currentGamemode !== 'daily' && (isPracticeMode || timer > 0)) {
             if (isPracticeMode) {
                 timerInterval = setInterval(() => { practiceTimeElapsed++; updatePracticeUI(); }, 1000);
             } else {
@@ -3834,12 +3721,13 @@ function setupEventListeners() {
     document.body.addEventListener('click', (e) => {
         if (e.target.closest('#menu-button')) {
             e.stopPropagation();
-            if (currentGamemode === 'challenge') return;
             clearInterval(timerInterval);
 
-            // ✅ FIX: Hides the 'New Game' button if the mode is 'daily', and shows it otherwise.
-            restartButton.classList.toggle('hidden', currentGamemode === 'daily');
+            // 'New Game' only makes sense for standard/practice boards — daily and
+            // friend-challenge boards are fixed.
+            restartButton.classList.toggle('hidden', currentGamemode === 'daily' || currentGamemode === 'challenge');
 
+            setBoardHidden(true);
             pauseModal.classList.remove('hidden');
         }
     });
@@ -3848,10 +3736,15 @@ function setupEventListeners() {
     closePauseButton.addEventListener('click', resumeGame);
     restartButton.addEventListener('click', () => {
         pauseModal.classList.add('hidden');
+        setBoardHidden(false);
         startGame(isPracticeMode, currentGamemode);
     });
     quitButton.addEventListener('click', () => {
         pauseModal.classList.add('hidden');
+        setBoardHidden(false);
+        // Quitting a friend challenge mid-game leaves it unplayed, so it can be
+        // picked back up later from My Challenges.
+        currentChallengeId = null;
         resetGame();
     });
     pauseModal.addEventListener('click', (e) => {
@@ -4056,7 +3949,41 @@ function getTileCenter(tile) {
     }
 }
 
-    async function shareScore() {
+    // Spoiler-free, Wordle-style share text for the daily puzzle. Uses the passed
+   // stats (not live game state) so sharing a past result works too.
+   async function shareDailyResult(stats) {
+        const nyNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+        const dateStr = `${nyNow.getMonth() + 1}/${nyNow.getDate()}`;
+        const pct = stats.totalCount > 0 ? Math.round((stats.foundCount / stats.totalCount) * 100) : 0;
+        const greens = Math.round(pct / 10);
+        const bar = '🟩'.repeat(greens) + '⬜'.repeat(10 - greens);
+
+        let shareText = `Word Worm Daily Puzzle ${dateStr} 🐛\n`;
+        shareText += `${stats.score} pts · ${stats.foundCount}/${stats.totalCount} words\n`;
+        shareText += `${bar} ${pct}%\n`;
+        if (lastKnownStreak > 1) shareText += `🔥 ${lastKnownStreak}-day streak\n`;
+        shareText += `https://wordwormgame.com/`;
+
+        if (navigator.share) {
+            try { await navigator.share({ title: 'Word Worm', text: shareText }); } catch (err) { if (err.name !== 'AbortError') console.error('Share failed:', err); }
+        } else {
+            try {
+                await navigator.clipboard.writeText(shareText);
+                const shareButton = document.getElementById('share-score-link');
+                if (shareButton) {
+                    const originalText = shareButton.innerHTML;
+                    shareButton.innerHTML = 'Copied! ✓';
+                    shareButton.classList.add('text-green-500');
+                    setTimeout(() => {
+                        shareButton.innerHTML = originalText;
+                        shareButton.classList.remove('text-green-500');
+                    }, 2000);
+                }
+            } catch (err) { console.error('Failed to copy: ', err); }
+        }
+   }
+
+   async function shareScore() {
         const bestWordFound = foundWords.length > 0 ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { word: '', score: 0 }) : null;
         let shareText = `I just scored ${score} on Word Worm! 🐛\n`;
         if (bestWordFound && bestWordFound.word) {
@@ -4138,7 +4065,7 @@ function getTileCenter(tile) {
     
     const shareLinkContainer = document.getElementById('share-link-container');
     if (navigator.share || navigator.clipboard) {
-        const shareIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-1"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" /></svg>`;        shareLinkContainer.innerHTML = `<a href="#" id="share-score-link" class="flex items-center text-blue-500 hover:underline font-bold">${shareIcon} Share Score</a>`;
+        const shareIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-1"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" /></svg>`;
         shareLinkContainer.innerHTML = `<a href="#" id="share-score-link" class="flex items-center text-blue-500 hover:underline font-bold">${shareIcon} Share Score</a>`;
         document.getElementById('share-score-link').onclick = (e) => { e.preventDefault(); shareScore(); };
     }
@@ -4340,8 +4267,8 @@ function getTileCenter(tile) {
                                     </li>
                                 </ul>
                                 <div class="border-t pt-3">
-                                    <strong class="font-semibold text-slate-800 text-sm">Daily Challenge Mode:</strong>
-                                    <p class="mt-1.5 text-slate-900 text-sm">The Daily Challenge is a static board that resets every day. Find as many words as you can, then hit <span class="font-semibold">Submit</span> when done to be added to the leaderboard!</p>
+                                    <strong class="font-semibold text-slate-800 text-sm">Daily Puzzle Mode:</strong>
+                                    <p class="mt-1.5 text-slate-900 text-sm">The Daily Puzzle is a static board that resets every day. Find as many words as you can, then hit <span class="font-semibold">Submit</span> when done to be added to the leaderboard!</p>
                                 </div>
                             </div>
                         </div>
@@ -4416,5 +4343,14 @@ function getTileCenter(tile) {
 
     document.getElementById('settings-dark-mode-row').addEventListener('click', () => setDarkMode(!document.documentElement.classList.contains('dark')));
     document.getElementById('pause-dark-mode-row').addEventListener('click', () => setDarkMode(!document.documentElement.classList.contains('dark')));
+
+    // Haptics rows: hidden on devices without vibration support (e.g. desktop).
+    if (hapticsSupported) {
+        setHaptics(hapticsEnabled());
+        document.getElementById('settings-haptics-row').addEventListener('click', () => setHaptics(!hapticsEnabled()));
+        document.getElementById('pause-haptics-row').addEventListener('click', () => setHaptics(!hapticsEnabled()));
+    } else {
+        document.querySelectorAll('#settings-haptics-row, #pause-haptics-row').forEach(el => { el.style.display = 'none'; });
+    }
 
     document.addEventListener('DOMContentLoaded', main);
