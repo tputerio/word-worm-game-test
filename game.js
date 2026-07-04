@@ -2314,18 +2314,26 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 const toUid = snap.data().uid;
                 const toName = snap.data().displayName || uname;
 
-                // Reuse an open (unfinished, undeclined) challenge to this friend
-                // instead of stacking up duplicates in their queue.
-                const existingSnap = await getDocs(query(collection(db, 'challenges'),
-                    where('createdBy', '==', userId), where('toUid', '==', toUid), limit(10)));
+                // Reuse an open (unfinished, undeclined) challenge between us —
+                // in either direction — instead of stacking up duplicates.
                 const now = Date.now();
-                const open = existingSnap.docs.find(d => {
+                const [outgoingSnap, incomingSnap] = await Promise.all([
+                    getDocs(query(collection(db, 'challenges'),
+                        where('createdBy', '==', userId), where('toUid', '==', toUid), limit(10))),
+                    getDocs(query(collection(db, 'challenges'),
+                        where('createdBy', '==', toUid), where('toUid', '==', userId), limit(10)))
+                ]);
+                const openDocs = [...outgoingSnap.docs, ...incomingSnap.docs].filter(d => {
                     const dd = d.data();
                     if (dd.expiresAt?.toDate && dd.expiresAt.toDate() < now) return false;
-                    const theirResult = dd.results?.[toUid];
-                    if (theirResult?.declined) return false;
-                    return !(dd.results?.[userId] && theirResult); // finished games get a fresh board
+                    const myRes = dd.results?.[userId];
+                    const theirRes = dd.results?.[toUid];
+                    if (myRes?.declined || theirRes?.declined) return false;
+                    return !(myRes && theirRes); // finished games get a fresh board
                 });
+                // Prefer a board that's waiting on us — playing it beats
+                // creating yet another one they'd have to answer.
+                const open = openDocs.find(d => !d.data().results?.[userId]) || openDocs[0];
                 if (open) {
                     goToChallengeScreen(open.id, open.data());
                     return;
