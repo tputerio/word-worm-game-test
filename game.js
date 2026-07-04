@@ -1,7 +1,7 @@
     // --- Firebase SDKs ---
     import { getApps, initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
-    import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, addDoc, getDocs, query, where, orderBy, limit, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
+    import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, addDoc, getDocs, getDocsFromCache, query, where, orderBy, limit, doc, getDoc, getDocFromServer, getDocFromCache, setDoc, updateDoc, deleteDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
      // --- Google Analytics ---
    // GOOGLE ANALYTICS -- import { getAnalytics, logEvent, setUserId } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-analytics.js";
@@ -126,6 +126,10 @@
     let currentGamemode = 'standard';
     let allDailyWords = new Set();
     let lastKnownStreak = 0;
+    // Last high score read from Firestore (or beaten live in a game). UI that
+    // needs it synchronously (welcome screen, in-game "High" box) renders this
+    // instead of waiting on — or scraping the DOM populated by — a fetch.
+    let lastKnownHighScore = 0;
     let currentChallengeId = null;
     let pendingChallengeId = new URLSearchParams(window.location.search).get('c') || null;
     let activeGridEl;
@@ -180,15 +184,24 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
         if (activeGridEl) activeGridEl.style.pointerEvents = 'none';
 
         if (db && userId) {
+            const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            // Record completion locally first — it's the offline fallback for
+            // the completion check, and it must exist even if the writes below
+            // stall or fail.
             try {
-                const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-                const dailyDocRef = doc(db, `players/${userId}/dailyChallenges`, todayStr);
-                await setDoc(dailyDocRef, { completed: true, score: stats.score, foundWords: stats.foundWords }, { merge: true });
+                localStorage.setItem(`dailyCompleted-${todayStr}`, JSON.stringify({ completed: true, score: stats.score, foundWords: stats.foundWords }));
                 localStorage.removeItem(`dailyProgress-${todayStr}`);
+            } catch (e) {}
+            try {
+                const dailyDocRef = doc(db, `players/${userId}/dailyChallenges`, todayStr);
+                // Stop waiting after the timeout but let the write itself keep
+                // going — the SDK queues it and delivers when the connection
+                // recovers, so the end screen never hangs on "Calculating...".
+                await withTimeout(setDoc(dailyDocRef, { completed: true, score: stats.score, foundWords: stats.foundWords }, { merge: true }));
             } catch (error) {
                 console.error("Error marking daily challenge as complete:", error);
             }
-            await updatePlayStreak(userId);
+            await withTimeout(updatePlayStreak(userId)).catch(() => {});
         }
     }
     
@@ -538,6 +551,31 @@ function showGameMessage(message, type = 'info', startTile = null) {
     setTimeout(() => messageEl.remove(), 1000);
 }
 
+    // Firestore reads have no client-side deadline: on a flaky connection (or
+    // while another open tab holds the persistent cache's network lease) a
+    // getDoc/getDocs can stall for minutes without erroring. Every UI flow that
+    // blocks on a read goes through these helpers so it always settles — race
+    // the server read against a timer, then fall back to the local cache.
+    const READ_TIMEOUT_MS = 8000;
+    function withTimeout(promise, ms = READ_TIMEOUT_MS) {
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error('read-timeout')), ms);
+            promise.then(
+                v => { clearTimeout(timer); resolve(v); },
+                e => { clearTimeout(timer); reject(e); }
+            );
+        });
+    }
+    // Both still reject when the server is unreachable AND nothing is cached.
+    async function getDocResilient(ref, ms = READ_TIMEOUT_MS) {
+        try { return await withTimeout(getDoc(ref), ms); }
+        catch (e) { return await getDocFromCache(ref); }
+    }
+    async function getDocsResilient(q, ms = READ_TIMEOUT_MS) {
+        try { return await withTimeout(getDocs(q), ms); }
+        catch (e) { return await getDocsFromCache(q); }
+    }
+
     async function fetchGlobalStats() {
         const globalPlayCountSpan = document.getElementById('global-play-count');
         if (!db || !globalPlayCountSpan) return;
@@ -559,7 +597,7 @@ function showGameMessage(message, type = 'info', startTile = null) {
     if (!db) return;
     const playerDocRef = doc(db, "players", uid);
     try {
-        const docSnap = await getDoc(playerDocRef);
+        const docSnap = await getDocResilient(playerDocRef);
         let highScore = 0;
         let playerName = 'Anonymous';
         let playStreak = 0;
@@ -572,6 +610,7 @@ function showGameMessage(message, type = 'info', startTile = null) {
             if (playerData.username) myUsernameCache = playerData.username;
         }
         lastKnownStreak = playStreak;
+        lastKnownHighScore = Math.max(lastKnownHighScore, highScore);
 
         // For signed-in users Firestore is authoritative; for anonymous users prefer localStorage
         // so a saved guest name isn't overwritten by 'Anonymous' from an empty Firestore doc.
@@ -584,10 +623,10 @@ function showGameMessage(message, type = 'info', startTile = null) {
         }
 
         const highScoreEl = document.getElementById('high-score');
-        if (highScoreEl) highScoreEl.textContent = highScore;
+        if (highScoreEl) highScoreEl.textContent = lastKnownHighScore;
 
         const welcomeHighScoreEl = document.getElementById('welcome-high-score');
-        if (welcomeHighScoreEl) welcomeHighScoreEl.textContent = highScore.toLocaleString();
+        if (welcomeHighScoreEl) welcomeHighScoreEl.textContent = lastKnownHighScore.toLocaleString();
 
         const welcomeStreakEl = document.getElementById('welcome-streak');
         const streakFlameEl = document.getElementById('welcome-streak-flame');
@@ -718,10 +757,12 @@ async function getDailyPuzzleWithTimeout() {
                 return JSON.parse(cachedPuzzleJSON);
             }
 
-            // If not in cache, try to get from Firestore
+            // If not in cache, try to get from Firestore. Cap each attempt so a
+            // stalled read can't pin the loop past the overall deadline — the
+            // outer while only checks the clock between attempts.
             if (db) {
                 const puzzleRef = doc(db, "dailyPuzzles", todayStr);
-                const docSnap = await getDoc(puzzleRef);
+                const docSnap = await withTimeout(getDoc(puzzleRef), 4000);
                 if (docSnap.exists()) {
                     console.log("Fetched pre-made daily puzzle from Firestore.");
                     const puzzle = docSnap.data();
@@ -778,13 +819,16 @@ async function getDailyPuzzleWithTimeout() {
 
     if (gameMode === 'daily') {
         const modeBtn = document.getElementById('mode-daily-btn');
+        const modeBtnHTML = modeBtn ? modeBtn.innerHTML : '';
         if (modeBtn) { modeBtn.disabled = true; modeBtn.innerHTML = `<div class="flex items-center justify-center"><svg class="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>`; }
 
         const puzzleData = await getDailyPuzzleWithTimeout();
 
         if (!puzzleData) {
-            showGameMessage("Today's puzzle isn't ready. Please try again later.", "error");
-            if (modeBtn) modeBtn.disabled = false;
+            showGameMessage("Today's puzzle isn't ready. Check your connection and try again.", "error");
+            // Put the button back to its label — leaving the spinner reads as
+            // an endless load once the toast disappears.
+            if (modeBtn) { modeBtn.disabled = false; modeBtn.innerHTML = modeBtnHTML; }
             return;
         }
         
@@ -798,12 +842,20 @@ async function getDailyPuzzleWithTimeout() {
         if (db && userId) {
             const dailyDocRef = doc(db, `players/${userId}/dailyChallenges`, todayStr);
             try {
-                const docSnap = await getDoc(dailyDocRef);
+                const docSnap = await getDocResilient(dailyDocRef);
                 if (docSnap.exists() && docSnap.data().completed === true) {
                     hasCompleted = true;
                     finalSavedData = docSnap.data();
                 }
-            } catch (e) { console.error("Error loading daily completion status from Firebase:", e); }
+            } catch (e) {
+                console.error("Error loading daily completion status from Firebase:", e);
+                // Server unreachable and nothing cached — the local completion
+                // record keeps a finished puzzle from reopening as playable.
+                try {
+                    const localDone = JSON.parse(localStorage.getItem(`dailyCompleted-${todayStr}`) || 'null');
+                    if (localDone && localDone.completed) { hasCompleted = true; finalSavedData = localDone; }
+                } catch (e2) {}
+            }
         }
 
         if (hasCompleted) {
@@ -859,9 +911,7 @@ async function getDailyPuzzleWithTimeout() {
             updatePracticeUI();
             timerInterval = setInterval(() => { practiceTimeElapsed++; updatePracticeUI(); }, 1000);
         } else {
-            const highScoreEl = document.getElementById('high-score');
-            const currentHighScore = highScoreEl ? highScoreEl.textContent : '0';
-            topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${currentHighScore}</div>`;
+            topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${lastKnownHighScore}</div>`;
             timer = GAME_TIME;
             updateTimerUI();
             if (db) { 
@@ -891,11 +941,8 @@ function resetGame() {
     foundWords = [];
     updateScoreDisplay();
 
-    const highScoreEl = document.getElementById('high-score');
-    const currentHighScore = highScoreEl ? highScoreEl.textContent : '0';
+    topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${lastKnownHighScore}</div>`;
 
-    topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">${currentHighScore}</div>`;
-    
     showWelcomeScreen();
 }
 
@@ -1645,9 +1692,12 @@ function getTileFromEvent(e) {
         if (!isPracticeMode) {
             const highScoreEl = document.getElementById('high-score');
             const currentHighScore = parseInt(highScoreEl.textContent) || 0;
-            if (score > currentHighScore) { 
-                highScoreEl.textContent = score; 
+            if (score > currentHighScore) {
+                highScoreEl.textContent = score;
                 highScoreEl.classList.add('text-yellow-500', 'animate-pulse');
+                // Challenge mode reuses this element but starts it at 0 as a
+                // per-game marker — only standard games set the real high score.
+                if (currentGamemode === 'standard') lastKnownHighScore = Math.max(lastKnownHighScore, score);
             }
         } else {
             updatePracticeUI();
@@ -1852,7 +1902,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
                     <div class="p-2 flex flex-col items-center justify-center border-l border-r border-slate-200">
                         <div class="h-7 flex items-center justify-center">
-                            <span id="welcome-high-score" class="text-xl font-black text-sky-500">0</span>
+                            <span id="welcome-high-score" class="text-xl font-black text-sky-500">${lastKnownHighScore.toLocaleString()}</span>
                         </div>
                         <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Your High</div>
                     </div>
@@ -1912,21 +1962,26 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     (async () => {
         try {
             const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-            if (db && userId) {
-                const snap = await getDoc(doc(db, `players/${userId}/dailyChallenges`, todayStr));
-                if (snap.exists() && snap.data().completed) {
-                    const badge = document.getElementById('daily-mode-badge');
-                    if (badge) badge.style.display = 'inline';
-                }
+            const localDone = JSON.parse(localStorage.getItem(`dailyCompleted-${todayStr}`) || 'null');
+            let completed = !!(localDone && localDone.completed);
+            if (!completed && db && userId) {
+                const snap = await getDocResilient(doc(db, `players/${userId}/dailyChallenges`, todayStr));
+                completed = !!(snap.exists() && snap.data().completed);
+            }
+            if (completed) {
+                const badge = document.getElementById('daily-mode-badge');
+                if (badge) badge.style.display = 'inline';
             }
         } catch(e) {}
     })();
 }
 
     // ---- Usernames (unique, searchable player identities) ----
-    // usernames/{lowercased} -> { uid, displayName }. Claimed silently after games;
-    // uniqueness is only enforced among claimed names, so legacy duplicate display
-    // names keep working until their owner opts into the challenge feature.
+    // usernames/{lowercased} -> { uid, displayName }. Claimed silently on every
+    // app start (fetchPlayerStats) and after games, as soon as the player has a
+    // saved name. Uniqueness is only enforced among claimed names, so legacy
+    // duplicate display names keep working until their owner opts into the
+    // challenge feature.
 
     const normalizeUsername = (name) => (name || '').trim().toLowerCase();
     const isValidUsername = (name) => /^[a-z0-9_-]{2,15}$/.test(normalizeUsername(name));
@@ -1940,7 +1995,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     async function checkUsernameStatus(name) {
         const uname = normalizeUsername(name);
         if (!isValidUsername(uname)) return 'invalid';
-        const snap = await getDoc(doc(db, 'usernames', uname));
+        const snap = await withTimeout(getDoc(doc(db, 'usernames', uname)));
         if (!snap.exists()) return 'available';
         return snap.data().uid === userId ? 'mine' : 'taken';
     }
@@ -1956,7 +2011,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             if (!isValidUsername(uname)) return 'invalid';
 
             const playerRef = doc(db, 'players', userId);
-            const playerSnap = await getDoc(playerRef);
+            const playerSnap = await withTimeout(getDoc(playerRef));
             const oldUsername = playerSnap.exists() ? playerSnap.data().username : null;
             if (oldUsername === uname) { myUsernameCache = uname; return 'claimed'; }
 
@@ -2031,17 +2086,24 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         if (!db || !userId) return [];
         const map = new Map();
         const [createdSnap, incomingSnap] = await Promise.all([
-            getDocs(query(collection(db, 'challenges'), where('createdBy', '==', userId), limit(20))),
-            getDocs(query(collection(db, 'challenges'), where('toUid', '==', userId), limit(20)))
+            getDocsResilient(query(collection(db, 'challenges'), where('createdBy', '==', userId), limit(20))),
+            getDocsResilient(query(collection(db, 'challenges'), where('toUid', '==', userId), limit(20)))
         ]);
         [...createdSnap.docs, ...incomingSnap.docs].forEach(d => map.set(d.id, d.data()));
 
         const localIds = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
         await Promise.all(localIds.filter(id => !map.has(id)).map(async id => {
+            // Server-first so revoked (deleted) challenges drop out, but when it
+            // stalls, a stale cached copy beats the challenge vanishing.
             try {
-                const snap = await getDocFromServer(doc(db, 'challenges', id));
+                const snap = await withTimeout(getDocFromServer(doc(db, 'challenges', id)));
                 if (snap.exists()) map.set(id, snap.data());
-            } catch(e) {}
+            } catch(e) {
+                try {
+                    const snap = await getDocFromCache(doc(db, 'challenges', id));
+                    if (snap.exists()) map.set(id, snap.data());
+                } catch(e2) {}
+            }
         }));
 
         const now = Date.now();
@@ -2352,7 +2414,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             msgEl.textContent = 'Searching...';
             msgEl.className = 'text-xs mt-1 text-left text-slate-500 min-h-[16px]';
             try {
-                const snap = await getDoc(doc(db, 'usernames', uname));
+                const snap = await withTimeout(getDoc(doc(db, 'usernames', uname)));
                 if (!snap.exists()) {
                     setUsernameMsg(msgEl, 'No player found with that username.', false);
                     return;
@@ -2368,10 +2430,10 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 // in either direction — instead of stacking up duplicates.
                 const now = Date.now();
                 const [outgoingSnap, incomingSnap] = await Promise.all([
-                    getDocs(query(collection(db, 'challenges'),
-                        where('createdBy', '==', userId), where('toUid', '==', toUid), limit(10))),
-                    getDocs(query(collection(db, 'challenges'),
-                        where('createdBy', '==', toUid), where('toUid', '==', userId), limit(10)))
+                    withTimeout(getDocs(query(collection(db, 'challenges'),
+                        where('createdBy', '==', userId), where('toUid', '==', toUid), limit(10)))),
+                    withTimeout(getDocs(query(collection(db, 'challenges'),
+                        where('createdBy', '==', toUid), where('toUid', '==', userId), limit(10))))
                 ]);
                 const openDocs = [...outgoingSnap.docs, ...incomingSnap.docs].filter(d => {
                     const dd = d.data();
@@ -2698,8 +2760,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             });
         };
 
-        try {
-            const all = await loadAllMyChallenges();
+        const renderList = (all) => {
+            if (!listEl.isConnected) return;
             // Expired challenges and ones this player declined stay out of the list.
             const valid = all.filter(c => !c.expired && !(c.myResult && c.myResult.declined));
 
@@ -2727,10 +2789,19 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     attachListeners();
                 };
             }
+        };
 
+        // Show the last known list immediately and refresh behind it — the
+        // spinner only survives for a first-ever open.
+        if (myChallengesCache) renderList(myChallengesCache);
+
+        try {
+            renderList(await loadAllMyChallenges());
         } catch(e) {
             console.error('Failed to load challenges:', e);
-            listEl.innerHTML = `<p class="text-center text-red-500 text-sm py-6">Failed to load challenges.</p>`;
+            if (!myChallengesCache && listEl.isConnected) {
+                listEl.innerHTML = `<p class="text-center text-red-500 text-sm py-6">Failed to load challenges. Check your connection and try again.</p>`;
+            }
         }
     }
 
@@ -2753,7 +2824,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         try {
             let data = prefetchedData;
             if (!data) {
-                const snap = await getDoc(doc(db, 'challenges', challengeId));
+                const snap = await getDocResilient(doc(db, 'challenges', challengeId));
                 if (!snap.exists()) {
                     modalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-lg p-6 text-center"><p class="text-slate-700 font-bold mb-4">Challenge not found.</p><button id="challenge-go-home" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">${HOME_ICON} Return Home</button></div>`;
                     document.getElementById('challenge-go-home').onclick = () => { history.replaceState(null,'',window.location.pathname); pendingChallengeId = null; showWelcomeScreen(); };
@@ -2835,7 +2906,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         try {
             let data = prefetchedData;
             if (!data) {
-                const snap = await getDoc(doc(db, 'challenges', challengeId));
+                const snap = await getDocResilient(doc(db, 'challenges', challengeId));
                 if (!snap.exists()) { showGameMessage('Challenge not found.', 'error'); return; }
                 data = snap.data();
             }
