@@ -1967,6 +1967,10 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         }
     }
 
+    // Last loadAllMyChallenges result, so challenge UI can render instantly and
+    // refresh in the background instead of sitting empty during the fetch.
+    let myChallengesCache = null;
+
     // Every challenge this player is involved in: ones they created, ones sent
     // to them by username, and link challenges they've opened (localStorage).
     async function loadAllMyChallenges() {
@@ -1988,7 +1992,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
         const now = Date.now();
         const hidden = new Set(getHiddenChallenges());
-        return Array.from(map.entries())
+        const result = Array.from(map.entries())
             .filter(([id]) => !hidden.has(id))
             .map(([id, data]) => ({
                 id,
@@ -1998,6 +2002,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 expired: data.expiresAt?.toDate ? data.expiresAt.toDate() < now : false
             }))
             .sort((a, b) => (b.data.createdAt?.toMillis?.() ?? 0) - (a.data.createdAt?.toMillis?.() ?? 0));
+        myChallengesCache = result;
+        return result;
     }
 
     const isIncomingChallenge = (c) => c.data.toUid === userId && !c.myResult;
@@ -2140,8 +2146,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     // Renders pending challenges sent directly to this player at the top of the
     // modal, and dots the My Challenges button if anything in there needs attention.
     async function populateIncomingChallenges(sectionEl, myChallengesBtn) {
-        try {
-            const all = await loadAllMyChallenges();
+        const render = (all) => {
+            if (!sectionEl.isConnected) return;
             // My Challenges also dots for any challenge the player still needs to
             // play — their own boards included — not just incoming/unseen ones.
             const stillToPlay = (c) => !c.expired && !c.myResult;
@@ -2149,7 +2155,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 addNotifDot(myChallengesBtn);
             }
             const incoming = all.filter(c => !c.expired && isIncomingChallenge(c));
-            if (!sectionEl.isConnected || incoming.length === 0) return;
+            if (incoming.length === 0) { sectionEl.innerHTML = ''; return; }
 
             const playIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clip-rule="evenodd"/></svg>`;
             const xIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>`;
@@ -2191,6 +2197,9 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     btn.disabled = true;
                     try {
                         await declineChallenge(btn.dataset.id);
+                        // Invalidate the cache so the declined card doesn't
+                        // flash back in on the re-render.
+                        myChallengesCache = null;
                         renderCreateChallenge(document.getElementById('account-modal-content'));
                     } catch(e) {
                         console.error('Failed to decline challenge:', e);
@@ -2198,8 +2207,17 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     }
                 };
             });
-            const moreLink = document.getElementById('incoming-more-link');
+            const moreLink = sectionEl.querySelector('#incoming-more-link');
             if (moreLink) moreLink.onclick = () => renderMyChallenges(document.getElementById('account-modal-content'));
+        };
+
+        // Render immediately from the cached list (warmed at app open by the
+        // notification-dot check), then refresh from Firestore in the background.
+        if (myChallengesCache) render(myChallengesCache);
+
+        try {
+            const all = await loadAllMyChallenges();
+            render(all);
         } catch(e) {
             console.error('Failed to load incoming challenges:', e);
         }
@@ -2980,6 +2998,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 await signInAnonymously(auth);
                 localStorage.removeItem('wordRushPlayerName');
                 myUsernameCache = null;
+                myChallengesCache = null;
                 accountModal.classList.add('hidden');
                 showWelcomeScreen();
             };
@@ -3554,6 +3573,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         await signInAnonymously(auth);
                         localStorage.removeItem('wordRushPlayerName');
                         myUsernameCache = null;
+                        myChallengesCache = null;
                         statsModal.classList.add('hidden');
                         showWelcomeScreen();
                     };
