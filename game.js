@@ -522,6 +522,7 @@ function showGameMessage(message, type = 'info', startTile = null) {
             highScore = playerData.highScore || 0;
             playerName = playerData.name && playerData.name !== 'Anonymous' ? playerData.name : 'Anonymous';
             playStreak = playerData.playStreak || 0;
+            if (playerData.username) myUsernameCache = playerData.username;
         }
         lastKnownStreak = playStreak;
 
@@ -1878,6 +1879,11 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     const normalizeUsername = (name) => (name || '').trim().toLowerCase();
     const isValidUsername = (name) => /^[a-z0-9_-]{2,15}$/.test(normalizeUsername(name));
 
+    // Once we know this player's username, keep it in memory so the challenge
+    // modal's "Send to a username" section renders instantly instead of waiting
+    // on a Firestore read every time it opens.
+    let myUsernameCache = null;
+
     // Returns 'invalid' | 'available' | 'mine' | 'taken'. Throws on network failure.
     async function checkUsernameStatus(name) {
         const uname = normalizeUsername(name);
@@ -1899,7 +1905,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             const playerRef = doc(db, 'players', userId);
             const playerSnap = await getDoc(playerRef);
             const oldUsername = playerSnap.exists() ? playerSnap.data().username : null;
-            if (oldUsername === uname) return true;
+            if (oldUsername === uname) { myUsernameCache = uname; return true; }
 
             const status = await checkUsernameStatus(uname);
             if (status === 'taken' || status === 'invalid') return false;
@@ -1916,6 +1922,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             if (oldUsername && oldUsername !== uname) {
                 try { await deleteDoc(doc(db, 'usernames', oldUsername)); } catch(e) {}
             }
+            myUsernameCache = uname;
             return true;
         } catch(e) {
             return false;
@@ -2201,6 +2208,21 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     // Renders either the send-to-username form (player owns a username) or a
     // one-time claim prompt (their display name is unclaimed or owned by someone else).
     async function populateUsernameChallengeSection(sectionEl) {
+        // Known username → render synchronously, no Firestore wait.
+        if (myUsernameCache) {
+            renderSendToUsername(sectionEl, myUsernameCache);
+            return;
+        }
+
+        // Otherwise show a visible loading state while we look it up — this
+        // section used to be invisible during the fetch, which read as the
+        // form randomly missing on slow connections.
+        sectionEl.innerHTML = `
+            <div class="flex items-center justify-center gap-2 py-3 text-slate-400 text-xs">
+                <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                <span>Loading your username...</span>
+            </div>`;
+
         let myUsername = null;
         try {
             if (db && userId) {
@@ -2218,6 +2240,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         if (!sectionEl.isConnected) return;
 
         if (myUsername) {
+            myUsernameCache = myUsername;
             renderSendToUsername(sectionEl, myUsername);
         } else {
             renderClaimUsernamePrompt(sectionEl);
@@ -2956,6 +2979,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 await signOut(auth);
                 await signInAnonymously(auth);
                 localStorage.removeItem('wordRushPlayerName');
+                myUsernameCache = null;
                 accountModal.classList.add('hidden');
                 showWelcomeScreen();
             };
@@ -3529,6 +3553,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         await signOut(auth);
                         await signInAnonymously(auth);
                         localStorage.removeItem('wordRushPlayerName');
+                        myUsernameCache = null;
                         statsModal.classList.add('hidden');
                         showWelcomeScreen();
                     };
