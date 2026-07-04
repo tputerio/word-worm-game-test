@@ -2332,7 +2332,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 text-left">Send to a username</label>
             <div class="flex gap-2">
                 <input id="challenge-username-input" type="text" maxlength="15" placeholder="Friend's username"
-                    class="flex-1 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+                    class="auth-input flex-1 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
                 <button id="challenge-username-send" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg text-sm">Send</button>
             </div>
             <p id="challenge-username-msg" class="text-xs mt-1 text-left min-h-[16px]"></p>
@@ -2416,7 +2416,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             <p class="text-xs text-slate-500 mb-2 text-left">${takenNote}</p>
             <div class="flex gap-2">
                 <input id="claim-username-input" type="text" maxlength="15" placeholder="Pick a username"
-                    class="flex-1 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+                    class="auth-input flex-1 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
                 <button id="claim-username-btn" class="bg-slate-800 hover:bg-slate-700 text-white font-bold py-2 px-4 rounded-lg text-sm">Claim</button>
             </div>
             <p id="claim-username-msg" class="text-xs mt-1 text-left min-h-[16px]"></p>
@@ -3472,8 +3472,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 <button id="close-leaderboard-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
             </div>
             <div class="flex p-1 bg-slate-200 rounded-lg mb-4">
-                <button id="challenge-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">Daily</button>
-                <button id="daily-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">Timed</button>
+                <button id="challenge-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">Puzzle</button>
+                <button id="daily-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">Daily</button>
                 <button id="all-time-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">All-Time</button>
             </div>
             <div id="leaderboard-loading-secondary" class="text-slate-500 p-2">Fetching Scores...</div>
