@@ -2081,13 +2081,14 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     const HOME_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg>`;
 
     // Lands on the challenge screen ("Playing against X" / Play Now) from
-    // anywhere — after sending a challenge, a rematch, etc.
-    function goToChallengeScreen(challengeId) {
+    // anywhere — after sending a challenge, a rematch, etc. Pass the challenge
+    // data when it's already in hand to skip the re-fetch round trip.
+    function goToChallengeScreen(challengeId, prefetchedData = null) {
         const accountModal = document.getElementById('account-modal');
         if (accountModal) accountModal.classList.add('hidden');
         endGameModal.classList.add('hidden');
         currentChallengeId = null;
-        showChallengeAcceptScreen(challengeId);
+        showChallengeAcceptScreen(challengeId, prefetchedData);
     }
 
     function showChallengeFriendModal(view = 'create') {
@@ -2273,12 +2274,12 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     return !(dd.results?.[userId] && theirResult); // finished games get a fresh board
                 });
                 if (open) {
-                    goToChallengeScreen(open.id);
+                    goToChallengeScreen(open.id, open.data());
                     return;
                 }
 
-                const cid = await createChallengeDoc({ toUid, toName });
-                goToChallengeScreen(cid);
+                const created = await createChallengeDoc({ toUid, toName });
+                goToChallengeScreen(created.id, created.data);
             } catch(e) {
                 console.error('Failed to send username challenge:', e);
                 setUsernameMsg(msgEl, 'Something went wrong. Please try again.', false);
@@ -2347,7 +2348,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         const playerName = localStorage.getItem('wordRushPlayerName') || 'A friend';
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-        const challengeRef = await addDoc(collection(db, 'challenges'), {
+        const challengeData = {
             board,
             bonuses,
             createdBy: userId,
@@ -2356,13 +2357,16 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             expiresAt,
             results: {},
             ...extraFields
-        });
+        };
+        const challengeRef = await addDoc(collection(db, 'challenges'), challengeData);
 
         const stored = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
         stored.unshift(challengeRef.id);
         localStorage.setItem('wordWormChallenges', JSON.stringify(stored.slice(0, 20)));
 
-        return challengeRef.id;
+        // Returning the data alongside the id lets callers render the challenge
+        // screen immediately instead of re-fetching the doc they just wrote.
+        return { id: challengeRef.id, data: challengeData };
     }
 
     async function _createAndShareChallenge(btnEl, resultEl) {
@@ -2376,19 +2380,19 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         btnEl.innerHTML = `<svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Generating...</span>`;
 
         try {
-            const challengeId = await createChallengeDoc();
-            const challengeUrl = `${window.location.origin}${window.location.pathname}?c=${challengeId}`;
+            const created = await createChallengeDoc();
+            const challengeUrl = `${window.location.origin}${window.location.pathname}?c=${created.id}`;
 
             if (navigator.share) {
                 await navigator.share({
                     text: `🐛 I challenge you to a game of Word Worm! Think you can beat me? ${challengeUrl}`,
                 });
-                goToChallengeScreen(challengeId);
+                goToChallengeScreen(created.id, created.data);
             } else {
                 await navigator.clipboard.writeText(challengeUrl);
                 btnEl.innerHTML = `Link Copied!`;
                 // Brief confirmation the link is on the clipboard, then land on the challenge screen.
-                setTimeout(() => goToChallengeScreen(challengeId), 1200);
+                setTimeout(() => goToChallengeScreen(created.id, created.data), 1200);
             }
 
         } catch(e) {
@@ -2553,8 +2557,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     if (!btn.dataset.touid) { renderCreateChallenge(container); return; }
                     btn.disabled = true;
                     try {
-                        const cid = await createChallengeDoc({ toUid: btn.dataset.touid, toName: btn.dataset.toname || 'A friend' });
-                        goToChallengeScreen(cid);
+                        const created = await createChallengeDoc({ toUid: btn.dataset.touid, toName: btn.dataset.toname || 'A friend' });
+                        goToChallengeScreen(created.id, created.data);
                     } catch(e) {
                         console.error('Failed to create rematch:', e);
                         btn.disabled = false;
@@ -2615,7 +2619,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
     // ---- Challenge Accept Screen (opened via ?c=id link) ----
 
-    async function showChallengeAcceptScreen(challengeId) {
+    async function showChallengeAcceptScreen(challengeId, prefetchedData = null) {
         modalContent.innerHTML = `
             <div class="bg-white rounded-2xl shadow-lg p-6 text-center">
                 <div class="flex justify-center py-4"><svg class="animate-spin h-6 w-6 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>
@@ -2630,14 +2634,16 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         }
 
         try {
-            const snap = await getDoc(doc(db, 'challenges', challengeId));
-            if (!snap.exists()) {
-                modalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-lg p-6 text-center"><p class="text-slate-700 font-bold mb-4">Challenge not found.</p><button id="challenge-go-home" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">${HOME_ICON} Return Home</button></div>`;
-                document.getElementById('challenge-go-home').onclick = () => { history.replaceState(null,'',window.location.pathname); pendingChallengeId = null; showWelcomeScreen(); };
-                return;
+            let data = prefetchedData;
+            if (!data) {
+                const snap = await getDoc(doc(db, 'challenges', challengeId));
+                if (!snap.exists()) {
+                    modalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-lg p-6 text-center"><p class="text-slate-700 font-bold mb-4">Challenge not found.</p><button id="challenge-go-home" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">${HOME_ICON} Return Home</button></div>`;
+                    document.getElementById('challenge-go-home').onclick = () => { history.replaceState(null,'',window.location.pathname); pendingChallengeId = null; showWelcomeScreen(); };
+                    return;
+                }
+                data = snap.data();
             }
-
-            const data = snap.data();
             const myResult = data.results?.[userId];
             const otherResults = Object.entries(data.results || {}).filter(([uid, r]) => uid !== userId && !r?.declined);
 
@@ -2693,7 +2699,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     </div>`;
             }
 
-            document.getElementById('accept-challenge-btn').onclick = () => loadAndPlayChallenge(challengeId);
+            document.getElementById('accept-challenge-btn').onclick = () => loadAndPlayChallenge(challengeId, data);
             document.getElementById('challenge-go-home').onclick = () => { history.replaceState(null,'',window.location.pathname); pendingChallengeId = null; showWelcomeScreen(); };
 
         } catch(e) {
@@ -2703,11 +2709,16 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         }
     }
 
-    async function loadAndPlayChallenge(challengeId) {
+    // The board/bonuses on a challenge never change, so a caller that already
+    // has the doc data can pass it in and skip the fetch.
+    async function loadAndPlayChallenge(challengeId, prefetchedData = null) {
         try {
-            const snap = await getDoc(doc(db, 'challenges', challengeId));
-            if (!snap.exists()) { showGameMessage('Challenge not found.', 'error'); return; }
-            const data = snap.data();
+            let data = prefetchedData;
+            if (!data) {
+                const snap = await getDoc(doc(db, 'challenges', challengeId));
+                if (!snap.exists()) { showGameMessage('Challenge not found.', 'error'); return; }
+                data = snap.data();
+            }
             currentChallengeId = challengeId;
             history.replaceState(null,'',window.location.pathname);
             pendingChallengeId = null;
@@ -2902,8 +2913,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 rematchBtn.innerHTML = `<svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Setting up rematch...</span>`;
                 try {
                     // Rematch goes straight back at the same opponent.
-                    const cid = await createChallengeDoc({ toUid: topOther[0], toName: topOther[1].name || 'A friend' });
-                    goToChallengeScreen(cid);
+                    const created = await createChallengeDoc({ toUid: topOther[0], toName: topOther[1].name || 'A friend' });
+                    goToChallengeScreen(created.id, created.data);
                 } catch(e) {
                     console.error('Failed to create rematch:', e);
                     rematchBtn.disabled = false;
