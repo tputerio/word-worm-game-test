@@ -99,6 +99,22 @@
         }
     }
 
+    // Signs out and clears everything device-local that belongs to the old
+    // account: saved name, tracked/hidden challenge ids, and seen-results
+    // markers, so the next guest or account on this device doesn't inherit
+    // them. The global onAuthStateChanged listener signs the player back in
+    // anonymously — no explicit signInAnonymously here, or the two calls race
+    // and mint an extra throwaway anonymous account.
+    async function signOutAndReset() {
+        await signOut(auth);
+        localStorage.removeItem('wordRushPlayerName');
+        localStorage.removeItem('wordWormChallenges');
+        localStorage.removeItem(HIDDEN_CHALLENGES_KEY);
+        localStorage.removeItem(SEEN_RESULTS_KEY);
+        myUsernameCache = null;
+        myChallengesCache = null;
+    }
+
     // --- Game State ---
     let score = 0, timer = GAME_TIME, timerInterval, foundWords = [], selectedTiles = [], isMouseDown = false;
     let validationTrie;       // For checking if a board is playable
@@ -115,6 +131,13 @@
     let activeGridEl;
     let activeCanvasEl;
     let activeCtx;
+
+    // Escapes user-supplied text (player/display names) before it's interpolated
+    // into innerHTML. Display names are not charset-restricted, so rendering them
+    // raw would let one player run script in another player's browser.
+    function escapeHTML(str) {
+        return String(str ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    }
 
     /// --- Trie Data Structure ---
     class Trie {
@@ -233,13 +256,18 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
             showSummaryText();
         };
 
-        // Resolve automatically if the user completes sign-up via the account modal
+        // Resolve automatically if the user completes sign-up via the account
+        // modal. Guards: onAuthStateChanged fires immediately with the current
+        // user, so only react to a fresh anonymous → signed-in transition, and
+        // only while this prompt is still on screen — otherwise a sign-up made
+        // later in the session would re-submit this stale score.
+        const wasSignedInAtPrompt = isUserSignedIn();
         const unsubscribeDailyAuth = onAuthStateChanged(auth, async (user) => {
-            if (user && !user.isAnonymous) {
-                unsubscribeDailyAuth();
-                const name = localStorage.getItem('wordRushPlayerName') || user.displayName?.split(' ')[0] || 'Player';
-                await doSubmitName(name);
-            }
+            if (!user || user.isAnonymous || wasSignedInAtPrompt) return;
+            unsubscribeDailyAuth();
+            if (!document.getElementById('daily-name-input')) return;
+            const name = localStorage.getItem('wordRushPlayerName') || user.displayName?.split(' ')[0] || 'Player';
+            await doSubmitName(name);
         });
 
         attachUsernameCheck(document.getElementById('daily-name-input'), document.getElementById('daily-name-msg'));
@@ -426,6 +454,13 @@ function showSubmitConfirmation() {
         } catch (firebaseError) {
             console.warn("Firebase features failed to load, continuing in offline mode:", firebaseError);
             if (globalPlayCountSpan) globalPlayCountSpan.textContent = "N/A";
+            // A ?c= link renders "Loading challenge..." and waits on auth; if
+            // Firebase never comes up, give the player a way out instead of an
+            // infinite spinner.
+            if (pendingChallengeId) {
+                modalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-lg p-6 text-center"><p class="text-red-500 mb-4">Failed to load challenge. Check your connection and refresh to try again.</p><button id="challenge-go-home" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">${HOME_ICON} Return Home</button></div>`;
+                document.getElementById('challenge-go-home').onclick = () => { history.replaceState(null,'',window.location.pathname); pendingChallengeId = null; showWelcomeScreen(); };
+            }
         }
     };
     
@@ -574,9 +609,9 @@ function showGameMessage(message, type = 'info', startTile = null) {
         if (playerGreetingEl) {
             if (playerName !== 'Anonymous') {
                 if (isUserSignedIn()) {
-                    playerGreetingEl.innerHTML = `Welcome back, <strong class="font-bold">${playerName}</strong>! 👋`;
+                    playerGreetingEl.innerHTML = `Welcome back, <strong class="font-bold">${escapeHTML(playerName)}</strong>! 👋`;
                 } else {
-                    playerGreetingEl.innerHTML = `Welcome back, <strong class="font-bold">${playerName}</strong>! 👋 &bull; <span id="greeting-signin-link" class="text-blue-500 hover:underline cursor-pointer">Add email</span>`;
+                    playerGreetingEl.innerHTML = `Welcome back, <strong class="font-bold">${escapeHTML(playerName)}</strong>! 👋 &bull; <span id="greeting-signin-link" class="text-blue-500 hover:underline cursor-pointer">Add email</span>`;
                     setTimeout(() => {
                         const link = document.getElementById('greeting-signin-link');
                         if (link) link.onclick = () => showAccountModal('signup');
@@ -1456,18 +1491,23 @@ function getTileFromEvent(e) {
             </div>`;
 
         const enteredName = await new Promise(resolve => {
+            let unsubscribeAuth = null;
+            // Always detach the auth listener when the prompt resolves, so a
+            // sign-up later in the session can't re-trigger this stale prompt.
+            const finish = (name) => { if (unsubscribeAuth) unsubscribeAuth(); resolve(name); };
             const doSubmit = async () => {
                 const name = (document.getElementById('endgame-name-input').value || '').trim().slice(0, 15);
                 if (!name) return;
                 if (!(await validateNewUsername(name, document.getElementById('endgame-name-msg')))) return;
-                resolve(name);
+                finish(name);
             };
-            // Resolve automatically if the user completes sign-up via the account modal
-            const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-                if (user && !user.isAnonymous) {
-                    unsubscribeAuth();
-                    resolve(localStorage.getItem('wordRushPlayerName') || user.displayName?.split(' ')[0] || 'Player');
-                }
+            // Resolve automatically if the user completes sign-up via the account
+            // modal — but only on a fresh anonymous → signed-in transition, since
+            // onAuthStateChanged fires immediately with the current user.
+            const wasSignedInAtPrompt = isUserSignedIn();
+            unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+                if (!user || user.isAnonymous || wasSignedInAtPrompt) return;
+                finish(localStorage.getItem('wordRushPlayerName') || user.displayName?.split(' ')[0] || 'Player');
             });
             attachUsernameCheck(document.getElementById('endgame-name-input'), document.getElementById('endgame-name-msg'));
             document.getElementById('endgame-name-submit').onclick = doSubmit;
@@ -1810,7 +1850,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         <div id="welcome-streak-label" class="font-bold text-slate-500 uppercase tracking-wider" style="font-size:8px;white-space:nowrap;">Start a streak!</div>
                     </div>
 
-                    <div class="p-2 flex flex-col items-center justify-center" style="border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">
+                    <div class="p-2 flex flex-col items-center justify-center border-l border-r border-slate-200">
                         <div class="h-7 flex items-center justify-center">
                             <span id="welcome-high-score" class="text-xl font-black text-sky-500">0</span>
                         </div>
@@ -1905,22 +1945,24 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         return snap.data().uid === userId ? 'mine' : 'taken';
     }
 
-    // Tries to claim `displayName` for the current player. Returns true if the
-    // player owns the username afterwards. Never throws — losing the claim
-    // (name taken, race, offline) is always a silent no-op.
+    // Tries to claim `displayName` for the current player. Returns 'claimed'
+    // when the player owns the username afterwards; otherwise 'taken',
+    // 'invalid', or 'error' (network/offline), so callers can tell a real
+    // conflict from a connectivity hiccup. Never throws.
     async function claimUsername(displayName) {
         try {
-            if (!db || !userId) return false;
+            if (!db || !userId) return 'error';
             const uname = normalizeUsername(displayName);
-            if (!isValidUsername(uname)) return false;
+            if (!isValidUsername(uname)) return 'invalid';
 
             const playerRef = doc(db, 'players', userId);
             const playerSnap = await getDoc(playerRef);
             const oldUsername = playerSnap.exists() ? playerSnap.data().username : null;
-            if (oldUsername === uname) { myUsernameCache = uname; return true; }
+            if (oldUsername === uname) { myUsernameCache = uname; return 'claimed'; }
 
             const status = await checkUsernameStatus(uname);
-            if (status === 'taken' || status === 'invalid') return false;
+            if (status === 'taken') return 'taken';
+            if (status === 'invalid') return 'invalid';
             if (status === 'available') {
                 // Security rules only allow creating a usernames doc that doesn't
                 // exist yet, so simultaneous claims are settled server-side.
@@ -1935,9 +1977,9 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 try { await deleteDoc(doc(db, 'usernames', oldUsername)); } catch(e) {}
             }
             myUsernameCache = uname;
-            return true;
+            return 'claimed';
         } catch(e) {
-            return false;
+            return 'error';
         }
     }
 
@@ -2107,13 +2149,15 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
     // Lands on the challenge screen ("Playing against X" / Play Now) from
     // anywhere — after sending a challenge, a rematch, etc. Pass the challenge
-    // data when it's already in hand to skip the re-fetch round trip.
-    function goToChallengeScreen(challengeId, prefetchedData = null) {
+    // data when it's already in hand to skip the re-fetch round trip. `notice`
+    // is a one-line explanation shown on the screen (e.g. why the player was
+    // routed to an existing game instead of a new one).
+    function goToChallengeScreen(challengeId, prefetchedData = null, notice = null) {
         const accountModal = document.getElementById('account-modal');
         if (accountModal) accountModal.classList.add('hidden');
         endGameModal.classList.add('hidden');
         currentChallengeId = null;
-        showChallengeAcceptScreen(challengeId, prefetchedData);
+        showChallengeAcceptScreen(challengeId, prefetchedData, notice);
     }
 
     function showChallengeFriendModal(view = 'create') {
@@ -2162,9 +2206,15 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             if (!sectionEl.isConnected) return;
             // My Challenges also dots for any challenge the player still needs to
             // play — their own boards included — not just incoming/unseen ones.
+            // Remove a stale dot too: the cached render may have added one that
+            // the fresh data no longer justifies.
             const stillToPlay = (c) => !c.expired && !c.myResult;
-            if (myChallengesBtn && myChallengesBtn.isConnected && all.some(c => challengeNeedsAttention(c) || stillToPlay(c))) {
-                addNotifDot(myChallengesBtn);
+            if (myChallengesBtn && myChallengesBtn.isConnected) {
+                if (all.some(c => challengeNeedsAttention(c) || stillToPlay(c))) {
+                    addNotifDot(myChallengesBtn);
+                } else {
+                    myChallengesBtn.querySelector('.challenge-notif-dot')?.remove();
+                }
             }
             const incoming = all.filter(c => !c.expired && isIncomingChallenge(c));
             if (incoming.length === 0) { sectionEl.innerHTML = ''; return; }
@@ -2182,7 +2232,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     ${visible.map(c => `
                         <div class="flex items-center justify-between px-4 py-2.5 rounded-xl bg-white gap-3" style="border:2px solid #22c55e">
                             <div class="flex flex-col min-w-0 text-left">
-                                <span class="text-sm font-semibold text-slate-800 truncate">${c.data.createdByName || 'A friend'} challenged you!</span>
+                                <span class="text-sm font-semibold text-slate-800 truncate">${escapeHTML(c.data.createdByName || 'A friend')} challenged you!</span>
                                 <span class="text-xs text-slate-400 mt-0.5 whitespace-nowrap">${c.data.results?.[c.data.createdBy] ? `Their score: ${c.data.results[c.data.createdBy].score}` : 'They haven’t played yet'}</span>
                             </div>
                             <div class="flex items-center gap-1.5 flex-shrink-0">
@@ -2261,7 +2311,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 if (!myUsername) {
                     // Legacy player: try a silent claim of their display name first.
                     const displayName = localStorage.getItem('wordRushPlayerName');
-                    if (displayName && await claimUsername(displayName)) {
+                    if (displayName && await claimUsername(displayName) === 'claimed') {
                         myUsername = normalizeUsername(displayName);
                     }
                 }
@@ -2335,7 +2385,9 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 // creating yet another one they'd have to answer.
                 const open = openDocs.find(d => !d.data().results?.[userId]) || openDocs[0];
                 if (open) {
-                    goToChallengeScreen(open.id, open.data());
+                    // Tell the player why they landed on an existing game instead
+                    // of a fresh one — otherwise Send looks broken.
+                    goToChallengeScreen(open.id, open.data(), `You already have an open game with ${toName} — finish it before starting a new one!`);
                     return;
                 }
 
@@ -2356,7 +2408,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     function renderClaimUsernamePrompt(sectionEl) {
         const displayName = localStorage.getItem('wordRushPlayerName');
         const takenNote = displayName && isValidUsername(displayName)
-            ? `"${displayName}" is already taken — pick another to challenge friends directly:`
+            ? `"${escapeHTML(displayName)}" is already taken — pick another to challenge friends directly:`
             : 'Claim a username so friends can find and challenge you:';
 
         sectionEl.innerHTML = `
@@ -2380,9 +2432,11 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             if (!isValidUsername(name)) { setUsernameMsg(msgEl, USERNAME_RULES_MSG, false); return; }
             msgEl.textContent = 'Claiming...';
             msgEl.className = 'text-xs mt-1 text-left text-slate-500 min-h-[16px]';
-            const claimed = await claimUsername(name);
-            if (!claimed) {
-                setUsernameMsg(msgEl, 'That username is taken — try another.', false);
+            const claimStatus = await claimUsername(name);
+            if (claimStatus !== 'claimed') {
+                setUsernameMsg(msgEl, claimStatus === 'taken' ? 'That username is taken — try another.'
+                    : claimStatus === 'invalid' ? USERNAME_RULES_MSG
+                    : "Couldn't claim username — check your connection and try again.", false);
                 return;
             }
             // The claimed username becomes the player's display name too.
@@ -2520,7 +2574,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             const friendPlayed = !!topOther;
             const isIncoming = data.toUid === userId;
             const isMine = data.createdBy === userId;
-            const friendName = isIncoming ? (data.createdByName || 'A friend') : data.toName;
+            const friendName = escapeHTML(isIncoming ? (data.createdByName || 'A friend') : data.toName) || null;
             const challengeUrl = `${window.location.origin}${window.location.pathname}?c=${id}`;
 
             // × removes the card: decline if it's an unplayed incoming challenge,
@@ -2531,7 +2585,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             let line1, line1Class, line2, borderStyle, btnHtml;
 
             if (declinedByOther && !friendPlayed && !expired) {
-                line1 = `${data.toName || declinedByOther[1].name || 'Friend'} declined`;
+                line1 = `${escapeHTML(data.toName || declinedByOther[1].name || 'Friend')} declined`;
                 line1Class = 'text-slate-500';
                 line2 = myPlayed ? `Your score: ${myResult.score}` : '';
                 borderStyle = 'border:2px solid #ef4444';
@@ -2543,7 +2597,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 borderStyle = 'border:2px solid #cbd5e1';
                 btnHtml = iconBtn('challenge-play-btn', IC_PLAY, '#22c55e', `data-id="${id}"`);
             } else if (!myPlayed && friendPlayed && !expired) {
-                const fname = topOther[1].name || friendName || 'Friend';
+                const fname = topOther[1].name ? escapeHTML(topOther[1].name) : (friendName || 'Friend');
                 line1 = isIncoming ? `${fname} challenged you!` : `${fname} played`;
                 line1Class = 'text-slate-800 font-semibold';
                 line2 = 'Your turn to beat it';
@@ -2556,14 +2610,14 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 borderStyle = 'border:2px solid #cbd5e1';
                 btnHtml = iconBtn('challenge-share-btn', IC_BELL, '#94a3b8', `data-url="${challengeUrl}"`);
             } else if (myPlayed && friendPlayed) {
-                const fname = topOther[1].name || 'Friend';
+                const fname = escapeHTML(topOther[1].name) || 'Friend';
                 const isTie = myResult.score === topOther[1].score;
                 const isWin = myResult.score > topOther[1].score;
                 line1 = isTie ? `You tied ${fname}` : isWin ? `You beat ${fname}` : `You lost to ${fname}`;
                 line1Class = isWin ? 'text-green-700 font-semibold' : 'text-slate-800 font-semibold';
                 line2 = `${myResult.score} – ${topOther[1].score}`;
                 borderStyle = isTie ? 'border:2px solid #f59e0b' : isWin ? 'border:2px solid #22c55e' : 'border:2px solid #ef4444';
-                btnHtml = iconBtn('challenge-rematch-btn', IC_REFRESH, '#818cf8', `data-touid="${topOther[0]}" data-toname="${(topOther[1].name || '').replace(/"/g, '&quot;')}"`);
+                btnHtml = iconBtn('challenge-rematch-btn', IC_REFRESH, '#818cf8', `data-touid="${topOther[0]}" data-toname="${escapeHTML(topOther[1].name || '')}"`);
             } else {
                 line1 = 'Expired';
                 line1Class = 'text-slate-400';
@@ -2599,9 +2653,11 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                             await navigator.share({ text: `🐛 Play my Word Worm challenge! ${btn.dataset.url}` });
                         } else {
                             await navigator.clipboard.writeText(btn.dataset.url);
-                            const orig = btn.textContent;
-                            btn.textContent = 'Copied!';
-                            setTimeout(() => { btn.textContent = orig; }, 1500);
+                            // Swap the icon (innerHTML, not textContent — the button is icon-only)
+                            // for a checkmark, then restore it.
+                            const orig = btn.innerHTML;
+                            btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>`;
+                            setTimeout(() => { if (btn.isConnected) btn.innerHTML = orig; }, 1500);
                         }
                     } catch(e) {}
                 };
@@ -2680,7 +2736,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
     // ---- Challenge Accept Screen (opened via ?c=id link) ----
 
-    async function showChallengeAcceptScreen(challengeId, prefetchedData = null) {
+    async function showChallengeAcceptScreen(challengeId, prefetchedData = null, notice = null) {
         modalContent.innerHTML = `
             <div class="bg-white rounded-2xl shadow-lg p-6 text-center">
                 <div class="flex justify-center py-4"><svg class="animate-spin h-6 w-6 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>
@@ -2721,12 +2777,13 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             const isSelf = data.createdBy === userId;
             const playIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" /></svg>`;
             const logoHeader = `<h1 class="flex items-center justify-center text-2xl font-black text-slate-800 tracking-tighter mb-5"><img src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-8 h-8 mr-2" width="32" height="32">Word Worm</h1>`;
+            const noticeHTML = notice ? `<div class="bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-4"><p class="text-xs font-semibold text-amber-700">${escapeHTML(notice)}</p></div>` : '';
 
             if (isSelf) {
                 const topFriend = otherResults.sort((a,b) => b[1].score - a[1].score)[0];
-                const oppName = data.toName;
+                const oppName = escapeHTML(data.toName) || null;
                 const friendStatus = topFriend
-                    ? `<p class="text-sm text-slate-600 mb-6"><strong>${topFriend[1].name}</strong> scored <strong class="text-slate-800">${topFriend[1].score}</strong> — can you beat it?</p>`
+                    ? `<p class="text-sm text-slate-600 mb-6"><strong>${escapeHTML(topFriend[1].name)}</strong> scored <strong class="text-slate-800">${topFriend[1].score}</strong> — can you beat it?</p>`
                     : `<p class="text-sm text-slate-500 mb-6">${oppName ? `${oppName} hasn't played yet.` : `Your friend hasn't played yet.`}</p>`;
 
                 modalContent.innerHTML = `
@@ -2737,6 +2794,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         </div>
                         <h2 class="text-2xl font-black text-slate-800 mb-2">Your Challenge</h2>
                         ${oppName ? `<p class="text-slate-500 mb-2">Playing against <strong>${oppName}</strong></p>` : ''}
+                        ${noticeHTML}
                         ${friendStatus}
                         <button id="accept-challenge-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl text-lg mb-3 flex items-center justify-center gap-2">
                             ${playIcon} Play Now
@@ -2751,7 +2809,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-9 h-9 text-green-600"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
                         </div>
                         <h2 class="text-2xl font-black text-slate-800 mb-1">You've been challenged!</h2>
-                        <p class="text-slate-500 mb-6">by <strong>${data.createdByName}</strong></p>
+                        <p class="text-slate-500 mb-6">by <strong>${escapeHTML(data.createdByName)}</strong></p>
+                        ${noticeHTML}
                         ${otherResults.length > 0 ? `<p class="text-sm text-slate-500 mb-4">Their score: <strong>${otherResults[0][1].score}</strong> — can you beat it?</p>` : ''}
                         <button id="accept-challenge-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl text-lg mb-3 flex items-center justify-center gap-2">
                             ${playIcon} Play Now
@@ -2820,11 +2879,43 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         const needsName = !playerName;
 
         // Save result to Firestore
-        if (db && userId && currentChallengeId && !needsName) {
-            await saveAndShowChallengeResult(stats, playerName);
-        } else if (needsName) {
+        if (needsName) {
             showChallengeNamePrompt(stats);
+        } else if (db && userId && currentChallengeId) {
+            await saveAndShowChallengeResult(stats, playerName);
+        } else {
+            // Can't save (Firebase unavailable or challenge id lost) — never
+            // strand the player on the "Saving your score..." spinner.
+            showChallengeSaveFailedScreen(stats, playerName);
         }
+    }
+
+    // Shown when a challenge score couldn't be written. Being upfront about the
+    // failure beats a "Waiting for your friend" screen that implies it saved.
+    function showChallengeSaveFailedScreen(stats, playerName) {
+        endGameModal.classList.remove('hidden');
+        messageModal.classList.add('hidden');
+        const canRetry = !!(db && userId && currentChallengeId && playerName);
+        endGameModalContent.innerHTML = `
+            <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
+                <h2 class="text-2xl font-black text-green-500">Challenge Complete!</h2>
+                <p class="text-5xl font-black text-slate-800 my-4">${stats.score}</p>
+                <div class="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
+                    <p class="text-sm font-semibold text-red-500">Your score couldn't be saved. Check your connection${canRetry ? ' and try again' : ''}.</p>
+                </div>
+                ${canRetry ? `<button id="challenge-retry-save" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base mb-2">Try Again</button>` : ''}
+                <button id="challenge-return-home" class="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-lg text-base">${HOME_ICON} Return Home</button>
+            </div>`;
+
+        const retryBtn = document.getElementById('challenge-retry-save');
+        if (retryBtn) {
+            retryBtn.onclick = async () => {
+                retryBtn.disabled = true;
+                retryBtn.textContent = 'Saving...';
+                await saveAndShowChallengeResult(stats, playerName);
+            };
+        }
+        document.getElementById('challenge-return-home').onclick = () => { currentChallengeId = null; resetGame(); };
     }
 
     async function saveAndShowChallengeResult(stats, playerName) {
@@ -2849,7 +2940,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             showChallengeResultsScreen(currentChallengeId, data, myResult, otherResults, true);
         } catch(e) {
             console.error('Failed to save challenge result:', e);
-            showChallengeResultsScreen(currentChallengeId, null, { score: stats.score }, [], true);
+            showChallengeSaveFailedScreen(stats, playerName);
         }
     }
 
@@ -2872,6 +2963,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             </div>`;
 
         const doSave = async (name) => {
+            unsubscribe(); // a sign-up later in the session must not re-save this result
             localStorage.setItem('wordRushPlayerName', name);
             if (db && userId) {
                 try { await setDoc(doc(db, 'players', userId), { name, hasSubmittedName: true }, { merge: true }); } catch(e) {}
@@ -2891,12 +2983,17 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         document.getElementById('challenge-name-input').onkeydown = (e) => { if (e.key === 'Enter') submitTypedChallengeName(); };
         document.getElementById('challenge-create-account').onclick = () => showAccountModal();
 
+        // Auto-save if the user completes sign-up via the account modal — but
+        // only on a fresh anonymous → signed-in transition (the listener fires
+        // immediately with the current user), and only while this prompt is
+        // still on screen.
+        const wasSignedInAtPrompt = isUserSignedIn();
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (user && !user.isAnonymous) {
-                unsubscribe();
-                const name = localStorage.getItem('wordRushPlayerName') || user.displayName?.split(' ')[0] || 'Player';
-                await doSave(name);
-            }
+            if (!user || user.isAnonymous || wasSignedInAtPrompt) return;
+            unsubscribe();
+            if (!document.getElementById('challenge-name-input')) return;
+            const name = localStorage.getItem('wordRushPlayerName') || user.displayName?.split(' ')[0] || 'Player';
+            await doSave(name);
         });
     }
 
@@ -2924,16 +3021,16 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     </div>
                     <div class="flex items-center text-slate-400 font-bold text-lg">vs</div>
                     <div class="flex-1 bg-${lost ? 'green' : 'slate'}-50 border border-${lost ? 'green' : 'slate'}-200 rounded-xl p-3 text-center">
-                        <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">${topOther[1].name}</div>
+                        <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">${escapeHTML(topOther[1].name)}</div>
                         <div class="text-3xl font-black text-slate-800">${topOther[1].score}</div>
                         ${lost ? '<div class="text-xs font-bold text-green-600 mt-1">Winner!</div>' : tie ? tieBadge : ''}
                     </div>
                 </div>`;
         } else {
-            const waitName = (data && (data.createdBy === userId ? data.toName : data.createdByName)) || 'your friend';
+            const waitName = escapeHTML((data && (data.createdBy === userId ? data.toName : data.createdByName)) || 'your friend');
             const statusHTML = declinedOther
                 ? `<div class="bg-red-50 border border-red-200 rounded-xl p-3">
-                        <p class="text-sm font-semibold text-red-500">${(data && data.toName) || declinedOther[1].name || 'Your friend'} declined this challenge.</p>
+                        <p class="text-sm font-semibold text-red-500">${escapeHTML((data && data.toName) || declinedOther[1].name || 'Your friend')} declined this challenge.</p>
                     </div>`
                 : `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3">
                         <p class="text-sm font-semibold text-amber-700">Waiting for ${waitName} to play...</p>
@@ -3004,7 +3101,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     <button id="close-account-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
                 </div>
                 <div class="bg-slate-50 rounded-xl p-4 mb-4">
-                    <p class="text-lg font-black text-slate-800">${playerName}</p>
+                    <p class="text-lg font-black text-slate-800">${escapeHTML(playerName)}</p>
                     <p class="text-xs text-slate-500 mt-1">High Score: ${highScore} &bull; Streak: ${streak} days</p>
                 </div>
                 <button id="account-signout-btn" class="w-full flex items-center justify-center bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors border border-slate-200">
@@ -3014,11 +3111,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
             document.getElementById('close-account-modal').onclick = () => accountModal.classList.add('hidden');
             document.getElementById('account-signout-btn').onclick = async () => {
-                await signOut(auth);
-                await signInAnonymously(auth);
-                localStorage.removeItem('wordRushPlayerName');
-                myUsernameCache = null;
-                myChallengesCache = null;
+                await signOutAndReset();
                 accountModal.classList.add('hidden');
                 showWelcomeScreen();
             };
@@ -3036,10 +3129,28 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 </div>`;
 
             const renderAuthModal = (activeTab = 'login', errorMsg = '') => {
+                // Shows an error in place, without rebuilding the form — a rebuild
+                // would wipe whatever the user has typed. Optionally restores a
+                // button that was put into its busy/spinner state.
+                const showAuthError = (msg, btn = null, btnHTML = '') => {
+                    const el = document.getElementById('auth-error');
+                    if (el) { el.textContent = msg; el.classList.remove('hidden'); }
+                    if (btn) { btn.disabled = false; btn.innerHTML = btnHTML; }
+                };
+                // Closing the provider popup is a deliberate cancel, not a failure.
+                const isPopupCancelled = (e) => ['auth/popup-closed-by-user', 'auth/cancelled-popup-request', 'auth/user-cancelled'].includes(e?.code);
+                const authErrorEl = `<p id="auth-error" class="text-xs text-red-500 mb-3${errorMsg ? '' : ' hidden'}">${errorMsg}</p>`;
+
                 if (activeTab === 'login') {
+                    // Logging in (unlike signing up, which links the current account)
+                    // switches to a different account, leaving any guest progress on
+                    // this device behind — warn players who have some.
+                    const guestNote = (auth?.currentUser?.isAnonymous && localStorage.getItem('wordRushPlayerName'))
+                        ? `<p class="text-xs text-slate-400 mt-3 text-center">Heads up: scores saved as a guest on this device won't carry over when you log in to an existing account. To keep them, use Sign Up instead.</p>`
+                        : '';
                     accountModalContent.innerHTML = `
                         ${viewHeader('Log In')}
-                        ${errorMsg ? `<p class="text-xs text-red-500 mb-3">${errorMsg}</p>` : ''}
+                        ${authErrorEl}
                         <div class="space-y-3">
                             <div>
                                 <label class="${labelClass}">Email Address</label>
@@ -3065,7 +3176,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         </p>
                         <p class="text-center mt-2">
                             <span id="login-guest-btn" class="text-xs text-slate-400 hover:text-slate-600 cursor-pointer hover:underline">Continue as Guest</span>
-                        </p>`;
+                        </p>
+                        ${guestNote}`;
 
                     document.getElementById('close-account-modal').onclick = () => accountModal.classList.add('hidden');
                     document.getElementById('goto-signup').onclick = () => renderAuthModal('signup');
@@ -3073,6 +3185,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     document.getElementById('forgot-password-link').onclick = () => renderForgotPasswordView();
                     document.getElementById('login-google-btn').onclick = async () => {
                         const btn = document.getElementById('login-google-btn');
+                        const btnHTML = btn.innerHTML;
                         btn.disabled = true;
                         btn.innerHTML = `<div class="flex items-center justify-center">${spinnerHtml}Signing in...</div>`;
                         try {
@@ -3084,15 +3197,16 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                                 showWelcomeScreen();
                             }
                         } catch (e) {
+                            if (isPopupCancelled(e)) { btn.disabled = false; btn.innerHTML = btnHTML; return; }
                             console.error('Google sign-in failed:', e);
-                            renderAuthModal('login', 'Sign-in failed. Please try again.');
+                            showAuthError('Sign-in failed. Please try again.', btn, btnHTML);
                         }
                     };
                     document.getElementById('login-submit-btn').onclick = async () => {
                         const email = document.getElementById('login-email').value.trim();
                         const password = document.getElementById('login-password').value;
-                        if (!email) { renderAuthModal('login', 'Please enter your email address.'); return; }
-                        if (!password) { renderAuthModal('login', 'Please enter your password.'); return; }
+                        if (!email) { showAuthError('Please enter your email address.'); return; }
+                        if (!password) { showAuthError('Please enter your password.'); return; }
                         const btn = document.getElementById('login-submit-btn');
                         btn.disabled = true;
                         btn.innerHTML = `<div class="flex items-center justify-center">${spinnerHtml}Signing in...</div>`;
@@ -3111,18 +3225,23 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                                 ? 'Incorrect email or password.'
                                 : e.code === 'auth/invalid-email' ? 'Please enter a valid email address.'
                                 : 'Something went wrong. Please try again.';
-                            renderAuthModal('login', msg);
+                            showAuthError(msg, btn, 'Log In');
                         }
                     };
                 } else {
-                    const prefillName = (localStorage.getItem('wordRushPlayerName') || '').replace(/"/g, '&quot;');
+                    // Prefill only if the saved name already satisfies the username
+                    // rules — this field claims the player's unique username, so it
+                    // uses the same 2–15 char [a-z0-9_-] rules as everywhere else.
+                    const savedNameRaw = (localStorage.getItem('wordRushPlayerName') || '').trim();
+                    const prefillName = isValidUsername(savedNameRaw) ? escapeHTML(savedNameRaw) : '';
                     accountModalContent.innerHTML = `
                         ${viewHeader('Sign Up')}
-                        ${errorMsg ? `<p class="text-xs text-red-500 mb-3">${errorMsg}</p>` : ''}
+                        ${authErrorEl}
                         <div class="space-y-3">
                             <div>
-                                <label class="${labelClass}">Display Name</label>
-                                <input id="create-name" type="text" value="${prefillName}" placeholder="Shown on leaderboard (max 10 chars)" maxlength="10" class="${inputClass}">
+                                <label class="${labelClass}">Username</label>
+                                <input id="create-name" type="text" value="${prefillName}" placeholder="${USERNAME_RULES_MSG}" maxlength="15" class="${inputClass}">
+                                <p id="create-name-msg" class="text-xs mt-1 text-left min-h-[16px]"></p>
                             </div>
                             <div>
                                 <label class="${labelClass}">Email Address</label>
@@ -3150,8 +3269,10 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     document.getElementById('close-account-modal').onclick = () => accountModal.classList.add('hidden');
                     document.getElementById('goto-login').onclick = () => renderAuthModal('login');
                     document.getElementById('signup-guest-btn').onclick = () => accountModal.classList.add('hidden');
+                    attachUsernameCheck(document.getElementById('create-name'), document.getElementById('create-name-msg'));
                     document.getElementById('signup-google-btn').onclick = async () => {
                         const btn = document.getElementById('signup-google-btn');
+                        const btnHTML = btn.innerHTML;
                         btn.disabled = true;
                         btn.innerHTML = `<div class="flex items-center justify-center">${spinnerHtml}Signing in...</div>`;
                         try {
@@ -3163,20 +3284,29 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                                 showWelcomeScreen();
                             }
                         } catch (e) {
+                            if (isPopupCancelled(e)) { btn.disabled = false; btn.innerHTML = btnHTML; return; }
                             console.error('Google sign-in failed:', e);
-                            renderAuthModal('signup', 'Sign-in failed. Please try again.');
+                            showAuthError('Sign-in failed. Please try again.', btn, btnHTML);
                         }
                     };
                     document.getElementById('create-submit-btn').onclick = async () => {
                         const name = document.getElementById('create-name').value.trim();
                         const email = document.getElementById('create-email').value.trim();
                         const password = document.getElementById('create-password').value;
-                        if (!name) { renderAuthModal('signup', 'Please enter a display name.'); return; }
-                        if (!email) { renderAuthModal('signup', 'Please enter an email address.'); return; }
-                        if (password.length < 6) { renderAuthModal('signup', 'Password must be at least 6 characters.'); return; }
+                        if (!name) { showAuthError('Please enter a username.'); return; }
+                        if (!isValidUsername(name)) { showAuthError(USERNAME_RULES_MSG); return; }
+                        if (!email) { showAuthError('Please enter an email address.'); return; }
+                        if (password.length < 6) { showAuthError('Password must be at least 6 characters.'); return; }
                         const btn = document.getElementById('create-submit-btn');
                         btn.disabled = true;
                         btn.innerHTML = `<div class="flex items-center justify-center">${spinnerHtml}Creating account...</div>`;
+                        // Confirm the username is free before creating the account,
+                        // so nobody ends up with an account but no claimable name.
+                        if (!(await validateNewUsername(name, document.getElementById('create-name-msg')))) {
+                            btn.disabled = false;
+                            btn.innerHTML = 'Create Account';
+                            return;
+                        }
                         try {
                             const credential = EmailAuthProvider.credential(email, password);
                             const result = await linkWithCredential(auth.currentUser, credential);
@@ -3184,6 +3314,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                             if (db) {
                                 await setDoc(doc(db, "players", result.user.uid), { name, hasSubmittedName: true }, { merge: true });
                                 localStorage.setItem('wordRushPlayerName', name);
+                                await claimUsername(name);
                             }
                             accountModal.classList.add('hidden');
                             showWelcomeScreen();
@@ -3192,7 +3323,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                             const msg = e.code === 'auth/email-already-in-use' ? 'That email is already in use.'
                                 : e.code === 'auth/invalid-email' ? 'Please enter a valid email address.'
                                 : 'Something went wrong. Please try again.';
-                            renderAuthModal('signup', msg);
+                            showAuthError(msg, btn, 'Create Account');
                         }
                     };
                 }
@@ -3259,17 +3390,21 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             };
 
             const renderNamePromptView = (suggestedName) => {
+                // Suggested names come from the Google profile — sanitize down to
+                // the username charset so the prefill is always claimable as-is.
+                const sanitizedSuggestion = (suggestedName || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 15);
                 accountModalContent.innerHTML = `
                     <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-2xl font-bold text-slate-800">Choose your name</h2>
+                        <h2 class="text-2xl font-bold text-slate-800">Choose your username</h2>
                         <button id="close-account-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
                     </div>
-                    <p class="text-sm text-slate-500 mb-5">This is how you'll appear on the leaderboard. You can change it later in your profile.</p>
+                    <p class="text-sm text-slate-500 mb-5">This is how you'll appear on the leaderboard and how friends can find and challenge you. You can change it later in your profile.</p>
                     <div id="name-prompt-error" class="hidden text-xs text-red-500 mb-3"></div>
                     <div class="space-y-4">
                         <div>
-                            <label class="${labelClass}">Display Name</label>
-                            <input id="name-prompt-input" type="text" value="${(suggestedName || '').replace(/"/g, '&quot;')}" maxlength="20" class="${inputClass}" autofocus>
+                            <label class="${labelClass}">Username</label>
+                            <input id="name-prompt-input" type="text" value="${escapeHTML(sanitizedSuggestion)}" placeholder="${USERNAME_RULES_MSG}" maxlength="15" class="${inputClass}" autofocus>
+                            <p id="name-prompt-msg" class="text-xs mt-1 text-left min-h-[16px]"></p>
                         </div>
                         <button id="name-prompt-submit" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-sm transition-colors">
                             Let's Play!
@@ -3278,25 +3413,33 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
                 document.getElementById('close-account-modal').onclick = () => accountModal.classList.add('hidden');
                 const input = document.getElementById('name-prompt-input');
+                attachUsernameCheck(input, document.getElementById('name-prompt-msg'));
                 input.focus();
                 input.setSelectionRange(input.value.length, input.value.length);
 
                 document.getElementById('name-prompt-submit').onclick = async () => {
                     const name = input.value.trim();
                     const errorEl = document.getElementById('name-prompt-error');
-                    if (!name) {
-                        errorEl.textContent = 'Please enter a display name.';
+                    errorEl.classList.add('hidden');
+                    if (!isValidUsername(name)) {
+                        errorEl.textContent = USERNAME_RULES_MSG;
                         errorEl.classList.remove('hidden');
                         return;
                     }
                     const btn = document.getElementById('name-prompt-submit');
                     btn.disabled = true;
                     btn.innerHTML = `<div class="flex items-center justify-center">${spinnerHtml}Saving...</div>`;
+                    if (!(await validateNewUsername(name, document.getElementById('name-prompt-msg')))) {
+                        btn.disabled = false;
+                        btn.textContent = "Let's Play!";
+                        return;
+                    }
                     try {
                         if (db && auth.currentUser) {
                             await setDoc(doc(db, "players", auth.currentUser.uid), { name, hasSubmittedName: true }, { merge: true });
                         }
                         localStorage.setItem('wordRushPlayerName', name);
+                        claimUsername(name);
                         accountModal.classList.add('hidden');
                         showWelcomeScreen();
                     } catch (e) {
@@ -3490,9 +3633,11 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     }
                     msgEl.textContent = 'Checking...';
                     msgEl.className = 'text-xs mt-1 text-slate-500 min-h-[16px]';
-                    const claimed = await claimUsername(newName);
-                    if (!claimed) {
-                        setUsernameMsg(msgEl, 'That username is taken — try another.', false);
+                    const claimStatus = await claimUsername(newName);
+                    if (claimStatus !== 'claimed') {
+                        setUsernameMsg(msgEl, claimStatus === 'taken' ? 'That username is taken — try another.'
+                            : claimStatus === 'invalid' ? USERNAME_RULES_MSG
+                            : "Couldn't save — check your connection and try again.", false);
                         return;
                     }
                     try {
@@ -3503,8 +3648,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         }
                         const greetingEl = document.getElementById('player-greeting');
                         if (greetingEl) greetingEl.innerHTML = signedIn
-                            ? `Welcome back, <strong class="font-bold">${newName}</strong>! 👋`
-                            : `Welcome back, <strong class="font-bold">${newName}</strong>! 👋 &bull; <span id="greeting-signin-link" class="text-blue-500 hover:underline cursor-pointer">Add email</span>`;
+                            ? `Welcome back, <strong class="font-bold">${escapeHTML(newName)}</strong>! 👋`
+                            : `Welcome back, <strong class="font-bold">${escapeHTML(newName)}</strong>! 👋 &bull; <span id="greeting-signin-link" class="text-blue-500 hover:underline cursor-pointer">Add email</span>`;
                         if (!signedIn) {
                             setTimeout(() => {
                                 const link = document.getElementById('greeting-signin-link');
@@ -3589,11 +3734,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 const signOutBtn = document.getElementById('profile-signout-btn');
                 if (signOutBtn) {
                     signOutBtn.onclick = async () => {
-                        await signOut(auth);
-                        await signInAnonymously(auth);
-                        localStorage.removeItem('wordRushPlayerName');
-                        myUsernameCache = null;
-                        myChallengesCache = null;
+                        await signOutAndReset();
                         statsModal.classList.add('hidden');
                         showWelcomeScreen();
                     };
@@ -3699,7 +3840,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     return `
                         <li class="flex items-center p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}">
                             <span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span>
-                            <span class="font-semibold text-slate-800 flex-grow truncate mr-4">${player.name}</span>
+                            <span class="font-semibold text-slate-800 flex-grow truncate mr-4">${escapeHTML(player.name)}</span>
                             <div class="text-right">
                                 <span class="font-bold text-green-500">${player.score.toLocaleString()} pts</span>
                                 <span class="font-medium text-slate-500 text-xs ml-2">(${player.wordsFound}/${player.totalWords})</span>
@@ -3729,7 +3870,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         const scores = players.map((player, i) => {
                             const isCurrentUser = player.userID === userId;
                             let value = cat.nestedKey ? (player[cat.valueKey] ? `${player[cat.valueKey].word.toUpperCase()} (${player[cat.valueKey].score})` : 'N/A') : (player[cat.valueKey]?.toLocaleString() || 0);
-                            return `<li class="flex items-center p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${player.name}</span><span class="font-bold text-green-500">${value}</span></li>`;
+                            return `<li class="flex items-center p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${escapeHTML(player.name)}</span><span class="font-bold text-green-500">${value}</span></li>`;
                         }).join('');
                         html += `<ol class="space-y-1">${scores}</ol>`;
                     }
@@ -3756,7 +3897,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         const scores = players.map((player, i) => {
                             const isCurrentUser = player.userID === userId;
                             let value = cat.nestedKey ? (player[cat.valueKey] ? `${player[cat.valueKey].word.toUpperCase()} (${player[cat.valueKey].score})` : 'N/A') : (player[cat.valueKey]?.toLocaleString() || 0);
-                            return `<li class="flex items-center p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${player.name}</span><span class="font-bold text-green-500">${value}</span></li>`;
+                            return `<li class="flex items-center p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${escapeHTML(player.name)}</span><span class="font-bold text-green-500">${value}</span></li>`;
                         }).join('');
                         html += `<ol class="space-y-1">${scores}</ol>`;
                     }
@@ -4166,7 +4307,7 @@ function getTileCenter(tile) {
         const leaderboardMessage = `New daily high: <strong>${score}</strong>!`;
         finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${trophyIcon} ${leaderboardMessage}</div>`;
     } else {
-        const standardMessage = `Score submitted as&nbsp;<strong>${playerName}</strong>!`;
+        const standardMessage = `Score submitted as&nbsp;<strong>${escapeHTML(playerName)}</strong>!`;
         finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${checkIcon} ${standardMessage}</div>`;
     }
     submissionContainer.innerHTML = finalMessageHtml;
