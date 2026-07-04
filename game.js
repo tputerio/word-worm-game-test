@@ -1,7 +1,7 @@
     // --- Firebase SDKs ---
     import { getApps, initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
-    import { getFirestore, collection, addDoc, getDocs, query, where, orderBy, limit, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
+    import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, addDoc, getDocs, query, where, orderBy, limit, doc, getDoc, getDocFromServer, setDoc, updateDoc, deleteDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
      // --- Google Analytics ---
    // GOOGLE ANALYTICS -- import { getAnalytics, logEvent, setUserId } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-analytics.js";
@@ -388,7 +388,19 @@ function showSubmitConfirmation() {
 
             const app = initializeApp(firebaseConfig);
             auth = getAuth(app);
-            db = getFirestore(app);
+            // Persistent local cache: reads fall back to IndexedDB when the
+            // network is slow/unavailable, data survives reloads, and writes
+            // queue offline. Multi-tab manager keeps several open tabs in sync.
+            // The SDK degrades to in-memory cache where IndexedDB isn't
+            // available (e.g. some private-browsing modes).
+            try {
+                db = initializeFirestore(app, {
+                    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+                });
+            } catch (e) {
+                console.warn('Persistent cache unavailable, using default Firestore:', e);
+                db = getFirestore(app);
+            }
             // GOOGLE ANALYTICS -- analytics = getAnalytics(app);
 
 
