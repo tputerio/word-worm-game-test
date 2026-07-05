@@ -3061,7 +3061,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             const visible = valid.slice(0, 4);
             const hidden = valid.slice(4);
             const viewAllBtn = hidden.length > 0
-                ? `<div class="border-t border-slate-200 pt-2 text-center"><span id="view-all-challenges" class="text-xs text-slate-500 cursor-pointer hover:text-slate-700">View All (${valid.length})</span></div>`
+                ? `<div class="border-t border-slate-200 pt-2 text-center"><span id="view-all-challenges" class="text-xs text-slate-500 cursor-pointer hover:text-slate-700">View More (${valid.length})</span></div>`
                 : '';
             listEl.innerHTML = visible.map(c => buildCard(c)).join('') + viewAllBtn;
             attachListeners();
