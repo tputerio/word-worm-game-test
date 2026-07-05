@@ -2330,6 +2330,24 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
     const isIncomingChallenge = (c) => c.data.toUid === userId && !c.myResult;
 
+    // A challenge is still "open" with an opponent if they haven't submitted a
+    // result yet (played or declined) and it hasn't expired — regardless of
+    // who created it or whether I've played my side.
+    function findOpenChallengeWith(opponentUid, items) {
+        return (items || myChallengesCache || readChallengesCache()?.items || []).find(c => !c.expired
+            && (c.data.participants || []).includes(opponentUid)
+            && !c.data.results?.[opponentUid]);
+    }
+
+    // Rematch should land on an already-open challenge with this opponent
+    // instead of piling up duplicates every time the button is tapped.
+    async function createOrReuseRematch(toUid, toName) {
+        const items = await loadAllMyChallenges();
+        const open = findOpenChallengeWith(toUid, items);
+        if (open) return open;
+        return createChallengeDoc({ toUid, toName });
+    }
+
     // ---- Removing challenges: decline (recipient), revoke (creator), hide (local) ----
 
     // Declining is recorded as a special result — the existing security rule
@@ -3015,7 +3033,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     if (!btn.dataset.touid) { renderCreateChallenge(container); return; }
                     btn.disabled = true;
                     try {
-                        const created = await createChallengeDoc({ toUid: btn.dataset.touid, toName: btn.dataset.toname || 'A friend' });
+                        const created = await createOrReuseRematch(btn.dataset.touid, btn.dataset.toname || 'A friend');
                         goToChallengeScreen(created.id, created.data);
                     } catch(e) {
                         console.error('Failed to create rematch:', e);
@@ -3456,8 +3474,9 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 rematchBtn.disabled = true;
                 rematchBtn.innerHTML = `<svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Setting up rematch...</span>`;
                 try {
-                    // Rematch goes straight back at the same opponent.
-                    const created = await createChallengeDoc({ toUid: topOther[0], toName: topOther[1].name || 'A friend' });
+                    // Rematch goes straight back at the same opponent, reusing
+                    // an already-open challenge with them if one exists.
+                    const created = await createOrReuseRematch(topOther[0], topOther[1].name || 'A friend');
                     goToChallengeScreen(created.id, created.data);
                 } catch(e) {
                     console.error('Failed to create rematch:', e);
