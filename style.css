@@ -335,3 +335,10 @@ html.dark #mode-dropdown-inner {
 /* Home screen Daily Puzzle button: brighter blue for contrast on the dark card */
 html.dark #mode-daily-btn { color: #60a5fa !important; border-color: #60a5fa !important; }
 html.dark #mode-daily-btn:hover { background-color: #1e3a5f !important; }
+
+/* Challenge results Rematch button. Plain CSS on the id rather than Tailwind
+   utilities: dist/style.css is gitignored and can be deployed stale, which
+   left this button white-on-white in prod (bg-indigo-400 missing from the
+   deployed build). */
+#challenge-rematch-btn { background-color: #818cf8; }
+#challenge-rematch-btn:hover { background-color: #6366f1; }

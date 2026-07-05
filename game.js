@@ -1,7 +1,7 @@
     // --- Firebase SDKs ---
     import { getApps, initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
-    import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, addDoc, getDocs, getDocsFromCache, query, where, orderBy, limit, doc, documentId, getDoc, getDocFromServer, getDocFromCache, setDoc, updateDoc, deleteDoc, increment, arrayUnion, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
+    import { getFirestore, initializeFirestore, persistentLocalCache, persistentSingleTabManager, collection, addDoc, getDocs, getDocsFromCache, query, where, orderBy, limit, doc, documentId, getDoc, getDocFromServer, getDocFromCache, setDoc, updateDoc, deleteDoc, increment, arrayUnion, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
      // --- Google Analytics ---
    // GOOGLE ANALYTICS -- import { getAnalytics, logEvent, setUserId } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-analytics.js";
@@ -126,11 +126,19 @@
     let animationInterval;
     let currentGamemode = 'standard';
     let allDailyWords = new Set();
-    let lastKnownStreak = 0;
-    // Last high score read from Firestore (or beaten live in a game). UI that
-    // needs it synchronously (welcome screen, in-game "High" box) renders this
-    // instead of waiting on — or scraping the DOM populated by — a fetch.
-    let lastKnownHighScore = 0;
+    // Last streak/high score read from Firestore (or beaten live in a game).
+    // UI that needs them synchronously (welcome screen, in-game "High" box)
+    // renders these instead of waiting on — or scraping the DOM populated by —
+    // a fetch. Seeded from localStorage so the home screen shows real numbers
+    // even when the first Firestore read is slow or fails outright.
+    let lastKnownStreak = parseInt(localStorage.getItem('wordWormLastStreak'), 10) || 0;
+    let lastKnownHighScore = parseInt(localStorage.getItem('wordWormLastHighScore'), 10) || 0;
+    function persistKnownStats() {
+        try {
+            localStorage.setItem('wordWormLastStreak', String(lastKnownStreak));
+            localStorage.setItem('wordWormLastHighScore', String(lastKnownHighScore));
+        } catch(e) {}
+    }
     let currentChallengeId = null;
     let pendingChallengeId = new URLSearchParams(window.location.search).get('c') || null;
     let activeGridEl;
@@ -428,12 +436,17 @@ function showSubmitConfirmation() {
             auth = getAuth(app);
             // Persistent local cache: reads fall back to IndexedDB when the
             // network is slow/unavailable, data survives reloads, and writes
-            // queue offline. Multi-tab manager keeps several open tabs in sync.
-            // The SDK degrades to in-memory cache where IndexedDB isn't
-            // available (e.g. some private-browsing modes).
+            // queue offline. Single-tab manager, deliberately NOT multi-tab:
+            // multi-tab elects one "primary" tab that owns the network, and
+            // iOS Safari freezes background tabs — a frozen primary stalls
+            // every read/write in the tab the player is actually using. With
+            // single-tab, each tab owns its own connection; if another tab
+            // already holds the cache lock, the SDK falls back to in-memory
+            // cache (also the case where IndexedDB isn't available, e.g. some
+            // private-browsing modes).
             try {
                 db = initializeFirestore(app, {
-                    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+                    localCache: persistentLocalCache({ tabManager: persistentSingleTabManager(undefined) }),
                     // Firestore's streaming transport silently stalls for 10-30s
                     // on some mobile browsers/networks (iOS content blockers,
                     // iCloud Private Relay). Long polling works everywhere, and
@@ -465,6 +478,19 @@ function showSubmitConfirmation() {
                     }
                 } else {
                     signInAnonymously(auth).catch(err => console.error("Anonymous sign-in failed:", err));
+                }
+            });
+
+            // iOS Safari suspends the page (and can wedge Firestore's
+            // connection) while the app is backgrounded — resume is exactly
+            // when local state is most likely stale or a load has silently
+            // died. Refresh the cheap, player-visible bits on return to
+            // foreground: one player-doc read plus a challenges load that the
+            // 60s cache TTL usually short-circuits.
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && userId) {
+                    fetchPlayerStats(userId);
+                    updateChallengeNotifDot();
                 }
             });
         } catch (firebaseError) {
@@ -617,6 +643,12 @@ function showGameMessage(message, type = 'info', startTile = null) {
     async function fetchPlayerStats(uid) {
     if (!db) return;
     const playerDocRef = doc(db, "players", uid);
+
+    // Paint device-local state first, so a slow or failed Firestore read never
+    // leaves the home screen blank ("never loaded my profile" on flaky mobile).
+    // The fetch below repaints with authoritative data when it lands.
+    renderPlayerStatsUI(localStorage.getItem('wordRushPlayerName') || 'Anonymous', lastKnownStreak);
+
     try {
         const docSnap = await getDocResilient(playerDocRef);
         let highScore = 0;
@@ -632,6 +664,7 @@ function showGameMessage(message, type = 'info', startTile = null) {
         }
         lastKnownStreak = playStreak;
         lastKnownHighScore = Math.max(lastKnownHighScore, highScore);
+        persistKnownStats();
 
         // For signed-in users Firestore is authoritative; for anonymous users prefer localStorage
         // so a saved guest name isn't overwritten by 'Anonymous' from an empty Firestore doc.
@@ -643,6 +676,13 @@ function showGameMessage(message, type = 'info', startTile = null) {
             claimUsername(playerName); // silent auto-claim; no-op if taken or already owned
         }
 
+        renderPlayerStatsUI(playerName, playStreak);
+    } catch (e) {
+        console.error("Could not fetch player stats:", e);
+    }
+}
+
+    function renderPlayerStatsUI(playerName, playStreak) {
         const highScoreEl = document.getElementById('high-score');
         if (highScoreEl) highScoreEl.textContent = lastKnownHighScore;
 
@@ -692,11 +732,7 @@ function showGameMessage(message, type = 'info', startTile = null) {
             accountBtn.title = 'Your account';
             accountBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path fill-rule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clip-rule="evenodd" /></svg>`;
         }
-
-    } catch (e) {
-        console.error("Could not fetch player stats:", e);
     }
-}
     
    function createGrid(board, gridEl, bonuses = null) {
     if (!gridEl) return; 
@@ -1718,7 +1754,7 @@ function getTileFromEvent(e) {
                 highScoreEl.classList.add('text-yellow-500', 'animate-pulse');
                 // Challenge mode reuses this element but starts it at 0 as a
                 // per-game marker — only standard games set the real high score.
-                if (currentGamemode === 'standard') lastKnownHighScore = Math.max(lastKnownHighScore, score);
+                if (currentGamemode === 'standard') { lastKnownHighScore = Math.max(lastKnownHighScore, score); persistKnownStats(); }
             }
         } else {
             updatePracticeUI();
@@ -2261,10 +2297,16 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             // of committing stale data over the mutated cache.
             return myChallengesCache || readChallengesCache()?.items || result;
         }
-        myChallengesCache = result;
         // Cache-fallback data may be stale (or empty only because it never
-        // synced) — don't stamp it fresh, so the next open retries the server.
-        if (!sawCacheFallback) saveChallengesCache(result);
+        // synced) — return it for this render, but don't pin it in memory or
+        // stamp it fresh in localStorage, or every later open would instantly
+        // re-render the stale list while its background refresh hits the same
+        // stalled connection. Leaving both caches alone means the next open
+        // retries the server (and still has the last good list to fall back on).
+        if (!sawCacheFallback) {
+            myChallengesCache = result;
+            saveChallengesCache(result);
+        }
         return result;
     }
 
@@ -2676,6 +2718,11 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     // Generates a fresh board and writes the challenge doc. `extraFields` lets a
     // caller direct the challenge at a specific player (toUid/toName).
     async function createChallengeDoc(extraFields = {}) {
+        // Without the dictionaries the validator can't count findable words,
+        // so every candidate board "fails" and the fallback ships an unchecked
+        // board that both players are stuck with. Refuse instead — every
+        // caller already surfaces errors as its normal failure state.
+        if (!validationTrie || !fullDictionaryTrie) throw new Error('Dictionaries not loaded yet');
         const board = generateAndValidateBoard();
         // Bonus tiles are rolled once here and stored on the doc so both players
         // start from an identical board, bonuses included.
@@ -3311,7 +3358,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
         const buttonsHTML = topOther ? `
                 <div id="rematch-result" class="mb-2"></div>
-                <button id="challenge-rematch-btn" class="w-full bg-indigo-400 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg text-base mb-2 flex items-center justify-center gap-2">
+                <button id="challenge-rematch-btn" class="w-full text-white font-bold py-3 px-4 rounded-lg text-base mb-2 flex items-center justify-center gap-2">
                     ${refreshIcon} Rematch
                 </button>
                 <button id="challenge-return-home" class="w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold py-3 px-4 rounded-lg text-base">
@@ -4357,7 +4404,19 @@ function getTileCenter(tile) {
     }
 
     console.error(`FAILED to generate a valid board after ${MAX_ATTEMPTS} attempts.`);
-    
+
+    // Still hold the line on the structural rules, which need no dictionary.
+    // The full validator finds zero words when it runs before the dictionaries
+    // load, so every attempt above "fails" — a raw random board here is how
+    // 2×2 all-consonant clumps shipped in challenge games.
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+        let board = existingBoard ? [...existingBoard] : new Array(GRID_SIZE).fill(null);
+        board.forEach((tile, index) => {
+            if (tile === null) board[index] = getRandomLetter();
+        });
+        if (isBoardStructurallySound(board)) return board;
+    }
+
     let fallbackBoard = existingBoard ? [...existingBoard] : new Array(GRID_SIZE).fill(null);
     fallbackBoard.forEach((tile, index) => {
         if (tile === null) fallbackBoard[index] = getRandomLetter();
@@ -4365,7 +4424,10 @@ function getTileCenter(tile) {
     return fallbackBoard;
 }
     
-   function isBoardPlayable(board) {
+   // The board rules that need no dictionary: 4-7 vowels, ≤1 hard consonant,
+   // Q adjacent to U, no 2×2 all-vowel/all-consonant clumps. Split out so the
+   // generation fallback can enforce them even when word-count checks can't run.
+   function isBoardStructurallySound(board) {
     const vowelCount = board.filter(letter => VOWELS.includes(letter)).length;
     if (vowelCount < 4 || vowelCount > 7) return false;
 
@@ -4376,6 +4438,12 @@ function getTileCenter(tile) {
     if (qIndex !== -1 && !getNeighbors(qIndex, board).some(letter => letter === "U")) {
         return false;
     }
+
+    return checkNoClumps(board);
+}
+
+   function isBoardPlayable(board) {
+    if (!isBoardStructurallySound(board)) return false;
 
     const solvableWords = solveBoard(board, validationTrie);
 
@@ -4391,8 +4459,6 @@ function getTileCenter(tile) {
     if (threeLetterWords < 4 || fourLetterWords < 3 || fiveLetterWords < 1) {
         return false;
     }
-
-    if (!checkNoClumps(board)) return false;
 
     return true;
 }
