@@ -1,6 +1,6 @@
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {initializeApp} = require("firebase-admin/app");
-const {getFirestore, FieldValue} = require("firebase-admin/firestore");
+const {getFirestore, FieldValue, Timestamp} = require("firebase-admin/firestore");
 const {logger} = require("firebase-functions");
 
 const fullDictionaryTrieData = require("./scrabble-dictionary.json");
@@ -174,4 +174,38 @@ exports.resetDailyLeaderboards = onSchedule({
     } catch (error) {
         logger.error("Error resetting daily leaderboards:", error);
     }
+});
+
+// Challenge docs are created with a 7-day expiresAt and nothing ever deletes
+// them afterward — the client already treats expired ones as invisible
+// (game.js filters them out client-side), but they stay in Firestore forever,
+// so every "My Challenges" load (an array-contains query, billed per document
+// returned) keeps paying to re-fetch docs no player can even see. Delete them
+// server-side once they're past that same expiresAt cutoff.
+exports.cleanupExpiredChallenges = onSchedule({
+    schedule: "every day 03:00",
+    timeZone: "America/New_York"
+}, async (event) => {
+    const db = getFirestore();
+    const now = Timestamp.now();
+    let totalDeleted = 0;
+
+    // Firestore batches cap at 500 writes; page through in chunks in case a
+    // backlog ever exceeds that in one run.
+    while (true) {
+        const snap = await db.collection('challenges')
+            .where('expiresAt', '<', now)
+            .limit(400)
+            .get();
+        if (snap.empty) break;
+
+        const batch = db.batch();
+        snap.docs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+        totalDeleted += snap.size;
+
+        if (snap.size < 400) break;
+    }
+
+    logger.info(`Deleted ${totalDeleted} expired challenge(s).`);
 });

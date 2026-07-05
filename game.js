@@ -654,12 +654,14 @@ function showGameMessage(message, type = 'info', startTile = null) {
         let highScore = 0;
         let playerName = 'Anonymous';
         let playStreak = 0;
+        let knownUsername = null;
 
         if (docSnap.exists()) {
             const playerData = docSnap.data();
             highScore = playerData.highScore || 0;
             playerName = playerData.name && playerData.name !== 'Anonymous' ? playerData.name : 'Anonymous';
             playStreak = playerData.playStreak || 0;
+            knownUsername = playerData.username || null;
             if (playerData.username) storeUsername(playerData.username);
         }
         lastKnownStreak = playStreak;
@@ -673,7 +675,10 @@ function showGameMessage(message, type = 'info', startTile = null) {
         }
         if (playerName !== 'Anonymous') {
             localStorage.setItem('wordRushPlayerName', playerName);
-            claimUsername(playerName); // silent auto-claim; no-op if taken or already owned
+            // silent auto-claim; no-op if taken or already owned. We already
+            // have this doc's username from the read above, so pass it through
+            // instead of making claimUsername re-read the same doc.
+            claimUsername(playerName, knownUsername);
         }
 
         renderPlayerStatsUI(playerName, playStreak);
@@ -1665,7 +1670,7 @@ function getTileFromEvent(e) {
         // Update the document with merge: true to avoid update time conflicts
         await setDoc(playerDocRef, updateData, { merge: true });
         // Claim only freshly entered names here; existing names are auto-claimed at app open.
-        if (needsToSubmitName && finalPlayerName !== 'Anonymous') claimUsername(finalPlayerName);
+        if (needsToSubmitName && finalPlayerName !== 'Anonymous') claimUsername(finalPlayerName, oldData.username || null);
 
         didBeatDailyHighScore = oldData.dailyHighScoreLastUpdated !== todayStr || finalScore > (oldData.dailyHighScore || 0);
         updatedStats = { ...oldData, ...updateData };
@@ -1711,11 +1716,10 @@ function getTileFromEvent(e) {
             // Update with merge
             await setDoc(dailyRef, data, { merge: true });
 
-            const updatedLeaderboardDoc = await getDoc(dailyRef);
-            if (updatedLeaderboardDoc.exists()) {
-                const rankIndex = (updatedLeaderboardDoc.data().topByHighScore || []).findIndex(p => p.userID === uId);
-                if (rankIndex !== -1) dailyRank = rankIndex + 1;
-            }
+            // data.topByHighScore is exactly what was just written — no need
+            // to pay for another read just to find the rank in it.
+            const rankIndex = (data.topByHighScore || []).findIndex(p => p.userID === uId);
+            if (rankIndex !== -1) dailyRank = rankIndex + 1;
         } catch (e) { console.error("Failed to update daily leaderboard:", e); }
 
         const allTimeRef = doc(db, "leaderboards", "allTime");
@@ -2078,15 +2082,23 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     // when the player owns the username afterwards; otherwise 'taken',
     // 'invalid', or 'error' (network/offline), so callers can tell a real
     // conflict from a connectivity hiccup. Never throws.
-    async function claimUsername(displayName) {
+    // knownOldUsername lets a caller that just read the player doc (e.g.
+    // fetchPlayerStats) skip re-reading it here purely to compare usernames —
+    // this runs silently on every app open, so that read was pure waste
+    // whenever the username hadn't changed. Pass undefined when the caller
+    // doesn't already know it, and this falls back to reading it itself.
+    async function claimUsername(displayName, knownOldUsername = undefined) {
         try {
             if (!db || !userId) return 'error';
             const uname = normalizeUsername(displayName);
             if (!isValidUsername(uname)) return 'invalid';
 
             const playerRef = doc(db, 'players', userId);
-            const playerSnap = await withTimeout(getDoc(playerRef));
-            const oldUsername = playerSnap.exists() ? playerSnap.data().username : null;
+            let oldUsername = knownOldUsername;
+            if (oldUsername === undefined) {
+                const playerSnap = await withTimeout(getDoc(playerRef));
+                oldUsername = playerSnap.exists() ? playerSnap.data().username : null;
+            }
             if (oldUsername === uname) { storeUsername(uname); return 'claimed'; }
 
             const status = await checkUsernameStatus(uname);
