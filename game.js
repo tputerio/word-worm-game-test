@@ -2854,8 +2854,12 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
             // × removes the card: decline if it's an unplayed incoming challenge,
             // revoke (delete) if the player created it, otherwise hide locally.
+            // Once both sides have played, the challenge is done and its result
+            // is shared data — no remove button, so a creator can't yank it out
+            // from under the friend who already played it.
+            const completed = myPlayed && friendPlayed;
             const removeAction = (isIncoming && !myPlayed) ? 'decline' : (isMine ? 'revoke' : 'hide');
-            const removeBtn = `<button class="challenge-remove-btn flex items-center justify-center rounded-lg flex-shrink-0" style="width:32px;height:32px;background:#f1f5f9;color:#94a3b8;border:1px solid #e2e8f0" title="Remove" data-id="${id}" data-action="${removeAction}">${IC_X}</button>`;
+            const removeBtn = completed ? '' : `<button class="challenge-remove-btn flex items-center justify-center rounded-lg flex-shrink-0" style="width:32px;height:32px;background:#f1f5f9;color:#94a3b8;border:1px solid #e2e8f0" title="Remove" data-id="${id}" data-action="${removeAction}">${IC_X}</button>`;
 
             let line1, line1Class, line2, borderStyle, btnHtml;
 
