@@ -100,13 +100,17 @@
     }
 
     // Signs out and clears everything device-local that belongs to the old
-    // account: saved name, tracked/hidden challenge ids, and seen-results
-    // markers, so the next guest or account on this device doesn't inherit
-    // them. The global onAuthStateChanged listener signs the player back in
-    // anonymously — no explicit signInAnonymously here, or the two calls race
-    // and mint an extra throwaway anonymous account.
+    // account: saved name, tracked/hidden challenge ids, seen-results markers,
+    // and cached stats, so the next guest or account on this device doesn't
+    // inherit them. The global onAuthStateChanged listener signs the player
+    // back in anonymously — no explicit signInAnonymously here, or the two
+    // calls race and mint an extra throwaway anonymous account. Clearing
+    // userId here (rather than waiting for that listener) prevents the
+    // welcome screen's immediate re-render from fetching the old account's
+    // Firestore doc with a still-stale uid.
     async function signOutAndReset() {
         await signOut(auth);
+        userId = null;
         localStorage.removeItem('wordRushPlayerName');
         localStorage.removeItem('wordWormChallenges');
         localStorage.removeItem(HIDDEN_CHALLENGES_KEY);
@@ -114,6 +118,10 @@
         localStorage.removeItem(MY_USERNAME_KEY);
         myUsernameCache = null;
         invalidateChallengesCache();
+        lastKnownStreak = 0;
+        lastKnownHighScore = 0;
+        lastKnownChallengeStats = { wins: 0, losses: 0, ties: 0 };
+        persistKnownStats();
     }
 
     // --- Game State ---
@@ -2022,8 +2030,13 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     updateChallengeNotifDot();
 
     // Always repopulate the greeting/stats — sign-up links the anonymous account
-    // in place (same uid), so onAuthStateChanged doesn't re-fire for it.
+    // in place (same uid), so onAuthStateChanged doesn't re-fire for it. Right
+    // after a sign-out, userId is briefly null (cleared by signOutAndReset,
+    // not yet replaced by the new anonymous uid) — render the guest state
+    // directly instead of skipping the repaint, so the old identity doesn't
+    // linger on screen while the new anonymous sign-in is still in flight.
     if (userId) fetchPlayerStats(userId);
+    else renderPlayerStatsUI('Anonymous', 0);
 
     // Daily puzzle status on the button: ✓ once submitted, red dot when a
     // started puzzle is still waiting to be submitted.
