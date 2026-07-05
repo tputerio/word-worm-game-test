@@ -2,7 +2,7 @@
   "name": "word-worm-game",
   "version": "1.0.0",
   "scripts": {
-    "build": "tailwindcss -i ./src/input.css -o ./dist/style.css --minify"
+    "build": "tailwindcss -i ./src/input.css -o ./dist/style.css --minify && node bump-version.js"
   },
   "devDependencies": {
     "tailwindcss": "^3.4.4"
