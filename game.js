@@ -133,10 +133,15 @@
     // even when the first Firestore read is slow or fails outright.
     let lastKnownStreak = parseInt(localStorage.getItem('wordWormLastStreak'), 10) || 0;
     let lastKnownHighScore = parseInt(localStorage.getItem('wordWormLastHighScore'), 10) || 0;
+    let lastKnownChallengeStats = (() => {
+        try { return JSON.parse(localStorage.getItem('wordWormChallengeStats')) || { wins: 0, losses: 0, ties: 0 }; }
+        catch(e) { return { wins: 0, losses: 0, ties: 0 }; }
+    })();
     function persistKnownStats() {
         try {
             localStorage.setItem('wordWormLastStreak', String(lastKnownStreak));
             localStorage.setItem('wordWormLastHighScore', String(lastKnownHighScore));
+            localStorage.setItem('wordWormChallengeStats', JSON.stringify(lastKnownChallengeStats));
         } catch(e) {}
     }
     let currentChallengeId = null;
@@ -663,6 +668,7 @@ function showGameMessage(message, type = 'info', startTile = null) {
             playStreak = playerData.playStreak || 0;
             knownUsername = playerData.username || null;
             if (playerData.username) storeUsername(playerData.username);
+            if (playerData.challengeStats) lastKnownChallengeStats = { wins: 0, losses: 0, ties: 0, ...playerData.challengeStats };
         }
         lastKnownStreak = playStreak;
         lastKnownHighScore = Math.max(lastKnownHighScore, highScore);
@@ -2384,6 +2390,41 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         return !!c.myResult && !c.myResult.declined && c.otherResults.length > (getSeenResults()[c.id] || 0);
     }
 
+    // Challenge docs get deleted 7 days after they're created (see
+    // cleanupExpiredChallenges in functions/index.js), so a friend rivalry's
+    // outcome would otherwise vanish once that doc is gone. The first time
+    // either player sees both scores in, tally the result onto their own
+    // lifetime record — myResult.statsCounted (a leaf under the doc's own
+    // results.{uid} map) makes this a no-op on every later view of the same
+    // challenge, from either player, on any device.
+    function recordChallengeOutcomeIfNeeded(challengeId, myResult, otherResults) {
+        if (!db || !userId || !myResult || myResult.declined || myResult.statsCounted) return;
+        const topOther = [...otherResults].filter(([, r]) => r && !r.declined).sort((a, b) => b[1].score - a[1].score)[0];
+        if (!topOther) return;
+
+        const outcome = myResult.score === topOther[1].score ? 'ties' : myResult.score > topOther[1].score ? 'wins' : 'losses';
+
+        // Mark it counted locally right away, not just after the Firestore
+        // round trip — this same function gets called again moments later
+        // from a different screen (e.g. My Challenges right after finishing
+        // a game), and without this a fast second call would double-count
+        // before the statsCounted write below has landed.
+        myResult.statsCounted = true;
+        try {
+            mutateChallengesCache(entries => entries.map(([id, data]) => id === challengeId
+                ? [id, { ...data, results: { ...(data.results || {}), [userId]: { ...(data.results?.[userId] || {}), statsCounted: true } } }]
+                : [id, data]));
+        } catch(e) {}
+
+        updateDoc(doc(db, 'challenges', challengeId), { [`results.${userId}.statsCounted`]: true }).catch(() => {});
+        setDoc(doc(db, 'players', userId), { challengeStats: { [outcome]: increment(1) } }, { merge: true })
+            .then(() => {
+                lastKnownChallengeStats[outcome] = (lastKnownChallengeStats[outcome] || 0) + 1;
+                persistKnownStats();
+            })
+            .catch(() => {});
+    }
+
     // A challenge needs attention if it's an unplayed incoming one, or an
     // opponent finished it since the player last looked.
     function challengeNeedsAttention(c) {
@@ -2823,14 +2864,22 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         container.style.flexDirection = 'column';
         container.style.overflow = 'hidden';
 
+        // Backed by lastKnownChallengeStats (populated by fetchPlayerStats),
+        // so this costs nothing extra — no dedicated read for the modal.
+        const { wins, losses, ties } = lastKnownChallengeStats;
+        const recordLine = (wins + losses + ties) > 0
+            ? `<p class="text-xs text-slate-400 mb-3 flex-shrink-0">${wins}-${losses}-${ties} all-time</p>`
+            : '';
+
         container.innerHTML = `
-            <div class="flex items-center mb-4 flex-shrink-0">
+            <div class="flex items-center mb-2 flex-shrink-0">
                 <button id="my-challenges-back" class="text-slate-400 hover:text-slate-700 mr-3">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
                 </button>
                 <h2 class="text-lg font-bold text-slate-800">My Challenges</h2>
                 <button id="close-challenge-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800 ml-auto">&times;</button>
             </div>
+            ${recordLine}
             <div id="challenges-list" class="overflow-y-auto flex flex-col gap-2 pr-0.5" style="flex:1;min-height:0">
                 <div class="flex justify-center py-4"><svg class="animate-spin h-6 w-6 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>
             </div>`;
@@ -3001,7 +3050,11 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
             // Everything shown here counts as seen for notification purposes,
             // so refresh the home-screen dot right away.
-            valid.forEach(c => { if (c.myResult) markChallengeResultsSeen(c.id, c.otherResults.length); });
+            valid.forEach(c => {
+                if (!c.myResult) return;
+                markChallengeResultsSeen(c.id, c.otherResults.length);
+                recordChallengeOutcomeIfNeeded(c.id, c.myResult, c.otherResults);
+            });
             updateChallengeNotifDot();
 
             const visible = valid.slice(0, 4);
@@ -3068,6 +3121,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
             // A declined result doesn't lock the board — opening the link again lets them play.
             if (myResult && !myResult.declined) {
+                recordChallengeOutcomeIfNeeded(challengeId, myResult, otherResults);
                 showChallengeResultsScreen(challengeId, data, myResult, otherResults);
                 return;
             }
@@ -3271,6 +3325,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
         const myResult = { ...resultData, score: stats.score };
         const otherResults = Object.entries(data?.results || {}).filter(([uid]) => uid !== userId);
+        recordChallengeOutcomeIfNeeded(finishedChallengeId, myResult, otherResults);
         showChallengeResultsScreen(finishedChallengeId, data, myResult, otherResults, true);
     }
 
@@ -4085,6 +4140,12 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         const totalPointsIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg>`;
         const bestWordIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg>`;
         const bestWordDisplay = stats.bestWord.word ? `${stats.bestWord.word.toUpperCase()} (${stats.bestWord.score})` : 'N/A';
+        const challengeStats = stats.challengeStats || { wins: 0, losses: 0, ties: 0 };
+        const challengeTotalPlayed = challengeStats.wins + challengeStats.losses + challengeStats.ties;
+        const challengeRecordIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>`;
+        const challengeRecordRow = challengeTotalPlayed > 0
+            ? `<div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${challengeRecordIcon}<span class="ml-2">Challenge Record</span></span><span class="font-black text-xl text-slate-700">${challengeStats.wins}-${challengeStats.losses}-${challengeStats.ties}</span></div>`
+            : '';
         const topScoresHTML = stats.top5Scores.map((s, i) => {
             const dateParts = s.date.split('-');
             const shortDate = `${Number(dateParts[1])}/${Number(dateParts[2])}/${dateParts[0].slice(-2)}`;
@@ -4095,6 +4156,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${playStreakIcon}<span class="ml-2">Play Streak</span></span><span class="font-black text-xl text-amber-500">${stats.playStreak} Day${stats.playStreak !== 1 ? 's' : ''}</span></div>
             <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${totalPointsIcon}<span class="ml-2">Total Points</span></span><span class="font-black text-xl text-slate-700">${stats.totalPoints.toLocaleString()}</span></div>
             <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${bestWordIcon}<span class="ml-2">Best Word</span></span><span class="font-black text-xl text-slate-700">${bestWordDisplay}</span></div>
+            ${challengeRecordRow}
         </div>
         <div class="grid grid-cols-3 gap-2 text-center bg-slate-100 p-3 rounded-lg mb-4">
             <div><div class="text-xs font-bold text-slate-500 uppercase">Games</div><div class="text-2xl font-black text-slate-800">${stats.totalGamesPlayed}</div></div>
@@ -4110,8 +4172,11 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     async function fetchAndCalculateStats() {
         if (!db || !userId) return null;
         const playerDocRef = doc(db, "players", userId);
-        const docSnap = await getDoc(playerDocRef); 
-        if (!docSnap.exists() || !docSnap.data().totalGamesPlayed) {
+        const docSnap = await getDoc(playerDocRef);
+        // A player who's only ever played Challenge-a-Friend has no
+        // totalGamesPlayed (that's only incremented by standard games) but
+        // still has a challenge record worth showing here.
+        if (!docSnap.exists() || (!docSnap.data().totalGamesPlayed && !docSnap.data().challengeStats)) {
             return null;
         }
         const stats = docSnap.data();
@@ -4125,15 +4190,16 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             finalPlayStreak = 0;
         }
         return {
-            totalGamesPlayed: stats.totalGamesPlayed,
-            totalPoints: stats.totalPoints,
+            totalGamesPlayed: stats.totalGamesPlayed || 0,
+            totalPoints: stats.totalPoints || 0,
             totalWordsFound: stats.totalWordsFound || 0,
             totalLettersFound: stats.totalLettersFound || 0,
             top5Scores: stats.top5Scores || [],
             top5LongestWords: stats.top5LongestWords || [],
             highScore: stats.highScore || 0,
             bestWord: stats.bestWord || { word: '', score: 0 },
-            playStreak: finalPlayStreak
+            playStreak: finalPlayStreak,
+            challengeStats: stats.challengeStats || { wins: 0, losses: 0, ties: 0 }
         };
     }
     
