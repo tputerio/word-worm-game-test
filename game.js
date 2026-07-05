@@ -2202,7 +2202,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     // mutateChallengesCache/seedChallengeIntoCache (instant UI, no reload);
     // invalidateChallengesCache() is the blunt fallback.
     const CHALLENGES_CACHE_KEY = 'wordWormChallengesCache';
-    const CHALLENGES_CACHE_TTL_MS = 60 * 1000;
+    const CHALLENGES_CACHE_TTL_MS = 15 * 1000;
 
     // Bumped on every mutation so a load that was already in flight can't
     // commit its pre-mutation snapshot over the updated cache.
@@ -2692,7 +2692,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 text-left">Send to a username</label>
             <div class="flex gap-2">
                 <input id="challenge-username-input" type="text" maxlength="15" placeholder="Friend's username"
-                    class="auth-input flex-1 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+                    class="auth-input flex-1 min-w-0 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
                 <button id="challenge-username-send" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg text-sm">Send</button>
             </div>
             <p id="challenge-username-msg" class="text-xs mt-1 text-left min-h-[16px]"></p>
@@ -2776,7 +2776,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             <p class="text-xs text-slate-500 mb-2 text-left">${takenNote}</p>
             <div class="flex gap-2">
                 <input id="claim-username-input" type="text" maxlength="15" placeholder="Pick a username"
-                    class="auth-input flex-1 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+                    class="auth-input flex-1 min-w-0 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
                 <button id="claim-username-btn" class="bg-slate-800 hover:bg-slate-700 text-white font-bold py-2 px-4 rounded-lg text-sm">Claim</button>
             </div>
             <p id="claim-username-msg" class="text-xs mt-1 text-left min-h-[16px]"></p>
