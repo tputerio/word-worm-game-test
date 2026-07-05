@@ -64,12 +64,22 @@ service cloud.firestore {
 
     // --- CHALLENGES (Friend challenge boards) ---
     match /challenges/{challengeId} {
+      // Only your own entry in the results map may be added or changed.
+      function onlyOwnResultsChange() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['results']) &&
+               request.resource.data.results.diff(resource.data.get('results', {})).affectedKeys().hasOnly([request.auth.uid]);
+      }
+      // Joining via link: the only allowed participants change is adding
+      // your own uid — nothing else touched, nobody removed.
+      function onlyAddsSelfToParticipants() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participants']) &&
+               request.resource.data.participants is list &&
+               request.resource.data.participants.toSet().difference(resource.data.get('participants', []).toSet()).hasOnly([request.auth.uid]) &&
+               resource.data.get('participants', []).toSet().difference(request.resource.data.participants.toSet()).size() == 0;
+      }
       allow create: if isSignedIn() && request.resource.data.createdBy == request.auth.uid;
       allow read:   if isSignedIn();
-      // Players may only add or change their own entry in the results map.
-      allow update: if isSignedIn() &&
-                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['results']) &&
-                       request.resource.data.results.diff(resource.data.get('results', {})).affectedKeys().hasOnly([request.auth.uid]);
+      allow update: if isSignedIn() && (onlyOwnResultsChange() || onlyAddsSelfToParticipants());
       // Creators may revoke (delete) their own challenges.
       allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
     }

@@ -1,7 +1,7 @@
     // --- Firebase SDKs ---
     import { getApps, initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
-    import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, addDoc, getDocs, getDocsFromCache, query, where, orderBy, limit, doc, getDoc, getDocFromServer, getDocFromCache, setDoc, updateDoc, deleteDoc, increment, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
+    import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, addDoc, getDocs, getDocsFromCache, query, where, orderBy, limit, doc, documentId, getDoc, getDocFromServer, getDocFromCache, setDoc, updateDoc, deleteDoc, increment, arrayUnion, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
      // --- Google Analytics ---
    // GOOGLE ANALYTICS -- import { getAnalytics, logEvent, setUserId } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-analytics.js";
@@ -111,8 +111,9 @@
         localStorage.removeItem('wordWormChallenges');
         localStorage.removeItem(HIDDEN_CHALLENGES_KEY);
         localStorage.removeItem(SEEN_RESULTS_KEY);
+        localStorage.removeItem(MY_USERNAME_KEY);
         myUsernameCache = null;
-        myChallengesCache = null;
+        invalidateChallengesCache();
     }
 
     // --- Game State ---
@@ -231,13 +232,9 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
             <div id="share-link-container" class="h-10 flex items-center justify-center mt-4"></div>
             <div class="flex space-x-2 mt-2">
                 <button id="endgame-leaderboard-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-base flex-1">Leaderboard</button>
-                <button id="return-home-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex-1 flex items-center justify-center gap-2">${HOME_ICON} Return Home</button>
+                <button id="return-home-button" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base flex-1">Home</button>
             </div>
             <p id="next-puzzle-countdown" class="text-xs font-semibold text-slate-500 mt-3"></p>
-            <div class="text-center text-xs text-slate-400 mt-4">
-                <p>&copy; 2026 Word Worm</p>
-                <p><a href="/about.html" class="hover:underline">About</a> &bull; <a href="/contact.html" class="hover:underline">Contact</a> &bull; <a href="/privacy.html" class="hover:underline">Privacy Policy</a> &bull; <a href="/terms.html" class="hover:underline">Terms of Use</a></p>
-            </div>
         </div>`;
     
     const summaryContainer = document.getElementById('daily-summary-container');
@@ -436,7 +433,13 @@ function showSubmitConfirmation() {
             // available (e.g. some private-browsing modes).
             try {
                 db = initializeFirestore(app, {
-                    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+                    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+                    // Firestore's streaming transport silently stalls for 10-30s
+                    // on some mobile browsers/networks (iOS content blockers,
+                    // iCloud Private Relay). Long polling works everywhere, and
+                    // this app only does one-shot reads — no realtime listeners
+                    // that would benefit from streaming.
+                    experimentalForceLongPolling: true
                 });
             } catch (e) {
                 console.warn('Persistent cache unavailable, using default Firestore:', e);
@@ -566,14 +569,32 @@ function showGameMessage(message, type = 'info', startTile = null) {
             );
         });
     }
+    // A cold mobile connection can take 15-20s to establish. When the timeout
+    // fires and the cache has nothing to offer, keep waiting on the original
+    // (still-pending) server read rather than failing — a retry would start
+    // from zero anyway.
+    const READ_GRACE_MS = 20000;
     // Both still reject when the server is unreachable AND nothing is cached.
     async function getDocResilient(ref, ms = READ_TIMEOUT_MS) {
-        try { return await withTimeout(getDoc(ref), ms); }
-        catch (e) { return await getDocFromCache(ref); }
+        const serverRead = getDoc(ref);
+        try { return await withTimeout(serverRead, ms); }
+        catch (e) {
+            try { return await getDocFromCache(ref); }
+            catch (e2) { return await withTimeout(serverRead, READ_GRACE_MS); }
+        }
     }
     async function getDocsResilient(q, ms = READ_TIMEOUT_MS) {
-        try { return await withTimeout(getDocs(q), ms); }
-        catch (e) { return await getDocsFromCache(q); }
+        const serverRead = getDocs(q);
+        try { return await withTimeout(serverRead, ms); }
+        catch (e) {
+            try {
+                const cached = await getDocsFromCache(q);
+                // An empty cache result usually means "never synced", not
+                // "no data" — don't present it as an answer.
+                if (!cached.empty) return cached;
+            } catch (e2) {}
+            return await withTimeout(serverRead, READ_GRACE_MS);
+        }
     }
 
     async function fetchGlobalStats() {
@@ -607,7 +628,7 @@ function showGameMessage(message, type = 'info', startTile = null) {
             highScore = playerData.highScore || 0;
             playerName = playerData.name && playerData.name !== 'Anonymous' ? playerData.name : 'Anonymous';
             playStreak = playerData.playStreak || 0;
-            if (playerData.username) myUsernameCache = playerData.username;
+            if (playerData.username) storeUsername(playerData.username);
         }
         lastKnownStreak = playStreak;
         lastKnownHighScore = Math.max(lastKnownHighScore, highScore);
@@ -1399,7 +1420,7 @@ function updateDailyChallengeUI() {
     if (listEl) {
         const sortedWords = [...foundWords].map(fw => fw.word).sort((a, b) => a.localeCompare(b));
         if (sortedWords.length > 0) {
-            listEl.innerHTML = sortedWords.map(word => `<span class="bg-blue-100 text-blue-800 font-semibold text-xs px-2 py-0.5 rounded-md">${word.toUpperCase()}</span>`).join('');
+            listEl.innerHTML = sortedWords.map(word => `<span class="bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100 font-semibold text-xs px-2 py-0.5 rounded-md">${word.toUpperCase()}</span>`).join('');
         } else {
             listEl.innerHTML = `<p class="w-full text-center text-sm text-slate-400">You haven't found any words yet!</p>`;
         }
@@ -1958,7 +1979,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     // in place (same uid), so onAuthStateChanged doesn't re-fire for it.
     if (userId) fetchPlayerStats(userId);
 
-    // Check daily completion status
+    // Daily puzzle status on the button: ✓ once submitted, red dot when a
+    // started puzzle is still waiting to be submitted.
     (async () => {
         try {
             const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
@@ -1971,6 +1993,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             if (completed) {
                 const badge = document.getElementById('daily-mode-badge');
                 if (badge) badge.style.display = 'inline';
+            } else if (localStorage.getItem(`dailyProgress-${todayStr}`)) {
+                addNotifDot(document.getElementById('mode-daily-btn'));
             }
         } catch(e) {}
     })();
@@ -1990,6 +2014,20 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     // modal's "Send to a username" section renders instantly instead of waiting
     // on a Firestore read every time it opens.
     let myUsernameCache = null;
+
+    // The username is also mirrored to localStorage (keyed to the uid) so the
+    // challenge screen renders instantly with zero reads on later visits.
+    const MY_USERNAME_KEY = 'wordWormMyUsername';
+    function getStoredUsername() {
+        try {
+            const v = JSON.parse(localStorage.getItem(MY_USERNAME_KEY) || 'null');
+            return v && v.uid === userId ? v.uname : null;
+        } catch(e) { return null; }
+    }
+    function storeUsername(uname) {
+        myUsernameCache = uname;
+        try { localStorage.setItem(MY_USERNAME_KEY, JSON.stringify({ uid: userId, uname })); } catch(e) {}
+    }
 
     // Returns 'invalid' | 'available' | 'mine' | 'taken'. Throws on network failure.
     async function checkUsernameStatus(name) {
@@ -2013,7 +2051,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             const playerRef = doc(db, 'players', userId);
             const playerSnap = await withTimeout(getDoc(playerRef));
             const oldUsername = playerSnap.exists() ? playerSnap.data().username : null;
-            if (oldUsername === uname) { myUsernameCache = uname; return 'claimed'; }
+            if (oldUsername === uname) { storeUsername(uname); return 'claimed'; }
 
             const status = await checkUsernameStatus(uname);
             if (status === 'taken') return 'taken';
@@ -2031,7 +2069,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             if (oldUsername && oldUsername !== uname) {
                 try { await deleteDoc(doc(db, 'usernames', oldUsername)); } catch(e) {}
             }
-            myUsernameCache = uname;
+            storeUsername(uname);
             return 'claimed';
         } catch(e) {
             return 'error';
@@ -2069,7 +2107,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         try {
             const status = await checkUsernameStatus(name);
             if (status === 'invalid') { setUsernameMsg(msgEl, USERNAME_RULES_MSG, false); return false; }
-            if (status === 'taken') { setUsernameMsg(msgEl, 'That username is taken — try another.', false); return false; }
+            if (status === 'taken') { setUsernameMsg(msgEl, 'That username is taken. Try another.', false); return false; }
             return true;
         } catch(e) {
             return true;
@@ -2080,35 +2118,28 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     // refresh in the background instead of sitting empty during the fetch.
     let myChallengesCache = null;
 
-    // Every challenge this player is involved in: ones they created, ones sent
-    // to them by username, and link challenges they've opened (localStorage).
-    async function loadAllMyChallenges() {
-        if (!db || !userId) return [];
-        const map = new Map();
-        const [createdSnap, incomingSnap] = await Promise.all([
-            getDocsResilient(query(collection(db, 'challenges'), where('createdBy', '==', userId), limit(20))),
-            getDocsResilient(query(collection(db, 'challenges'), where('toUid', '==', userId), limit(20)))
-        ]);
-        [...createdSnap.docs, ...incomingSnap.docs].forEach(d => map.set(d.id, d.data()));
+    // The list is also persisted to localStorage so a fresh page load can render
+    // instantly, and reloaded at most once per TTL — the home-screen notif dot
+    // re-runs this on every visit and shouldn't cost a Firestore query each time.
+    // Anything that changes a challenge must update the cache: prefer
+    // mutateChallengesCache/seedChallengeIntoCache (instant UI, no reload);
+    // invalidateChallengesCache() is the blunt fallback.
+    const CHALLENGES_CACHE_KEY = 'wordWormChallengesCache';
+    const CHALLENGES_CACHE_TTL_MS = 60 * 1000;
 
-        const localIds = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
-        await Promise.all(localIds.filter(id => !map.has(id)).map(async id => {
-            // Server-first so revoked (deleted) challenges drop out, but when it
-            // stalls, a stale cached copy beats the challenge vanishing.
-            try {
-                const snap = await withTimeout(getDocFromServer(doc(db, 'challenges', id)));
-                if (snap.exists()) map.set(id, snap.data());
-            } catch(e) {
-                try {
-                    const snap = await getDocFromCache(doc(db, 'challenges', id));
-                    if (snap.exists()) map.set(id, snap.data());
-                } catch(e2) {}
-            }
-        }));
+    // Bumped on every mutation so a load that was already in flight can't
+    // commit its pre-mutation snapshot over the updated cache.
+    let challengesCacheGeneration = 0;
 
+    // Minimal stand-in for a Firestore Timestamp, for values that can't come
+    // from the server (JSON round trips, locally created docs).
+    const msToTimestamp = (ms) => ms == null ? null : ({ toMillis: () => ms, toDate: () => new Date(ms) });
+
+    // Annotate and sort raw challenge docs into the shape every consumer uses.
+    function shapeChallenges(entries) {
         const now = Date.now();
         const hidden = new Set(getHiddenChallenges());
-        const result = Array.from(map.entries())
+        return entries
             .filter(([id]) => !hidden.has(id))
             .map(([id, data]) => ({
                 id,
@@ -2118,7 +2149,122 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 expired: data.expiresAt?.toDate ? data.expiresAt.toDate() < now : false
             }))
             .sort((a, b) => (b.data.createdAt?.toMillis?.() ?? 0) - (a.data.createdAt?.toMillis?.() ?? 0));
+    }
+
+    function saveChallengesCache(items) {
+        try {
+            // Firestore Timestamps don't survive JSON, so store millis and
+            // rebuild toDate/toMillis on read.
+            const slim = items.map(c => ({ id: c.id, data: { ...c.data,
+                createdAt: c.data.createdAt?.toMillis?.() ?? null,
+                expiresAt: c.data.expiresAt?.toDate ? c.data.expiresAt.toDate().getTime() : null
+            }}));
+            localStorage.setItem(CHALLENGES_CACHE_KEY, JSON.stringify({ at: Date.now(), uid: userId, items: slim }));
+        } catch(e) {}
+    }
+
+    function readChallengesCache() {
+        try {
+            const raw = JSON.parse(localStorage.getItem(CHALLENGES_CACHE_KEY) || 'null');
+            if (!raw || raw.uid !== userId || !Array.isArray(raw.items)) return null;
+            const items = shapeChallenges(raw.items.map(c => [c.id, { ...c.data,
+                createdAt: msToTimestamp(c.data.createdAt),
+                expiresAt: msToTimestamp(c.data.expiresAt)
+            }]));
+            return { at: raw.at, items };
+        } catch(e) { return null; }
+    }
+
+    function invalidateChallengesCache() {
+        challengesCacheGeneration++;
+        myChallengesCache = null;
+        try { localStorage.removeItem(CHALLENGES_CACHE_KEY); } catch(e) {}
+    }
+
+    // Applies a change we just wrote to the server directly to the cached list
+    // ([id, data] entries in, entries out), so challenge UIs update instantly
+    // instead of spinning on a reload — Firestore reads can stall for seconds
+    // on a phone that just came back from being backgrounded (e.g. the share
+    // sheet). Falls back to plain invalidation when nothing is cached yet.
+    function mutateChallengesCache(fn) {
+        const items = myChallengesCache || readChallengesCache()?.items;
+        if (!items) { invalidateChallengesCache(); return; }
+        challengesCacheGeneration++;
+        const next = shapeChallenges(fn(items.map(c => [c.id, c.data])));
+        myChallengesCache = next;
+        saveChallengesCache(next);
+    }
+
+    // Insert or replace one challenge in the cached list.
+    function seedChallengeIntoCache(id, data) {
+        mutateChallengesCache(entries => [[id, data], ...entries.filter(([eid]) => eid !== id)]);
+    }
+
+    // Challenges expire after 7 days, so every live doc has a participants
+    // array once this date passes — the legacy queries below (and this const)
+    // can then be deleted.
+    const LEGACY_CHALLENGES_CUTOFF = Date.parse('2026-07-15');
+
+    // Every challenge this player is involved in. The participants array covers
+    // created, incoming, and opened-via-link challenges in one query.
+    async function loadAllMyChallenges() {
+        if (!db || !userId) return [];
+
+        const cached = readChallengesCache();
+        if (cached && Date.now() - cached.at < CHALLENGES_CACHE_TTL_MS) {
+            myChallengesCache = cached.items;
+            return cached.items;
+        }
+        const generationAtStart = challengesCacheGeneration;
+
+        const map = new Map();
+        let sawCacheFallback = false;
+        const collect = (snap) => {
+            if (snap.metadata.fromCache) sawCacheFallback = true;
+            snap.docs.forEach(d => map.set(d.id, d.data()));
+        };
+        const queries = [
+            getDocsResilient(query(collection(db, 'challenges'), where('participants', 'array-contains', userId), limit(40)))
+        ];
+        if (Date.now() < LEGACY_CHALLENGES_CUTOFF) {
+            // Docs created before the participants field existed.
+            queries.push(getDocsResilient(query(collection(db, 'challenges'), where('createdBy', '==', userId), limit(20))));
+            queries.push(getDocsResilient(query(collection(db, 'challenges'), where('toUid', '==', userId), limit(20))));
+        }
+        (await Promise.all(queries)).forEach(collect);
+
+        // Link challenges whose participants write hasn't landed yet (opened
+        // offline, or pre-participants docs) — one batched query, not a round
+        // trip per id. Revoked (deleted) challenges simply don't come back.
+        const localIds = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]').filter(id => !map.has(id));
+        if (localIds.length > 0) {
+            try {
+                const chunks = [];
+                for (let i = 0; i < localIds.length; i += 30) chunks.push(localIds.slice(i, i + 30));
+                const snaps = await Promise.all(chunks.map(ids =>
+                    getDocsResilient(query(collection(db, 'challenges'), where(documentId(), 'in', ids)))));
+                snaps.forEach(snap => {
+                    if (snap.metadata.fromCache) sawCacheFallback = true;
+                    snap.docs.forEach(d => {
+                        map.set(d.id, d.data());
+                        // Already a participant → the main query covers it from now on.
+                        if ((d.data().participants || []).includes(userId)) removeLocalChallengeId(d.id);
+                    });
+                });
+            } catch(e) {}
+        }
+
+        const result = shapeChallenges(Array.from(map.entries()));
+        if (generationAtStart !== challengesCacheGeneration) {
+            // A challenge changed while this load was in flight, so this
+            // snapshot predates it — serve the freshest local state instead
+            // of committing stale data over the mutated cache.
+            return myChallengesCache || readChallengesCache()?.items || result;
+        }
         myChallengesCache = result;
+        // Cache-fallback data may be stale (or empty only because it never
+        // synced) — don't stamp it fresh, so the next open retries the server.
+        if (!sawCacheFallback) saveChallengesCache(result);
         return result;
     }
 
@@ -2134,6 +2280,9 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         await updateDoc(doc(db, 'challenges', challengeId), {
             [`results.${userId}`]: { declined: true, name, completedAt: serverTimestamp() }
         });
+        mutateChallengesCache(entries => entries.map(([id, data]) => id === challengeId
+            ? [id, { ...data, results: { ...(data.results || {}), [userId]: { declined: true, name, completedAt: null } } }]
+            : [id, data]));
     }
 
     // Deleting a challenge you created revokes it — it disappears from the
@@ -2141,6 +2290,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     async function revokeChallenge(challengeId) {
         await deleteDoc(doc(db, 'challenges', challengeId));
         removeLocalChallengeId(challengeId);
+        mutateChallengesCache(entries => entries.filter(([id]) => id !== challengeId));
     }
 
     const HIDDEN_CHALLENGES_KEY = 'wordWormHiddenChallenges';
@@ -2155,6 +2305,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             localStorage.setItem(HIDDEN_CHALLENGES_KEY, JSON.stringify(hidden.slice(0, 50)));
         }
         removeLocalChallengeId(challengeId);
+        // shapeChallenges drops hidden ids, so reshaping as-is removes the card.
+        mutateChallengesCache(entries => entries);
     }
 
     function removeLocalChallengeId(challengeId) {
@@ -2307,11 +2459,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
             sectionEl.querySelectorAll('.incoming-play-btn').forEach(btn => {
                 btn.onclick = () => {
-                    const stored = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
-                    if (!stored.includes(btn.dataset.id)) {
-                        stored.unshift(btn.dataset.id);
-                        localStorage.setItem('wordWormChallenges', JSON.stringify(stored.slice(0, 20)));
-                    }
+                    // Incoming challenges already carry our uid in participants,
+                    // and the accept screen handles joining for any that don't.
                     document.getElementById('account-modal').classList.add('hidden');
                     showChallengeAcceptScreen(btn.dataset.id);
                 };
@@ -2321,9 +2470,6 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     btn.disabled = true;
                     try {
                         await declineChallenge(btn.dataset.id);
-                        // Invalidate the cache so the declined card doesn't
-                        // flash back in on the re-render.
-                        myChallengesCache = null;
                         renderCreateChallenge(document.getElementById('account-modal-content'));
                     } catch(e) {
                         console.error('Failed to decline challenge:', e);
@@ -2335,9 +2481,11 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             if (moreLink) moreLink.onclick = () => renderMyChallenges(document.getElementById('account-modal-content'));
         };
 
-        // Render immediately from the cached list (warmed at app open by the
-        // notification-dot check), then refresh from Firestore in the background.
-        if (myChallengesCache) render(myChallengesCache);
+        // Render immediately from the cached list (in-memory, or persisted from
+        // a previous visit), then refresh from Firestore in the background. A
+        // bad cached render must not block the fresh load below.
+        const knownChallenges = myChallengesCache || readChallengesCache()?.items;
+        if (knownChallenges) { try { render(knownChallenges); } catch(e) { console.error('Cached render failed:', e); } }
 
         try {
             const all = await loadAllMyChallenges();
@@ -2350,9 +2498,19 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     // Renders either the send-to-username form (player owns a username) or a
     // one-time claim prompt (their display name is unclaimed or owned by someone else).
     async function populateUsernameChallengeSection(sectionEl) {
-        // Known username → render synchronously, no Firestore wait.
-        if (myUsernameCache) {
-            renderSendToUsername(sectionEl, myUsernameCache);
+        // Known username (in-memory or remembered from a previous visit) →
+        // render synchronously, no Firestore wait.
+        const knownUsername = myUsernameCache || getStoredUsername();
+        if (knownUsername) {
+            myUsernameCache = knownUsername;
+            renderSendToUsername(sectionEl, knownUsername);
+            return;
+        }
+
+        // A brand-new anonymous player can't own a username yet — skip the
+        // lookup and go straight to the claim prompt.
+        if (!isUserSignedIn() && !localStorage.getItem('wordRushPlayerName')) {
+            renderClaimUsernamePrompt(sectionEl);
             return;
         }
 
@@ -2366,15 +2524,17 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             </div>`;
 
         let myUsername = null;
+        let silentClaim = null;
         try {
             if (db && userId) {
-                const snap = await getDoc(doc(db, 'players', userId));
+                const snap = await getDocResilient(doc(db, 'players', userId));
                 myUsername = snap.exists() ? snap.data().username : null;
                 if (!myUsername) {
                     // Legacy player: try a silent claim of their display name first.
                     const displayName = localStorage.getItem('wordRushPlayerName');
-                    if (displayName && await claimUsername(displayName) === 'claimed') {
-                        myUsername = normalizeUsername(displayName);
+                    if (displayName) {
+                        silentClaim = await claimUsername(displayName);
+                        if (silentClaim === 'claimed') myUsername = normalizeUsername(displayName);
                     }
                 }
             }
@@ -2382,10 +2542,12 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         if (!sectionEl.isConnected) return;
 
         if (myUsername) {
-            myUsernameCache = myUsername;
+            storeUsername(myUsername);
             renderSendToUsername(sectionEl, myUsername);
         } else {
-            renderClaimUsernamePrompt(sectionEl);
+            // Only say the name is taken when the claim attempt actually said
+            // so — a failed lookup must not accuse the player's own name.
+            renderClaimUsernamePrompt(sectionEl, silentClaim === 'taken');
         }
     }
 
@@ -2408,7 +2570,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             const uname = normalizeUsername(inputEl.value);
             if (!uname) return;
             if (uname === myUsername) { setUsernameMsg(msgEl, "That's you! Enter a friend's username.", false); return; }
-            if (!validationTrie || !fullDictionaryTrie) { setUsernameMsg(msgEl, 'Dictionaries still loading — try again in a moment.', false); return; }
+            if (!validationTrie || !fullDictionaryTrie) { setUsernameMsg(msgEl, 'Dictionaries still loading. Try again in a moment.', false); return; }
 
             sendBtn.disabled = true;
             msgEl.textContent = 'Searching...';
@@ -2449,7 +2611,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 if (open) {
                     // Tell the player why they landed on an existing game instead
                     // of a fresh one — otherwise Send looks broken.
-                    goToChallengeScreen(open.id, open.data(), `You already have an open game with ${toName} — finish it before starting a new one!`);
+                    goToChallengeScreen(open.id, open.data(), `You already have an open game with ${toName}. Finish it before starting a new one!`);
                     return;
                 }
 
@@ -2467,10 +2629,10 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         inputEl.onkeydown = (e) => { if (e.key === 'Enter') doSend(); };
     }
 
-    function renderClaimUsernamePrompt(sectionEl) {
+    function renderClaimUsernamePrompt(sectionEl, nameKnownTaken = false) {
         const displayName = localStorage.getItem('wordRushPlayerName');
-        const takenNote = displayName && isValidUsername(displayName)
-            ? `"${escapeHTML(displayName)}" is already taken — pick another to challenge friends directly:`
+        const takenNote = nameKnownTaken && displayName && isValidUsername(displayName)
+            ? `"${escapeHTML(displayName)}" is already taken. Pick another to challenge friends directly:`
             : 'Claim a username so friends can find and challenge you:';
 
         sectionEl.innerHTML = `
@@ -2496,9 +2658,9 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             msgEl.className = 'text-xs mt-1 text-left text-slate-500 min-h-[16px]';
             const claimStatus = await claimUsername(name);
             if (claimStatus !== 'claimed') {
-                setUsernameMsg(msgEl, claimStatus === 'taken' ? 'That username is taken — try another.'
+                setUsernameMsg(msgEl, claimStatus === 'taken' ? 'That username is taken. Try another.'
                     : claimStatus === 'invalid' ? USERNAME_RULES_MSG
-                    : "Couldn't claim username — check your connection and try again.", false);
+                    : "Couldn't claim username. Check your connection and try again.", false);
                 return;
             }
             // The claimed username becomes the player's display name too.
@@ -2533,13 +2695,17 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             createdAt: serverTimestamp(),
             expiresAt,
             results: {},
+            // Everyone listed here sees the challenge in My Challenges via one
+            // array-contains query; link players add themselves when they open it.
+            participants: extraFields.toUid ? [userId, extraFields.toUid] : [userId],
             ...extraFields
         };
         const challengeRef = await addDoc(collection(db, 'challenges'), challengeData);
-
-        const stored = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
-        stored.unshift(challengeRef.id);
-        localStorage.setItem('wordWormChallenges', JSON.stringify(stored.slice(0, 20)));
+        // Show the new challenge in My Challenges immediately — no reload.
+        seedChallengeIntoCache(challengeRef.id, { ...challengeData,
+            createdAt: msToTimestamp(Date.now()),
+            expiresAt: msToTimestamp(expiresAt.getTime())
+        });
 
         // Returning the data alongside the id lets callers render the challenge
         // screen immediately instead of re-fetching the doc they just wrote.
@@ -2548,7 +2714,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
     async function _createAndShareChallenge(btnEl, resultEl) {
         if (!validationTrie || !fullDictionaryTrie) {
-            resultEl.innerHTML = `<p class="text-sm text-red-500 text-center">Dictionaries still loading — try again in a moment.</p>`;
+            resultEl.innerHTML = `<p class="text-sm text-red-500 text-center">Dictionaries still loading. Try again in a moment.</p>`;
             return;
         }
 
@@ -2791,15 +2957,17 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             }
         };
 
-        // Show the last known list immediately and refresh behind it — the
-        // spinner only survives for a first-ever open.
-        if (myChallengesCache) renderList(myChallengesCache);
+        // Show the last known list immediately (in-memory, or persisted from a
+        // previous visit) and refresh behind it — the spinner only survives for
+        // a first-ever open. A bad cached render must not block the fresh load.
+        const knownChallenges = myChallengesCache || readChallengesCache()?.items;
+        if (knownChallenges) { try { renderList(knownChallenges); } catch(e) { console.error('Cached render failed:', e); } }
 
         try {
             renderList(await loadAllMyChallenges());
         } catch(e) {
             console.error('Failed to load challenges:', e);
-            if (!myChallengesCache && listEl.isConnected) {
+            if (!knownChallenges && listEl.isConnected) {
                 listEl.innerHTML = `<p class="text-center text-red-500 text-sm py-6">Failed to load challenges. Check your connection and try again.</p>`;
             }
         }
@@ -2841,9 +3009,19 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 return;
             }
 
-            // Track this challenge locally
-            const stored = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
-            if (!stored.includes(challengeId)) { stored.unshift(challengeId); localStorage.setItem('wordWormChallenges', JSON.stringify(stored.slice(0, 20))); }
+            // Join the challenge: our uid in participants makes it show up in
+            // My Challenges on any device via the single array-contains query.
+            // localStorage tracks it only until the write lands (e.g. offline).
+            if (!(data.participants || []).includes(userId)) {
+                const stored = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]');
+                if (!stored.includes(challengeId)) { stored.unshift(challengeId); localStorage.setItem('wordWormChallenges', JSON.stringify(stored.slice(0, 20))); }
+                updateDoc(doc(db, 'challenges', challengeId), { participants: arrayUnion(userId) })
+                    .then(() => {
+                        removeLocalChallengeId(challengeId);
+                        seedChallengeIntoCache(challengeId, { ...data, participants: [...(data.participants || []), userId] });
+                    })
+                    .catch(() => {});
+            }
 
             const isSelf = data.createdBy === userId;
             const playIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" /></svg>`;
@@ -2854,7 +3032,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 const topFriend = otherResults.sort((a,b) => b[1].score - a[1].score)[0];
                 const oppName = escapeHTML(data.toName) || null;
                 const friendStatus = topFriend
-                    ? `<p class="text-sm text-slate-600 mb-6"><strong>${escapeHTML(topFriend[1].name)}</strong> scored <strong class="text-slate-800">${topFriend[1].score}</strong> — can you beat it?</p>`
+                    ? `<p class="text-sm text-slate-600 mb-6"><strong>${escapeHTML(topFriend[1].name)}</strong> scored <strong class="text-slate-800">${topFriend[1].score}</strong>. Can you beat it?</p>`
                     : `<p class="text-sm text-slate-500 mb-6">${oppName ? `${oppName} hasn't played yet.` : `Your friend hasn't played yet.`}</p>`;
 
                 modalContent.innerHTML = `
@@ -2864,7 +3042,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-9 h-9 text-green-600"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg>
                         </div>
                         <h2 class="text-2xl font-black text-slate-800 mb-2">Your Challenge</h2>
-                        ${oppName ? `<p class="text-slate-500 mb-2">Playing against <strong>${oppName}</strong></p>` : ''}
+                        ${oppName && !notice ? `<p class="text-slate-500 mb-2">Playing against <strong>${oppName}</strong></p>` : ''}
                         ${noticeHTML}
                         ${friendStatus}
                         <button id="accept-challenge-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl text-lg mb-3 flex items-center justify-center gap-2">
@@ -2882,7 +3060,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         <h2 class="text-2xl font-black text-slate-800 mb-1">You've been challenged!</h2>
                         <p class="text-slate-500 mb-6">by <strong>${escapeHTML(data.createdByName)}</strong></p>
                         ${noticeHTML}
-                        ${otherResults.length > 0 ? `<p class="text-sm text-slate-500 mb-4">Their score: <strong>${otherResults[0][1].score}</strong> — can you beat it?</p>` : ''}
+                        ${otherResults.length > 0 ? `<p class="text-sm text-slate-500 mb-4">Their score: <strong>${otherResults[0][1].score}</strong>. Can you beat it?</p>` : ''}
                         <button id="accept-challenge-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl text-lg mb-3 flex items-center justify-center gap-2">
                             ${playIcon} Play Now
                         </button>
@@ -2939,7 +3117,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         let playerName = localStorage.getItem('wordRushPlayerName');
         if (!playerName && db && userId) {
             try {
-                const playerSnap = await getDoc(doc(db, 'players', userId));
+                const playerSnap = await getDocResilient(doc(db, 'players', userId));
                 if (playerSnap.exists() && playerSnap.data().hasSubmittedName) {
                     playerName = playerSnap.data().name;
                     localStorage.setItem('wordRushPlayerName', playerName);
@@ -2990,29 +3168,47 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     }
 
     async function saveAndShowChallengeResult(stats, playerName) {
+        const resultData = {
+            name: playerName,
+            score: stats.score,
+            foundWords: stats.foundWords.map(fw => fw.word || fw),
+            completedAt: serverTimestamp()
+        };
+        const finishedChallengeId = currentChallengeId;
+
         try {
-            const resultData = {
-                name: playerName,
-                score: stats.score,
-                foundWords: stats.foundWords.map(fw => fw.word || fw),
-                completedAt: serverTimestamp()
-            };
-
-            await updateDoc(doc(db, 'challenges', currentChallengeId), {
+            // Writes have no client-side deadline either — cap the wait so a
+            // stalled connection lands on the retry screen instead of leaving
+            // the player on the "Saving your score..." spinner forever.
+            await withTimeout(updateDoc(doc(db, 'challenges', finishedChallengeId), {
                 [`results.${userId}`]: resultData
-            });
-            await updatePlayStreak(userId);
-
-            const snap = await getDoc(doc(db, 'challenges', currentChallengeId));
-            const data = snap.data();
-            const myResult = { ...resultData, score: stats.score };
-            const otherResults = Object.entries(data.results || {}).filter(([uid]) => uid !== userId);
-
-            showChallengeResultsScreen(currentChallengeId, data, myResult, otherResults, true);
+            }), 15000);
         } catch(e) {
             console.error('Failed to save challenge result:', e);
             showChallengeSaveFailedScreen(stats, playerName);
+            return;
         }
+
+        // The score is saved. Nothing below may strand the player on the
+        // spinner or claim the save failed.
+        try {
+            mutateChallengesCache(entries => entries.map(([id, data]) => id === finishedChallengeId
+                ? [id, { ...data, results: { ...(data.results || {}), [userId]: { ...resultData, completedAt: null } } }]
+                : [id, data]));
+        } catch(e) {}
+        await withTimeout(updatePlayStreak(userId)).catch(() => {});
+
+        // Re-fetch only to show the opponent's result; without it the screen
+        // still renders fine as "waiting for your friend".
+        let data = null;
+        try {
+            const snap = await getDocResilient(doc(db, 'challenges', finishedChallengeId));
+            if (snap.exists()) data = snap.data();
+        } catch(e) {}
+
+        const myResult = { ...resultData, score: stats.score };
+        const otherResults = Object.entries(data?.results || {}).filter(([uid]) => uid !== userId);
+        showChallengeResultsScreen(finishedChallengeId, data, myResult, otherResults, true);
     }
 
     function showChallengeNamePrompt(stats) {
@@ -3706,9 +3902,9 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     msgEl.className = 'text-xs mt-1 text-slate-500 min-h-[16px]';
                     const claimStatus = await claimUsername(newName);
                     if (claimStatus !== 'claimed') {
-                        setUsernameMsg(msgEl, claimStatus === 'taken' ? 'That username is taken — try another.'
+                        setUsernameMsg(msgEl, claimStatus === 'taken' ? 'That username is taken. Try another.'
                             : claimStatus === 'invalid' ? USERNAME_RULES_MSG
-                            : "Couldn't save — check your connection and try again.", false);
+                            : "Couldn't save. Check your connection and try again.", false);
                         return;
                     }
                     try {
@@ -3878,8 +4074,19 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         };
     }
     
+ // Leaderboards change slowly, so reuse the last render for a minute — tab
+ // flips and quick re-opens are instant instead of a Firestore read each time.
+ const LEADERBOARD_CACHE_TTL_MS = 60 * 1000;
+ const leaderboardHtmlCache = {};
+
  async function fetchAndDisplayLeaderboard(type, listElement, loadingElement) {
     if (!listElement) return;
+    const cached = leaderboardHtmlCache[type];
+    if (cached && Date.now() - cached.at < LEADERBOARD_CACHE_TTL_MS) {
+        listElement.innerHTML = cached.html;
+        if (loadingElement) loadingElement.style.display = 'none';
+        return;
+    }
     if (loadingElement) loadingElement.style.display = 'block';
     listElement.innerHTML = '';
     if (!db) {
@@ -3899,7 +4106,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         if (type === 'challenge') {
             const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
             const leaderboardRef = doc(db, "leaderboards", "dailyChallenge");
-            const docSnap = await getDoc(leaderboardRef);
+            const docSnap = await getDocResilient(leaderboardRef);
 
             if (!docSnap.exists() || docSnap.data().date !== todayStr || !docSnap.data().topScores || docSnap.data().topScores.length === 0) {
                 html += `<p class="text-slate-500 text-center text-sm p-2">No scores yet for today's puzzle. Be the first!</p>`;
@@ -3922,7 +4129,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             }
         } else if (type === 'all-time') {
             const leaderboardRef = doc(db, "leaderboards", "allTime");
-            const docSnap = await getDoc(leaderboardRef);
+            const docSnap = await getDocResilient(leaderboardRef);
             if (!docSnap.exists() || !docSnap.data()) {
                  html = `<p class="text-slate-500 text-center text-sm p-2">All-Time leaderboard is not available.</p>`;
             } else {
@@ -3949,7 +4156,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             }
         } else { // ✅ FIX: This is the corrected logic for the timed 'daily' leaderboard
             const leaderboardRef = doc(db, "leaderboards", "daily");
-            const docSnap = await getDoc(leaderboardRef);
+            const docSnap = await getDocResilient(leaderboardRef);
             if (!docSnap.exists() || !docSnap.data().topByHighScore) { // Check for the new data structure
                 html += `<p class="text-slate-500 text-center text-sm p-2">No scores yet today. Be the first!</p>`;
             } else {
@@ -3976,6 +4183,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             }
         }
         listElement.innerHTML = html;
+        leaderboardHtmlCache[type] = { at: Date.now(), html };
     } catch (e) {
         console.error(`Could not fetch ${type} leaderboard`, e);
         listElement.innerHTML = `<p class="text-red-500 text-center p-4">Could not load leaderboard.</p>`;
@@ -4332,10 +4540,6 @@ function getTileCenter(tile) {
         <div class="flex space-x-2 mt-3">
             <button id="endgame-leaderboard-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-base flex-1">Leaderboard</button>
             <button id="play-again-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex-1">Play Again</button>
-        </div>
-        <div class="text-center text-xs text-slate-400 mt-4">
-            <p>&copy; 2026 Word Worm</p>
-            <p><a href="/about.html" class="hover:underline">About</a> &bull; <a href="/contact.html" class="hover:underline">Contact</a> &bull; <a href="/privacy.html" class="hover:underline">Privacy Policy</a> &bull; <a href="/terms.html" class="hover:underline">Terms of Use</a></p>
         </div>
     </div>`;
     
