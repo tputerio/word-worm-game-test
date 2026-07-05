@@ -101,13 +101,14 @@
 
     // Signs out and clears everything device-local that belongs to the old
     // account: saved name, tracked/hidden challenge ids, seen-results markers,
-    // and cached stats, so the next guest or account on this device doesn't
-    // inherit them. The global onAuthStateChanged listener signs the player
-    // back in anonymously — no explicit signInAnonymously here, or the two
-    // calls race and mint an extra throwaway anonymous account. Clearing
-    // userId here (rather than waiting for that listener) prevents the
-    // welcome screen's immediate re-render from fetching the old account's
-    // Firestore doc with a still-stale uid.
+    // cached stats, and daily-challenge completion/progress, so the next
+    // guest or account on this device doesn't inherit them. The global
+    // onAuthStateChanged listener signs the player back in anonymously — no
+    // explicit signInAnonymously here, or the two calls race and mint an
+    // extra throwaway anonymous account. Clearing userId here (rather than
+    // waiting for that listener) prevents the welcome screen's immediate
+    // re-render from fetching the old account's Firestore doc with a
+    // still-stale uid.
     async function signOutAndReset() {
         await signOut(auth);
         userId = null;
@@ -122,6 +123,15 @@
         lastKnownHighScore = 0;
         lastKnownChallengeStats = { wins: 0, losses: 0, ties: 0 };
         persistKnownStats();
+        // Daily-challenge completion/in-progress records are keyed by date,
+        // not uid, so they have to be swept explicitly or they leak into the
+        // next guest session — a stale "completed" checkmark, or resuming the
+        // old account's in-progress score/found words.
+        for (const key of Object.keys(localStorage)) {
+            if (key.startsWith('dailyCompleted-') || key.startsWith('dailyProgress-')) {
+                localStorage.removeItem(key);
+            }
+        }
     }
 
     // --- Game State ---
