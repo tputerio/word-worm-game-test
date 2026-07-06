@@ -1619,54 +1619,16 @@ function getTileFromEvent(e) {
         }
     }
 
-    let skipLeaderboard = false;
+    // A still-anonymous guest gets this prompt as a side offer, not a gate —
+    // it used to be awaited here, which meant a guest who ignored it (no
+    // "skip" button existed; only Play Again/Home, neither of which resolved
+    // the promise) silently never got THIS game's stats/streak written at
+    // all. Submitting a name here only affects future games' leaderboard
+    // eligibility; it doesn't retroactively add this game to today's board.
     if (needsToSubmitName) {
-        const submissionContainer = document.getElementById('submission-container');
-        submissionContainer.innerHTML = `
-            <div class="w-full py-1">
-                <div class="flex gap-2">
-                    <input id="endgame-name-input" type="text" maxlength="15" placeholder="Enter a username"
-                        class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-green-400">
-                    <button id="endgame-name-submit" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg text-sm">Submit</button>
-                </div>
-                <p id="endgame-name-msg" class="text-xs mt-1 text-left min-h-[16px]"></p>
-                <button id="endgame-create-account" class="text-xs text-green-500 hover:text-green-600 hover:underline mt-2 flex items-center justify-center py-1 mx-auto"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-1 flex-shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" /></svg>Sign up to save stats across devices</button>
-            </div>`;
-
-        const enteredName = await new Promise(resolve => {
-            let unsubscribeAuth = null;
-            // Always detach the auth listener when the prompt resolves, so a
-            // sign-up later in the session can't re-trigger this stale prompt.
-            const finish = (name) => { if (unsubscribeAuth) unsubscribeAuth(); resolve(name); };
-            const doSubmit = async () => {
-                const name = (document.getElementById('endgame-name-input').value || '').trim().slice(0, 15);
-                if (!name) return;
-                if (!(await validateNewUsername(name, document.getElementById('endgame-name-msg')))) return;
-                finish(name);
-            };
-            // Resolve automatically if the user completes sign-up via the account
-            // modal — but only on a fresh anonymous → signed-in transition, since
-            // onAuthStateChanged fires immediately with the current user.
-            const wasSignedInAtPrompt = isUserSignedIn();
-            unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-                if (!user || user.isAnonymous || wasSignedInAtPrompt) return;
-                finish(localStorage.getItem('wordRushPlayerName') || user.displayName?.split(' ')[0] || 'Player');
-            });
-            attachUsernameCheck(document.getElementById('endgame-name-input'), document.getElementById('endgame-name-msg'));
-            document.getElementById('endgame-name-submit').onclick = doSubmit;
-            document.getElementById('endgame-name-input').onkeydown = (e) => { if (e.key === 'Enter') doSubmit(); };
-            document.getElementById('endgame-create-account').onclick = () => showAccountModal();
-        });
-
-        if (!enteredName) {
-            skipLeaderboard = true;
-            submissionContainer.innerHTML = '';
-        } else {
-            finalPlayerName = enteredName;
-            localStorage.setItem('wordRushPlayerName', finalPlayerName);
-        }
+        showNonBlockingNamePrompt(playerDocRef);
     }
-    
+
     // --- PART 2: UPDATE ALL DATABASE STATS ---
     const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
     let updatedStats, didBeatDailyHighScore;
@@ -1697,14 +1659,17 @@ function getTileFromEvent(e) {
             dailyHighScoreLastUpdated: todayStr,
             top5Scores: [...(oldData.top5Scores || []), { score: finalScore, date: todayStr }].sort((a,b)=>b.score-a.score).slice(0,5),
             top5LongestWords: [...new Map([...(oldData.top5LongestWords || []), ...words.map(w=>({word:w.word,length:w.length}))].map(item=>[item.word,item])).values()].sort((a,b)=>b.length-a.length).slice(0,5),
-            name: finalPlayerName,
-            hasSubmittedName: true
         };
+        // Only (re)write the name once one's actually been submitted — a
+        // still-anonymous guest keeps accruing stats without a name field,
+        // and showNonBlockingNamePrompt() writes it separately if/when they submit.
+        if (!needsToSubmitName) {
+            updateData.name = finalPlayerName;
+            updateData.hasSubmittedName = true;
+        }
 
         // Update the document with merge: true to avoid update time conflicts
         await setDoc(playerDocRef, updateData, { merge: true });
-        // Claim only freshly entered names here; existing names are auto-claimed at app open.
-        if (needsToSubmitName && finalPlayerName !== 'Anonymous') claimUsername(finalPlayerName, oldData.username || null);
 
         didBeatDailyHighScore = oldData.dailyHighScoreLastUpdated !== todayStr || finalScore > (oldData.dailyHighScore || 0);
         updatedStats = { ...oldData, ...updateData };
@@ -1720,7 +1685,7 @@ function getTileFromEvent(e) {
     // all read from `updatedStats`.
     let dailyRank = null;
     let percentileRank = null, totalPlayersToday = null;
-    const canUseLeaderboard = !skipLeaderboard && userId && finalPlayerName !== 'Anonymous';
+    const canUseLeaderboard = userId && !needsToSubmitName && finalPlayerName !== 'Anonymous';
 
     const gameHistoryPromise = (async () => {
         try {
@@ -1810,7 +1775,69 @@ function getTileFromEvent(e) {
 
     await Promise.all([gameHistoryPromise, dailyLeaderboardPromise, allTimeLeaderboardPromise, percentileRankPromise]);
 
-    updateEndGameSubmissionUI(finalPlayerName, { didBeatDailyHighScore, rank: dailyRank, percentileRank, totalPlayersToday });
+    // The non-blocking name prompt owns #submission-container's contents
+    // until it's answered — don't clobber it with the submitted/rank message.
+    if (!needsToSubmitName) {
+        updateEndGameSubmissionUI(finalPlayerName, { didBeatDailyHighScore, rank: dailyRank, percentileRank, totalPlayersToday });
+    }
+}
+
+// A guest's stats/streak are saved unconditionally in processEndOfGame();
+// this just offers to attach a real name afterward, independently. Submitting
+// only updates the player doc going forward — it doesn't reopen the
+// leaderboard writes already skipped for the game that just ended.
+function showNonBlockingNamePrompt(playerDocRef) {
+    const submissionContainer = document.getElementById('submission-container');
+    submissionContainer.innerHTML = `
+        <div class="w-full py-1">
+            <div class="flex gap-2">
+                <input id="endgame-name-input" type="text" maxlength="15" placeholder="Enter a username"
+                    class="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-green-400">
+                <button id="endgame-name-submit" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg text-sm">Submit</button>
+            </div>
+            <p id="endgame-name-msg" class="text-xs mt-1 text-left min-h-[16px]"></p>
+            <button id="endgame-create-account" class="text-xs text-green-500 hover:text-green-600 hover:underline mt-2 flex items-center justify-center py-1 mx-auto"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-1 flex-shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" /></svg>Sign up to save stats across devices</button>
+        </div>`;
+
+    let unsubscribeAuth = null;
+    let settled = false;
+    const finish = async (name) => {
+        if (settled) return;
+        settled = true;
+        if (unsubscribeAuth) unsubscribeAuth();
+        localStorage.setItem('wordRushPlayerName', name);
+        try {
+            const playerSnap = await getDoc(playerDocRef);
+            const oldUsername = playerSnap.exists() ? playerSnap.data().username : null;
+            await setDoc(playerDocRef, { name, hasSubmittedName: true }, { merge: true });
+            claimUsername(name, oldUsername);
+        } catch (e) {
+            console.error("Failed to save submitted name:", e);
+        }
+        // The player may already be several games/screens past this prompt
+        // by the time it resolves — only touch the DOM if it's still there.
+        if (document.getElementById('endgame-name-input')) {
+            submissionContainer.innerHTML = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">Saved as&nbsp;<strong>${escapeHTML(name)}</strong>!</div>`;
+        }
+    };
+    const doSubmit = async () => {
+        const name = (document.getElementById('endgame-name-input').value || '').trim().slice(0, 15);
+        if (!name) return;
+        if (!(await validateNewUsername(name, document.getElementById('endgame-name-msg')))) return;
+        finish(name);
+    };
+    // Resolve automatically if the user completes sign-up via the account
+    // modal — but only on a fresh anonymous → signed-in transition, since
+    // onAuthStateChanged fires immediately with the current user.
+    const wasSignedInAtPrompt = isUserSignedIn();
+    unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+        if (!user || user.isAnonymous || wasSignedInAtPrompt) return;
+        finish(localStorage.getItem('wordRushPlayerName') || user.displayName?.split(' ')[0] || 'Player');
+    });
+    attachUsernameCheck(document.getElementById('endgame-name-input'), document.getElementById('endgame-name-msg'));
+    document.getElementById('endgame-name-submit').onclick = doSubmit;
+    document.getElementById('endgame-name-input').onkeydown = (e) => { if (e.key === 'Enter') doSubmit(); };
+    document.getElementById('endgame-create-account').onclick = () => showAccountModal();
 }
     
     function updateScoreDisplay() {
