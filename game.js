@@ -4588,11 +4588,109 @@ function getTileCenter(tile) {
         if (isBoardStructurallySound(board)) return board;
     }
 
-    let fallbackBoard = existingBoard ? [...existingBoard] : new Array(GRID_SIZE).fill(null);
-    fallbackBoard.forEach((tile, index) => {
-        if (tile === null) fallbackBoard[index] = getRandomLetter();
+    // Both retry loops struck out — usually because the kept tiles already
+    // break a rule no draw can fix (e.g. over the vowel cap after an earlier
+    // bad fill, or a kept Q whose only U was just played). A blind random
+    // fill here is how boards snowballed past 10 vowels mid-game: once over
+    // budget, validation can never pass again, so every later refill landed
+    // here and drifted further. Steer the draws instead so the board heals
+    // back toward the rules over subsequent words.
+    return bestEffortFill(existingBoard ? [...existingBoard] : new Array(GRID_SIZE).fill(null));
+}
+
+   // Fills ONLY the null slots, steering each draw toward the board rules
+   // (vowel budget, hard-consonant cap, Q-needs-U, no clumps) and returning
+   // the least-rule-breaking of several candidates. Never touches kept tiles.
+   function bestEffortFill(existingBoard) {
+    const CANDIDATES = 50;
+    const vowelBag = LETTER_BAG_STRING.split('').filter(l => VOWELS.includes(l));
+    // No Q in the refill bags: a freshly placed Q would itself need a U neighbor.
+    const consonantBag = LETTER_BAG_STRING.split('').filter(l => !VOWELS.includes(l) && l !== 'Q');
+    const softConsonantBag = consonantBag.filter(l => !HARD_CONSONANTS.includes(l));
+
+    const nullIndexes = [];
+    existingBoard.forEach((letter, index) => { if (letter === null) nullIndexes.push(index); });
+    if (nullIndexes.length === 0) return [...existingBoard];
+
+    const keptVowels = existingBoard.filter(l => VOWELS.includes(l)).length;
+    const keptHard = existingBoard.filter(l => HARD_CONSONANTS.includes(l)).length;
+    const minVowels = Math.min(nullIndexes.length, Math.max(0, 4 - keptVowels));
+    const maxVowels = Math.min(nullIndexes.length, Math.max(0, 7 - keptVowels));
+
+    let bestBoard = null;
+    let bestScore = Infinity;
+    for (let i = 0; i < CANDIDATES; i++) {
+        const board = [...existingBoard];
+        const slots = [...nullIndexes];
+        for (let j = slots.length - 1; j > 0; j--) {
+            const k = Math.floor(Math.random() * (j + 1));
+            [slots[j], slots[k]] = [slots[k], slots[j]];
+        }
+
+        let vowelsToPlace = minVowels + Math.floor(Math.random() * (maxVowels - minVowels + 1));
+        let hardAllowed = keptHard === 0;
+
+        // A kept Q can only get its U back from a refilled neighbor.
+        const qIndex = board.indexOf('Q');
+        if (qIndex !== -1 && !getNeighbors(qIndex, board).includes('U')) {
+            const slotNearQ = slots.findIndex(s => areIndexesAdjacent(s, qIndex));
+            if (slotNearQ !== -1) {
+                board[slots[slotNearQ]] = 'U';
+                slots.splice(slotNearQ, 1);
+                vowelsToPlace = Math.max(0, vowelsToPlace - 1);
+            }
+        }
+
+        slots.forEach((slot, slotOrder) => {
+            if (slotOrder < vowelsToPlace) {
+                board[slot] = vowelBag[Math.floor(Math.random() * vowelBag.length)];
+            } else {
+                const bag = hardAllowed ? consonantBag : softConsonantBag;
+                const letter = bag[Math.floor(Math.random() * bag.length)];
+                if (HARD_CONSONANTS.includes(letter)) hardAllowed = false;
+                board[slot] = letter;
+            }
+        });
+
+        const score = countRuleViolations(board);
+        if (score < bestScore) {
+            bestScore = score;
+            bestBoard = board;
+            if (score === 0) break;
+        }
+    }
+    return bestBoard;
+}
+
+   // The same rules as isBoardStructurallySound, but counted instead of
+   // pass/fail so best-effort candidates can be ranked when none passes.
+   function countRuleViolations(board) {
+    let violations = 0;
+
+    const vowelCount = board.filter(l => VOWELS.includes(l)).length;
+    if (vowelCount < 4) violations += 4 - vowelCount;
+    if (vowelCount > 7) violations += vowelCount - 7;
+
+    violations += Math.max(0, board.filter(l => HARD_CONSONANTS.includes(l)).length - 1);
+
+    board.forEach((letter, index) => {
+        if (letter === 'Q' && !getNeighbors(index, board).includes('U')) violations++;
     });
-    return fallbackBoard;
+
+    for (let row = 0; row <= 2; row++) {
+        for (let col = 0; col <= 2; col++) {
+            const topLeft = row * GRID_COLS + col;
+            const clump = [board[topLeft], board[topLeft + 1], board[topLeft + GRID_COLS], board[topLeft + GRID_COLS + 1]];
+            if (clump.every(l => VOWELS.includes(l)) || clump.every(l => !VOWELS.includes(l))) violations++;
+        }
+    }
+    return violations;
+}
+
+   function areIndexesAdjacent(a, b) {
+    const [colA, rowA] = [a % GRID_COLS, Math.floor(a / GRID_COLS)];
+    const [colB, rowB] = [b % GRID_COLS, Math.floor(b / GRID_COLS)];
+    return a !== b && Math.abs(colA - colB) <= 1 && Math.abs(rowA - rowB) <= 1;
 }
     
    // The board rules that need no dictionary: 4-7 vowels, ≤1 hard consonant,
