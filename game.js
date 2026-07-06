@@ -2814,9 +2814,19 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             ? `"${escapeHTML(displayName)}" is already taken. Pick another to challenge friends directly:`
             : 'Claim a username so friends can find and challenge you:';
 
+        // A username claimed here is tied to this browser's anonymous account,
+        // which doesn't roam across devices — a returning player who already
+        // has a real account needs to sign back into it here, or they'll end
+        // up as an invisible second identity that can't see challenges sent
+        // to their real username.
+        const signInNote = !isUserSignedIn()
+            ? `<p class="text-xs text-slate-500 mb-3 text-left">Already have an account? <span id="claim-signin-link" class="text-green-600 hover:underline cursor-pointer font-semibold">Sign in</span> instead.</p>`
+            : '';
+
         sectionEl.innerHTML = `
             <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 text-left">Your username</label>
             <p class="text-xs text-slate-500 mb-2 text-left">${takenNote}</p>
+            ${signInNote}
             <div class="flex gap-2">
                 <input id="claim-username-input" type="text" maxlength="15" placeholder="Pick a username"
                     class="auth-input flex-1 min-w-0 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
@@ -2828,6 +2838,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         const inputEl = document.getElementById('claim-username-input');
         const msgEl = document.getElementById('claim-username-msg');
         attachUsernameCheck(inputEl, msgEl);
+        const signInLink = document.getElementById('claim-signin-link');
+        if (signInLink) signInLink.onclick = () => showAccountModal('login', () => showChallengeFriendModal('create'));
 
         const doClaim = async () => {
             const name = inputEl.value.trim();
@@ -3555,9 +3567,16 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         document.getElementById('challenge-return-home').onclick = () => { currentChallengeId = null; resetGame(); };
     }
 
-    function showAccountModal(initialTab = 'login') {
+    function showAccountModal(initialTab = 'login', onSuccess = null) {
         const accountModal = document.getElementById('account-modal');
         const accountModalContent = document.getElementById('account-modal-content');
+        // Callers that opened this modal from mid-flow (e.g. the Challenge a
+        // Friend screen) pass onSuccess to land back where they were instead
+        // of the welcome screen, once sign-in actually completes.
+        const finishAuth = () => {
+            accountModal.classList.add('hidden');
+            if (onSuccess) onSuccess(); else showWelcomeScreen();
+        };
 
         if (isUserSignedIn()) {
             const playerName = localStorage.getItem('wordRushPlayerName') || 'Player';
@@ -3664,8 +3683,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                             if (isNewUser) {
                                 renderNamePromptView(suggestedName);
                             } else {
-                                accountModal.classList.add('hidden');
-                                showWelcomeScreen();
+                                finishAuth();
                             }
                         } catch (e) {
                             if (isPopupCancelled(e)) { btn.disabled = false; btn.innerHTML = btnHTML; return; }
@@ -3688,8 +3706,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                                 const snap = await getDoc(doc(db, "players", result.user.uid));
                                 if (snap.exists() && snap.data().name) localStorage.setItem('wordRushPlayerName', snap.data().name);
                             }
-                            accountModal.classList.add('hidden');
-                            showWelcomeScreen();
+                            finishAuth();
                         } catch (e) {
                             console.error('Email sign-in failed:', e);
                             const msg = e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found'
@@ -3751,8 +3768,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                             if (isNewUser) {
                                 renderNamePromptView(suggestedName);
                             } else {
-                                accountModal.classList.add('hidden');
-                                showWelcomeScreen();
+                                finishAuth();
                             }
                         } catch (e) {
                             if (isPopupCancelled(e)) { btn.disabled = false; btn.innerHTML = btnHTML; return; }
@@ -3787,8 +3803,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                                 localStorage.setItem('wordRushPlayerName', name);
                                 await claimUsername(name);
                             }
-                            accountModal.classList.add('hidden');
-                            showWelcomeScreen();
+                            finishAuth();
                         } catch (e) {
                             console.error('Account creation failed:', e);
                             const msg = e.code === 'auth/email-already-in-use' ? 'That email is already in use.'
@@ -3911,8 +3926,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         }
                         localStorage.setItem('wordRushPlayerName', name);
                         claimUsername(name);
-                        accountModal.classList.add('hidden');
-                        showWelcomeScreen();
+                        finishAuth();
                     } catch (e) {
                         console.error('Failed to save display name:', e);
                         btn.disabled = false;
