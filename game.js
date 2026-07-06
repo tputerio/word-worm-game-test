@@ -1630,7 +1630,7 @@ function getTileFromEvent(e) {
                     <button id="endgame-name-submit" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg text-sm">Submit</button>
                 </div>
                 <p id="endgame-name-msg" class="text-xs mt-1 text-left min-h-[16px]"></p>
-                <button id="endgame-create-account" class="text-xs text-green-500 hover:text-green-600 hover:underline mt-2 flex items-center py-1"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-1 flex-shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" /></svg>Sign up to save stats across devices</button>
+                <button id="endgame-create-account" class="text-xs text-green-500 hover:text-green-600 hover:underline mt-2 flex items-center justify-center py-1 mx-auto"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-1 flex-shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" /></svg>Sign up to save stats across devices</button>
             </div>`;
 
         const enteredName = await new Promise(resolve => {
@@ -4672,72 +4672,62 @@ function getTileCenter(tile) {
         }
    }
 
-   async function shareScore() {
-        const bestWordFound = foundWords.length > 0 ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { word: '', score: 0 }) : null;
-        let shareText = `I just scored ${score} on Word Worm! 🐛\n`;
-        if (bestWordFound && bestWordFound.word) {
-            shareText += `My best word was ${bestWordFound.word.toUpperCase()} for ${bestWordFound.score} points!\n\n`;
-        }
-        const gameUrl = 'https://wordwormgame.com/';
-        shareText += `Think you can beat me? Play now:\n${gameUrl}`;
-        const shareData = { title: 'Word Worm', text: shareText };
-        if (navigator.share) {
-            try { await navigator.share(shareData); console.log('Score shared successfully!'); } catch (err) { console.error('Share failed:', err); }
-        } else {
-            try {
-                await navigator.clipboard.writeText(shareText);
-                const shareButton = document.getElementById('share-score-link');
-                if (shareButton) {
-                    const originalText = shareButton.innerHTML;
-                    shareButton.innerHTML = 'Copied! ✓';
-                    shareButton.classList.add('text-green-500');
-                    setTimeout(() => {
-                        shareButton.innerHTML = originalText;
-                        shareButton.classList.remove('text-green-500');
-                    }, 2000);
-                }
-            } catch (err) { console.error('Failed to copy: ', err); alert('Could not copy score to clipboard.'); }
-        }
-    }
-
    function showEndGameScreen() {
     endGameModal.classList.remove('hidden');
-    
-    const sortedWords = [...foundWords].sort((a,b)=>b.score-a.score);
-    const foundWordsHTML = sortedWords.length ? sortedWords.map(fw => `<div class="flex justify-between text-sm p-1 ${sortedWords.indexOf(fw) % 2 === 0 ? 'bg-slate-50' : ''} rounded"><span class="font-semibold">${fw.word.toUpperCase()}</span><span>+${fw.score}</span></div>`).join('') : '<p class="text-sm text-slate-500 text-center py-4">No words found.</p>';
+
+    const bestWordFound = foundWords.length > 0 ? foundWords.reduce((best, current) => current.score > best.score ? current : best, { word: '', score: 0 }) : null;
+    const wordSummaryText = bestWordFound
+        ? `${foundWords.length} word${foundWords.length === 1 ? '' : 's'} found &middot; Best: ${bestWordFound.word.toUpperCase()} (+${bestWordFound.score})`
+        : 'No words found';
+
+    const rocketIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg>`;
+    const challengeIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>`;
+    const leaderboardIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="m6.115 5.19.319 1.913A6 6 0 0 0 8.11 10.36L9.75 12l-.387.775c-.217.433-.132.956.21 1.298l1.348 1.348c.21.21.329.497.329.795v1.089c0 .426.24.815.622 1.006l.153.076c.433.217.956.132 1.298-.21l.723-.723a8.7 8.7 0 0 0 2.288-4.042 1.087 1.087 0 0 0-.358-1.099l-1.33-1.108c-.251-.21-.582-.299-.905-.245l-1.17.195a1.125 1.125 0 0 1-.98-.314l-.295-.295a1.125 1.125 0 0 1 0-1.591l.13-.132a1.125 1.125 0 0 1 1.3-.21l.603.302a.809.809 0 0 0 1.086-1.086L14.25 7.5l1.256-.837a4.5 4.5 0 0 0 1.528-1.732l.146-.292M6.115 5.19A9 9 0 1 0 17.18 4.64M6.115 5.19A8.965 8.965 0 0 1 12 3c1.929 0 3.716.607 5.18 1.64" /></svg>`;
+    const statsIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" /></svg>`;
+    const homeIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg>`;
 
     endGameModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
         <h2 class="text-3xl font-black text-green-500">Great Game!</h2>
         <p class="text-slate-600 mb-2">Your final score is:</p>
         <p id="final-score-display" class="text-6xl font-black text-slate-800 mb-3">${score}</p>
-        
+
         <div id="submission-container" class="min-h-8 flex items-center justify-center">
             <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
         </div>
 
-        <hr class="my-4">
-        <div class="text-left w-full">
-            <div class="flex justify-between items-baseline mb-2">
-                <h3 class="text-xl font-bold text-slate-700">Your Words (${foundWords.length})</h3>
-                <button id="endgame-stats-button" class="flex items-center text-base font-bold text-blue-500 hover:text-blue-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" /></svg>
-                    <span class="ml-1">Your Stats</span>
-                </button>
-            </div>
-            <div class="space-y-1 max-h-48 overflow-y-auto pr-2">${foundWordsHTML}</div>
+        <p class="text-sm text-slate-500 mt-1 mb-4">${wordSummaryText}</p>
+
+        <div id="endgame-challenge-result" class="mb-2"></div>
+        <div class="flex flex-col gap-2">
+            <button id="play-again-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">
+                ${rocketIcon} Play Again
+            </button>
+            <button id="endgame-challenge-btn" class="bg-blue-500 hover:bg-blue-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">
+                ${challengeIcon} Challenge a Friend
+            </button>
         </div>
-        <div id="share-link-container" class="h-10 flex items-center justify-center"></div>
-        <div class="flex space-x-2 mt-3">
-            <button id="endgame-leaderboard-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-base flex-1">Leaderboard</button>
-            <button id="play-again-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex-1">Play Again</button>
+
+        <div class="grid grid-cols-3 gap-2 mt-4">
+            <button id="endgame-leaderboard-button" class="bg-white border border-slate-200 hover:bg-slate-50 rounded-xl p-2 flex flex-col items-center justify-center gap-1 transition-colors">
+                <span class="text-green-500">${leaderboardIcon}</span>
+                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Leaderboard</span>
+            </button>
+            <button id="endgame-stats-button" class="bg-white border border-slate-200 hover:bg-slate-50 rounded-xl p-2 flex flex-col items-center justify-center gap-1 transition-colors">
+                <span class="text-blue-500">${statsIcon}</span>
+                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Stats</span>
+            </button>
+            <button id="endgame-home-button" class="bg-white border border-slate-200 hover:bg-slate-50 rounded-xl p-2 flex flex-col items-center justify-center gap-1 transition-colors">
+                <span class="text-slate-500">${homeIcon}</span>
+                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Home</span>
+            </button>
         </div>
     </div>`;
-    
+
     const scoreDisplay = document.getElementById('final-score-display');
     if (scoreDisplay) {
         triggerEndGameConfetti(scoreDisplay);
     }
-    
+
     // This call happens after the modal is shown. processEndOfGame will
     // then replace the spinner with the name input if needed.
     if (!isPracticeMode && db && userId) {
@@ -4747,13 +4737,11 @@ function getTileCenter(tile) {
     document.getElementById('play-again-button').onclick = resetGame;
     document.getElementById('endgame-leaderboard-button').onclick = () => showLeaderboardModal(currentGamemode === 'daily' ? 'challenge' : 'daily');
     document.getElementById('endgame-stats-button').onclick = () => showProfileModal('stats');
-    
-    const shareLinkContainer = document.getElementById('share-link-container');
-    if (navigator.share || navigator.clipboard) {
-        const shareIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 mr-1"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" /></svg>`;
-        shareLinkContainer.innerHTML = `<a href="#" id="share-score-link" class="flex items-center text-blue-500 hover:underline font-bold">${shareIcon} Share Score</a>`;
-        document.getElementById('share-score-link').onclick = (e) => { e.preventDefault(); shareScore(); };
-    }
+    document.getElementById('endgame-home-button').onclick = resetGame;
+    document.getElementById('endgame-challenge-btn').onclick = () => _createAndShareChallenge(
+        document.getElementById('endgame-challenge-btn'),
+        document.getElementById('endgame-challenge-result')
+    );
 }
     
     function updateEndGameSubmissionUI(playerName, rankInfo) {
