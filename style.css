@@ -345,5 +345,5 @@ html.dark #mode-daily-btn:hover { background-color: #1e3a5f !important; }
    utilities: dist/style.css is gitignored and can be deployed stale, which
    left this button white-on-white in prod (bg-indigo-400 missing from the
    deployed build). */
-#challenge-rematch-btn { background-color: #818cf8; }
-#challenge-rematch-btn:hover { background-color: #6366f1; }
+#challenge-rematch-btn { background-color: #22c55e; }
+#challenge-rematch-btn:hover { background-color: #16a34a; }

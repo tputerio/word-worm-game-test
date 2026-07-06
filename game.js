@@ -3009,7 +3009,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 line1Class = isWin ? 'text-green-700 font-semibold' : 'text-slate-800 font-semibold';
                 line2 = `${myResult.score} – ${topOther[1].score}`;
                 borderStyle = isTie ? 'border:2px solid #f59e0b' : isWin ? 'border:2px solid #22c55e' : 'border:2px solid #ef4444';
-                btnHtml = iconBtn('challenge-rematch-btn', IC_REFRESH, '#818cf8', `data-touid="${topOther[0]}" data-toname="${escapeHTML(topOther[1].name || '')}"`);
+                btnHtml = iconBtn('challenge-rematch-btn', IC_REFRESH, '#22c55e', `data-touid="${topOther[0]}" data-toname="${escapeHTML(topOther[1].name || '')}"`);
             } else {
                 line1 = 'Expired';
                 line1Class = 'text-slate-400';
