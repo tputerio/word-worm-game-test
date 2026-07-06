@@ -147,7 +147,11 @@ exports.resetDailyLeaderboards = onSchedule({
 }, async (event) => {
     logger.info("Resetting all daily leaderboards...");
     const db = getFirestore();
-    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 
     // 1. Reference to the TIMED daily leaderboard
     const timedLeaderboardRef = db.collection('leaderboards').doc('daily');
@@ -163,7 +167,7 @@ exports.resetDailyLeaderboards = onSchedule({
             topByTotalScore: [],
             topByBestWord: []
         });
-        
+
         // Reset the challenge board to its simple structure
         await challengeLeaderboardRef.set({
             date: todayStr,
@@ -173,6 +177,17 @@ exports.resetDailyLeaderboards = onSchedule({
         logger.info("Both daily leaderboards have been reset successfully.");
     } catch (error) {
         logger.error("Error resetting daily leaderboards:", error);
+    }
+
+    // dailyScores/{date}/entries holds one doc per player (their best score
+    // of that day), written client-side to compute rank/percentile on the
+    // end-game screen. Each day is its own doc/subcollection, so yesterday's
+    // is safe to delete wholesale once it's no longer "today" for anyone.
+    try {
+        await db.recursiveDelete(db.collection('dailyScores').doc(yesterdayStr));
+        logger.info(`Cleaned up dailyScores/${yesterdayStr}.`);
+    } catch (error) {
+        logger.error("Error cleaning up yesterday's dailyScores:", error);
     }
 });
 

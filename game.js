@@ -1,7 +1,7 @@
     // --- Firebase SDKs ---
     import { getApps, initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithCredential, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
-    import { getFirestore, initializeFirestore, persistentLocalCache, persistentSingleTabManager, collection, addDoc, getDocs, getDocsFromCache, query, where, orderBy, limit, doc, documentId, getDoc, getDocFromServer, getDocFromCache, setDoc, updateDoc, deleteDoc, increment, arrayUnion, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
+    import { getFirestore, initializeFirestore, persistentLocalCache, persistentSingleTabManager, collection, addDoc, getDocs, getDocsFromCache, query, where, orderBy, limit, doc, documentId, getDoc, getDocFromServer, getDocFromCache, setDoc, updateDoc, deleteDoc, increment, arrayUnion, runTransaction, serverTimestamp, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
      // --- Google Analytics ---
    // GOOGLE ANALYTICS -- import { getAnalytics, logEvent, setUserId } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-analytics.js";
@@ -1714,16 +1714,25 @@ function getTileFromEvent(e) {
         didBeatDailyHighScore = false;
     }
 
-    // Save game history
-    try {
-        const gameData = { score: finalScore, timestamp: serverTimestamp(), words: words.map(w => ({ word: w.word, score: w.score, length: w.length })) };
-        await addDoc(collection(db, `players/${uId}/games`), gameData);
-    } catch (e) { 
-        console.error("Failed to save game history:", e); 
-    }
-
+    // The rest of the writes are independent of each other (different docs),
+    // so they run concurrently instead of one round trip after another —
+    // only the player-doc read/write above has to happen first, since these
+    // all read from `updatedStats`.
     let dailyRank = null;
-    if (!skipLeaderboard && userId && finalPlayerName !== 'Anonymous') {
+    let percentileRank = null, totalPlayersToday = null;
+    const canUseLeaderboard = !skipLeaderboard && userId && finalPlayerName !== 'Anonymous';
+
+    const gameHistoryPromise = (async () => {
+        try {
+            const gameData = { score: finalScore, timestamp: serverTimestamp(), words: words.map(w => ({ word: w.word, score: w.score, length: w.length })) };
+            await addDoc(collection(db, `players/${uId}/games`), gameData);
+        } catch (e) {
+            console.error("Failed to save game history:", e);
+        }
+    })();
+
+    const dailyLeaderboardPromise = (async () => {
+        if (!canUseLeaderboard) return;
         const dailyRef = doc(db, "leaderboards", "daily");
         try {
             // Get current leaderboard data
@@ -1755,7 +1764,10 @@ function getTileFromEvent(e) {
             const rankIndex = (data.topByHighScore || []).findIndex(p => p.userID === uId);
             if (rankIndex !== -1) dailyRank = rankIndex + 1;
         } catch (e) { console.error("Failed to update daily leaderboard:", e); }
+    })();
 
+    const allTimeLeaderboardPromise = (async () => {
+        if (!canUseLeaderboard) return;
         const allTimeRef = doc(db, "leaderboards", "allTime");
         try {
             // Get current all-time data
@@ -1775,9 +1787,30 @@ function getTileFromEvent(e) {
             // Update with merge
             await setDoc(allTimeRef, data, { merge: true });
         } catch (e) { console.error("Failed to update all-time leaderboard:", e); }
-    }
+    })();
 
-    updateEndGameSubmissionUI(finalPlayerName, { didBeatDailyHighScore, rank: dailyRank });
+    // Records this player's best score today in its own collection (one doc
+    // per player per day, keyed by uid) purely so rank/percentile can be
+    // computed for *everyone*, not just the top 10 kept in topByHighScore.
+    // Uses count() aggregation queries, which are billed per ~1000 matched
+    // docs rather than per document, so this stays cheap regardless of scale.
+    const percentileRankPromise = (async () => {
+        if (!canUseLeaderboard) return;
+        try {
+            const entriesCol = collection(db, 'dailyScores', todayStr, 'entries');
+            await setDoc(doc(entriesCol, uId), { score: updatedStats.dailyHighScore });
+            const [totalSnap, beatenBySnap] = await Promise.all([
+                getCountFromServer(entriesCol),
+                getCountFromServer(query(entriesCol, where('score', '>', updatedStats.dailyHighScore)))
+            ]);
+            totalPlayersToday = totalSnap.data().count;
+            percentileRank = beatenBySnap.data().count + 1;
+        } catch (e) { console.error("Failed to compute daily rank:", e); }
+    })();
+
+    await Promise.all([gameHistoryPromise, dailyLeaderboardPromise, allTimeLeaderboardPromise, percentileRankPromise]);
+
+    updateEndGameSubmissionUI(finalPlayerName, { didBeatDailyHighScore, rank: dailyRank, percentileRank, totalPlayersToday });
 }
     
     function updateScoreDisplay() {
@@ -4752,12 +4785,21 @@ function getTileCenter(tile) {
     const trophyIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" /></svg>`;
     const checkIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6 mr-2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>`;
 
+    let percentAbove = null;
+    if (rankInfo && rankInfo.percentileRank && rankInfo.totalPlayersToday > 1) {
+        const { percentileRank, totalPlayersToday } = rankInfo;
+        percentAbove = Math.round(((totalPlayersToday - percentileRank) / (totalPlayersToday - 1)) * 100);
+    }
+
     // ✅ FIX: This new logic prioritizes showing your rank first.
     if (rankInfo && rankInfo.rank && rankInfo.rank <= 10) {
         const leaderboardMessage = `You're&nbsp;<strong>#${rankInfo.rank}</strong>&nbsp;on today's leaderboard!`;
         finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${trophyIcon} ${leaderboardMessage}</div>`;
     } else if (rankInfo && rankInfo.didBeatDailyHighScore) {
         const leaderboardMessage = `New daily high: <strong>${score}</strong>!`;
+        finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${trophyIcon} ${leaderboardMessage}</div>`;
+    } else if (percentAbove !== null) {
+        const leaderboardMessage = `You placed above&nbsp;<strong>${percentAbove}%</strong>&nbsp;of today's players!`;
         finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${trophyIcon} ${leaderboardMessage}</div>`;
     } else {
         const standardMessage = `Score submitted as&nbsp;<strong>${escapeHTML(playerName)}</strong>!`;
