@@ -1,6 +1,6 @@
     // --- Firebase SDKs ---
     import { getApps, initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithCredential, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
     import { getFirestore, initializeFirestore, persistentLocalCache, persistentSingleTabManager, collection, addDoc, getDocs, getDocsFromCache, query, where, orderBy, limit, doc, documentId, getDoc, getDocFromServer, getDocFromCache, setDoc, updateDoc, deleteDoc, increment, arrayUnion, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
      // --- Google Analytics ---
@@ -83,7 +83,17 @@
             return { user, isNewUser, suggestedName };
         } catch (err) {
             if (err.code === 'auth/credential-already-in-use' || err.code === 'auth/email-already-in-use') {
-                const result = await signInWithPopup(auth, provider);
+                // The Google account is already tied to a different (real) account.
+                // Re-using the credential from the failed link avoids opening a
+                // second popup here — a second signInWithPopup call, fired async
+                // from inside this catch, falls outside the original click's user
+                // gesture and gets silently blocked in Safari/iOS, which is why
+                // returning users hit "sign-in failed" while first-time sign-up
+                // (single popup, no fallback needed) always worked.
+                const credential = GoogleAuthProvider.credentialFromError(err);
+                const result = credential
+                    ? await signInWithCredential(auth, credential)
+                    : await signInWithPopup(auth, provider);
                 const user = result.user;
                 userId = user.uid;
                 if (db) {
