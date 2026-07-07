@@ -325,9 +325,14 @@ html.dark #stats-modal .bg-slate-800 {
 }
 html.dark #stats-modal .hover\:bg-slate-700:hover { background-color: #1e293b !important; }
 
-/* Stats tab: Games / Avg Score / Avg Length container outline */
+/* Stats tab: Games / Avg Score / Avg Length container outline.
+   Tighter padding/gap than light mode claws back the couple of px that
+   bold white-on-dark text needs to avoid wrapping (dark text on a light
+   background renders slightly narrower than light text on dark). */
 html.dark #profile-tab-content .bg-slate-100.rounded-lg {
     border: 1px solid #475569;
+    padding: 0.5rem;
+    gap: 0.25rem;
 }
 
 html.dark #mode-dropdown-inner {
