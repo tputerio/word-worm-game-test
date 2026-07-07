@@ -4,7 +4,7 @@
     import { getFirestore, initializeFirestore, persistentLocalCache, persistentSingleTabManager, collection, addDoc, getDocs, getDocsFromCache, query, where, orderBy, limit, doc, documentId, getDoc, getDocFromServer, getDocFromCache, setDoc, updateDoc, deleteDoc, increment, arrayUnion, runTransaction, serverTimestamp, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
      // --- Google Analytics ---
-   // GOOGLE ANALYTICS -- import { getAnalytics, logEvent, setUserId } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-analytics.js";
+    import { getAnalytics, logEvent, setUserId } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-analytics.js";
     
     // --- Config ---
     const [GRID_SIZE, GRID_COLS, GAME_TIME] = [16, 4, 60];
@@ -59,8 +59,7 @@
     }
 
     // --- Firebase State ---
-    let auth, db, userId;
-   // GOOGLE ANALYTICS -- let auth, db, userId, analytics;
+    let auth, db, userId, analytics;
     const isUserSignedIn = () => auth?.currentUser && !auth.currentUser.isAnonymous;
 
     async function signInWithProvider(provider) {
@@ -491,16 +490,21 @@ function showSubmitConfirmation() {
                 console.warn('Persistent cache unavailable, using default Firestore:', e);
                 db = getFirestore(app);
             }
-            // GOOGLE ANALYTICS -- analytics = getAnalytics(app);
+            // measurementId is only set on the prod config, so this stays a
+            // no-op locally/on the test project instead of erroring on a
+            // missing measurementId.
+            if (firebaseConfig.measurementId) {
+                try { analytics = getAnalytics(app); } catch (e) { console.warn('Analytics unavailable:', e); }
+            }
 
 
             onAuthStateChanged(auth, async (user) => {
                 if (user) {
                     userId = user.uid;
 
-                    // GOOGLE ANALYTICS -- if (analytics && userId) {
-                   //     setUserId(analytics, userId);
-                  //  }
+                    if (analytics && userId) {
+                        setUserId(analytics, userId);
+                    }
 
                     console.log("Firebase connected. User ID:", userId);
                     fetchGlobalStats();
@@ -1238,14 +1242,14 @@ function setupDailyUI(challengeData) {
         // ✅ FIX: No delay needed. Show the end screen immediately.
         showEndGameScreen();
 
-       //GOOGLE ANALYTICS -- if (analytics) {
-       // logEvent(analytics, 'game_end', {
-       //     game_mode: isPracticeMode ? 'practice' : 'timed',
-       //     final_score: score,
-       //     words_found_count: foundWords.length,
-       //     time_taken_seconds: isPracticeMode ? practiceTimeElapsed : GAME_TIME
-      //  });
-  //  }
+        if (analytics) {
+            logEvent(analytics, 'game_end', {
+                game_mode: isPracticeMode ? 'practice' : 'timed',
+                final_score: score,
+                words_found_count: foundWords.length,
+                time_taken_seconds: isPracticeMode ? practiceTimeElapsed : GAME_TIME
+            });
+        }
 }
 
 function replaceSelectedTiles() {
@@ -1380,7 +1384,7 @@ function replaceSelectedTiles() {
             else if (word.length === 5) finalScore += 10;
             else if (word.length === 4) finalScore += 5;
             
-            // GOOGLE ANALYTICS             if (analytics) { logEvent(analytics, 'submit_word', { word_length: word.length, score: finalScore, game_mode: isPracticeMode ? 'practice' : 'timed' }); }
+            if (analytics) { logEvent(analytics, 'submit_word', { word_length: word.length, score: finalScore, game_mode: isPracticeMode ? 'practice' : 'timed' }); }
 
             if (timeBonus > 0 && !isPracticeMode && currentGamemode !== 'challenge') { timer += timeBonus; updateTimerUI(); }
 
@@ -1631,7 +1635,7 @@ function getTileFromEvent(e) {
 
     // --- PART 2: UPDATE ALL DATABASE STATS ---
     const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-    let updatedStats, didBeatDailyHighScore;
+    let updatedStats;
 
     try {
         // First, get the current player data
@@ -1671,12 +1675,10 @@ function getTileFromEvent(e) {
         // Update the document with merge: true to avoid update time conflicts
         await setDoc(playerDocRef, updateData, { merge: true });
 
-        didBeatDailyHighScore = oldData.dailyHighScoreLastUpdated !== todayStr || finalScore > (oldData.dailyHighScore || 0);
         updatedStats = { ...oldData, ...updateData };
     } catch (e) {
         console.error("Failed to update player stats:", e);
         updatedStats = {};
-        didBeatDailyHighScore = false;
     }
 
     // The rest of the writes are independent of each other (different docs),
@@ -1762,11 +1764,16 @@ function getTileFromEvent(e) {
     const percentileRankPromise = (async () => {
         if (!canUseLeaderboard) return;
         try {
+            // The entry itself still stores each player's best-of-day, so the
+            // shared pool everyone's compared against stays stable. But *this*
+            // game's message compares finalScore (what you just played), not
+            // your running daily high, so a worse round doesn't get credited
+            // with your best game's percentile.
             const entriesCol = collection(db, 'dailyScores', todayStr, 'entries');
             await setDoc(doc(entriesCol, uId), { score: updatedStats.dailyHighScore });
             const [totalSnap, beatenBySnap] = await Promise.all([
                 getCountFromServer(entriesCol),
-                getCountFromServer(query(entriesCol, where('score', '>', updatedStats.dailyHighScore)))
+                getCountFromServer(query(entriesCol, where('score', '>', finalScore)))
             ]);
             totalPlayersToday = totalSnap.data().count;
             percentileRank = beatenBySnap.data().count + 1;
@@ -1778,7 +1785,7 @@ function getTileFromEvent(e) {
     // The non-blocking name prompt owns #submission-container's contents
     // until it's answered — don't clobber it with the submitted/rank message.
     if (!needsToSubmitName) {
-        updateEndGameSubmissionUI(finalPlayerName, { didBeatDailyHighScore, rank: dailyRank, percentileRank, totalPlayersToday });
+        updateEndGameSubmissionUI(finalPlayerName, { rank: dailyRank, percentileRank, totalPlayersToday });
     }
 }
 
@@ -4930,12 +4937,12 @@ function getTileCenter(tile) {
         percentAbove = Math.round(((totalPlayersToday - percentileRank) / (totalPlayersToday - 1)) * 100);
     }
 
-    // ✅ FIX: This new logic prioritizes showing your rank first.
+    // Rank on the leaderboard takes priority; otherwise percentile is the
+    // main signal, since "beat your own daily high" is true often enough
+    // (first play of the day, or any later improvement) that it stopped
+    // being a meaningful callout on its own.
     if (rankInfo && rankInfo.rank && rankInfo.rank <= 10) {
         const leaderboardMessage = `You're&nbsp;<strong>#${rankInfo.rank}</strong>&nbsp;on today's leaderboard!`;
-        finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${trophyIcon} ${leaderboardMessage}</div>`;
-    } else if (rankInfo && rankInfo.didBeatDailyHighScore) {
-        const leaderboardMessage = `New daily high: <strong>${score}</strong>!`;
         finalMessageHtml = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">${trophyIcon} ${leaderboardMessage}</div>`;
     } else if (percentAbove !== null) {
         const leaderboardMessage = `You placed above&nbsp;<strong>${percentAbove}%</strong>&nbsp;of today's players!`;
