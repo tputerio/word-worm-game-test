@@ -79,6 +79,7 @@
                     localStorage.setItem('wordRushPlayerName', snap.data().name);
                 }
             }
+            if (analytics) logEvent(analytics, isNewUser ? 'sign_up' : 'login', { method: 'google' });
             return { user, isNewUser, suggestedName };
         } catch (err) {
             if (err.code === 'auth/credential-already-in-use' || err.code === 'auth/email-already-in-use') {
@@ -102,6 +103,7 @@
                         localStorage.setItem('wordRushPlayerName', snap.data().name);
                     }
                 }
+                if (analytics) logEvent(analytics, 'login', { method: 'google' });
                 return { user, isNewUser: false, suggestedName: null };
             }
             throw err;
@@ -1244,7 +1246,7 @@ function setupDailyUI(challengeData) {
 
         if (analytics) {
             logEvent(analytics, 'game_end', {
-                game_mode: isPracticeMode ? 'practice' : 'timed',
+                game_mode: currentGamemode,
                 final_score: score,
                 words_found_count: foundWords.length,
                 time_taken_seconds: isPracticeMode ? practiceTimeElapsed : GAME_TIME
@@ -2931,6 +2933,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             ...extraFields
         };
         const challengeRef = await addDoc(collection(db, 'challenges'), challengeData);
+        if (analytics) logEvent(analytics, 'challenge_created');
         // Show the new challenge in My Challenges immediately — no reload.
         seedChallengeIntoCache(challengeRef.id, { ...challengeData,
             createdAt: msToTimestamp(Date.now()),
@@ -2960,9 +2963,11 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 await navigator.share({
                     text: `🐛 I challenge you to a game of Word Worm! Think you can beat me? ${challengeUrl}`,
                 });
+                if (analytics) logEvent(analytics, 'share', { method: 'native', content_type: 'challenge' });
                 goToChallengeScreen(created.id, created.data);
             } else {
                 await navigator.clipboard.writeText(challengeUrl);
+                if (analytics) logEvent(analytics, 'share', { method: 'clipboard', content_type: 'challenge' });
                 btnEl.innerHTML = `Link Copied!`;
                 // Brief confirmation the link is on the clipboard, then land on the challenge screen.
                 setTimeout(() => goToChallengeScreen(created.id, created.data), 1200);
@@ -3269,6 +3274,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         seedChallengeIntoCache(challengeId, { ...data, participants: [...(data.participants || []), userId] });
                     })
                     .catch(() => {});
+                if (analytics) logEvent(analytics, 'challenge_joined');
             }
 
             const isSelf = data.createdBy === userId;
@@ -3436,6 +3442,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             showChallengeSaveFailedScreen(stats, playerName);
             return;
         }
+        if (analytics) logEvent(analytics, 'challenge_completed', { score: stats.score });
 
         // The score is saved. Nothing below may strand the player on the
         // spinner or claim the save failed.
@@ -3740,6 +3747,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                                 const snap = await getDoc(doc(db, "players", result.user.uid));
                                 if (snap.exists() && snap.data().name) localStorage.setItem('wordRushPlayerName', snap.data().name);
                             }
+                            if (analytics) logEvent(analytics, 'login', { method: 'password' });
                             finishAuth();
                         } catch (e) {
                             console.error('Email sign-in failed:', e);
@@ -3837,6 +3845,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                                 localStorage.setItem('wordRushPlayerName', name);
                                 await claimUsername(name);
                             }
+                            if (analytics) logEvent(analytics, 'sign_up', { method: 'password' });
                             finishAuth();
                         } catch (e) {
                             console.error('Account creation failed:', e);
