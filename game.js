@@ -4278,10 +4278,10 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${totalPointsIcon}<span class="ml-2">Total Points</span></span><span class="font-black text-xl text-slate-700">${stats.totalPoints.toLocaleString()}</span></div>
             <div class="flex items-center justify-between"><span class="flex items-center font-bold text-slate-600">${bestWordIcon}<span class="ml-2">Best Word</span></span><span class="font-black text-xl text-slate-700">${bestWordDisplay}</span></div>
         </div>
-        <div class="grid grid-cols-3 gap-2 text-center bg-slate-100 p-3 rounded-lg mb-4">
-            <div><div class="text-xs font-bold text-slate-500 uppercase">Games</div><div class="text-2xl font-black text-slate-800">${stats.totalGamesPlayed}</div></div>
-            <div><div class="text-xs font-bold text-slate-500 uppercase">Avg Score</div><div class="text-2xl font-black text-slate-800">${avgScore}</div></div>
-            <div><div class="text-xs font-bold text-slate-500 uppercase">Avg Length</div><div class="text-2xl font-black text-slate-800">${avgWordLength}</div></div>
+        <div class="grid grid-cols-3 gap-1 text-center bg-slate-100 p-3 rounded-lg mb-4">
+            <div><div class="text-[10px] tracking-tight font-bold text-slate-500 uppercase whitespace-nowrap">Games</div><div class="text-2xl font-black text-slate-800">${stats.totalGamesPlayed}</div></div>
+            <div><div class="text-[10px] tracking-tight font-bold text-slate-500 uppercase whitespace-nowrap">Avg Score</div><div class="text-2xl font-black text-slate-800">${avgScore}</div></div>
+            <div><div class="text-[10px] tracking-tight font-bold text-slate-500 uppercase whitespace-nowrap">Avg Length</div><div class="text-2xl font-black text-slate-800">${avgWordLength}</div></div>
         </div>
         <div class="grid grid-cols-2 gap-4">
             <div><h3 class="text-base font-bold text-slate-700 mb-2 border-b pb-1">Best Scores</h3><ol class="space-y-1">${topScoresHTML}</ol></div>
