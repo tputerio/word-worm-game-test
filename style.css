@@ -325,11 +325,9 @@ html.dark #stats-modal .bg-slate-800 {
 }
 html.dark #stats-modal .hover\:bg-slate-700:hover { background-color: #1e293b !important; }
 
-/* Stats tab: Games / Avg Score / Avg Length grid cell outlines */
-html.dark #profile-tab-content .bg-slate-100.rounded-lg > div {
+/* Stats tab: Games / Avg Score / Avg Length container outline */
+html.dark #profile-tab-content .bg-slate-100.rounded-lg {
     border: 1px solid #475569;
-    border-radius: 0.375rem;
-    padding: 0.5rem;
 }
 
 html.dark #mode-dropdown-inner {
