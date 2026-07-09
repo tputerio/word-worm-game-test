@@ -1,7 +1,7 @@
     // --- Firebase SDKs ---
     import { getApps, initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithCredential, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
-    import { getFirestore, initializeFirestore, persistentLocalCache, persistentSingleTabManager, collection, addDoc, getDocs, getDocsFromCache, query, where, orderBy, limit, doc, documentId, getDoc, getDocFromServer, getDocFromCache, setDoc, updateDoc, deleteDoc, increment, arrayUnion, runTransaction, serverTimestamp, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
+    import { getFirestore, initializeFirestore, persistentLocalCache, persistentSingleTabManager, collection, addDoc, getDocs, getDocsFromCache, query, where, orderBy, limit, doc, getDoc, getDocFromServer, getDocFromCache, setDoc, updateDoc, deleteDoc, increment, arrayUnion, runTransaction, serverTimestamp, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
      // --- Google Analytics ---
     import { getAnalytics, logEvent, setUserId } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-analytics.js";
@@ -443,28 +443,36 @@ function showSubmitConfirmation() {
                 return; // If it is, don't do anything.
             }
 
-            // REMOVE THIS IN PROD
-
-                            const firebaseConfig = {
-  apiKey: "AIzaSyC_DYC4l4DxZNBpOF-1tWlTJj0pG8910F0",
-  authDomain: "wordworm-test-c7f3a.firebaseapp.com",
-  projectId: "wordworm-test-c7f3a",
-  storageBucket: "wordworm-test-c7f3a.firebasestorage.app",
-  messagingSenderId: "912527691093",
-  appId: "1:912527691093:web:bd22a2205b39f009e1b3dc"
-
-};
-
-// PROD API SET UP GOOGLE ANALYTICS
-  //  const firebaseConfig = {
-     //           apiKey: "AIzaSyBa2DPRjwaI-G5mz-OmHVXEDJ4_MzBAZgA",
-       //         authDomain: "word-rush-game-9010a.firebaseapp.com",
-         //       projectId: "word-rush-game-9010a",
-           //     storageBucket: "word-rush-game-9010a.firebasestorage.app",
-             //   messagingSenderId: "551838491871",
-               // appId: "1:551838491871:web:757325be04daab9289b56a",
-              //  measurementId: "G-D0TSQFY1XS"
-               // };
+            // The config is picked by hostname so the same file is correct on
+            // every site — no more commenting configs in/out per deploy (one
+            // forgotten edit used to be able to point prod players at the test
+            // database). Only the production domains (wordwormgame.com and the
+            // prod project's own web.app/firebaseapp.com hosts, including its
+            // preview channels, which look like word-rush-game-9010a--*.web.app)
+            // get the prod project; localhost, the test project's domains, and
+            // anything unrecognized fall back to test.
+            const PROD_FIREBASE_CONFIG = {
+                apiKey: "AIzaSyBa2DPRjwaI-G5mz-OmHVXEDJ4_MzBAZgA",
+                authDomain: "word-rush-game-9010a.firebaseapp.com",
+                projectId: "word-rush-game-9010a",
+                storageBucket: "word-rush-game-9010a.firebasestorage.app",
+                messagingSenderId: "551838491871",
+                appId: "1:551838491871:web:757325be04daab9289b56a",
+                measurementId: "G-D0TSQFY1XS"
+            };
+            const TEST_FIREBASE_CONFIG = {
+                apiKey: "AIzaSyC_DYC4l4DxZNBpOF-1tWlTJj0pG8910F0",
+                authDomain: "wordworm-test-c7f3a.firebaseapp.com",
+                projectId: "wordworm-test-c7f3a",
+                storageBucket: "wordworm-test-c7f3a.firebasestorage.app",
+                messagingSenderId: "912527691093",
+                appId: "1:912527691093:web:bd22a2205b39f009e1b3dc"
+            };
+            const hostname = window.location.hostname;
+            const isProdHost = hostname === 'wordwormgame.com'
+                || hostname === 'www.wordwormgame.com'
+                || hostname.includes('word-rush-game-9010a');
+            const firebaseConfig = isProdHost ? PROD_FIREBASE_CONFIG : TEST_FIREBASE_CONFIG;
 
             const app = initializeApp(firebaseConfig);
             auth = getAuth(app);
@@ -558,9 +566,14 @@ function showSubmitConfirmation() {
             if (fullDictionaryTrie) { // Dictionaries are already loaded
                 console.log("Dictionaries already loaded.");
             } else {
+                // The dictionaries are served with a 1-year immutable cache
+                // header (firebase.json), so their URL must change whenever
+                // their contents do — bump this constant on any dictionary
+                // rebuild, or returning browsers will keep the old files.
+                const DICTIONARY_VERSION = '1';
                 const [commonRes, fullRes] = await Promise.all([
-                    fetch('assets/common-dictionary.json'),
-                    fetch('assets/scrabble-dictionary.json')
+                    fetch(`assets/common-dictionary.json?v=${DICTIONARY_VERSION}`),
+                    fetch(`assets/scrabble-dictionary.json?v=${DICTIONARY_VERSION}`)
                 ]);
                 if (!commonRes.ok || !fullRes.ok) throw new Error(`Dictionary download failed`);
                 validationTrie = new Trie(await commonRes.json());
@@ -1542,6 +1555,9 @@ async function submitDailyScoreToLeaderboard(finalScore) {
             
             transaction.set(leaderboardRef, { topScores: newTopScores, date: todayStr });
         });
+        // Same staleness guard as postScoreToLeaderboards: the modal's 60s
+        // HTML cache must not outlive a board we just changed.
+        delete leaderboardHtmlCache['challenge'];
         console.log("Daily score submitted successfully!");
     } catch (error) {
         console.error("Error submitting daily score:", error);
@@ -1625,14 +1641,31 @@ function getTileFromEvent(e) {
         }
     }
 
+    // The leaderboard entries need `updatedStats` from the stats write below,
+    // but the name prompt has to appear immediately — this deferred hands the
+    // stats to the prompt's retroactive score post whenever they're ready.
+    let resolveUpdatedStats;
+    const updatedStatsReady = new Promise(resolve => { resolveUpdatedStats = resolve; });
+
     // A still-anonymous guest gets this prompt as a side offer, not a gate —
     // it used to be awaited here, which meant a guest who ignored it (no
     // "skip" button existed; only Play Again/Home, neither of which resolved
     // the promise) silently never got THIS game's stats/streak written at
-    // all. Submitting a name here only affects future games' leaderboard
-    // eligibility; it doesn't retroactively add this game to today's board.
+    // all. When a name IS submitted, post the game that just finished to the
+    // leaderboards under it. This used to only mark *future* games eligible,
+    // which silently dropped every guest's first game from the boards — a
+    // player whose storage resets between visits (private browsing, multiple
+    // devices) could play forever and never see a single score recorded.
     if (needsToSubmitName) {
-        showNonBlockingNamePrompt(playerDocRef);
+        showNonBlockingNamePrompt(playerDocRef, async (submittedName) => {
+            try {
+                const stats = await updatedStatsReady;
+                const rankInfo = await postScoreToLeaderboards(uId, submittedName, finalScore, words, stats);
+                updateEndGameSubmissionUI(submittedName, rankInfo);
+            } catch (e) {
+                console.error('Failed to post score after name submission:', e);
+            }
+        });
     }
 
     // --- PART 2: UPDATE ALL DATABASE STATS ---
@@ -1683,13 +1716,15 @@ function getTileFromEvent(e) {
         updatedStats = {};
     }
 
-    // The rest of the writes are independent of each other (different docs),
-    // so they run concurrently instead of one round trip after another —
-    // only the player-doc read/write above has to happen first, since these
-    // all read from `updatedStats`.
-    let dailyRank = null;
-    let percentileRank = null, totalPlayersToday = null;
+    resolveUpdatedStats(updatedStats);
+
+    // Game history and the leaderboard writes touch different docs, so they
+    // run concurrently — only the player-doc read/write above has to happen
+    // first, since the leaderboard entries read from `updatedStats`.
     const canUseLeaderboard = userId && !needsToSubmitName && finalPlayerName !== 'Anonymous';
+    const leaderboardPromise = canUseLeaderboard
+        ? postScoreToLeaderboards(uId, finalPlayerName, finalScore, words, updatedStats)
+        : Promise.resolve(null);
 
     const gameHistoryPromise = (async () => {
         try {
@@ -1700,61 +1735,83 @@ function getTileFromEvent(e) {
         }
     })();
 
+    const [rankInfo] = await Promise.all([leaderboardPromise, gameHistoryPromise]);
+
+    // The non-blocking name prompt owns #submission-container's contents
+    // until it's answered — its callback posts the score and paints the
+    // rank message itself, so don't clobber the prompt here.
+    if (!needsToSubmitName) {
+        updateEndGameSubmissionUI(finalPlayerName, rankInfo);
+    }
+}
+
+// Posts one finished game to the timed-daily and all-time leaderboards plus
+// the percentile pool, and returns the rank info the end screen displays.
+// Factored out of processEndOfGame so the end-game name prompt can post the
+// game that just finished once the player picks a name.
+async function postScoreToLeaderboards(uId, playerName, finalScore, words, updatedStats) {
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    let dailyRank = null;
+    let percentileRank = null, totalPlayersToday = null;
+
     const dailyLeaderboardPromise = (async () => {
-        if (!canUseLeaderboard) return;
         const dailyRef = doc(db, "leaderboards", "daily");
         try {
-            // Get current leaderboard data
-            const leaderboardDoc = await getDoc(dailyRef);
-            let data = leaderboardDoc.exists() ? leaderboardDoc.data() : {};
+            // A transaction, not read-then-set: two players finishing at the
+            // same time would otherwise each rewrite the doc from their own
+            // pre-write snapshot and silently drop the other's entry.
+            const writtenTopByHighScore = await runTransaction(db, async (transaction) => {
+                const leaderboardDoc = await transaction.get(dailyRef);
+                let data = leaderboardDoc.exists() ? leaderboardDoc.data() : {};
 
-            // Always initialize arrays if missing
-            data.topByHighScore = Array.isArray(data.topByHighScore) ? data.topByHighScore : [];
-            data.topByTotalScore = Array.isArray(data.topByTotalScore) ? data.topByTotalScore : [];
-            data.topByBestWord = Array.isArray(data.topByBestWord) ? data.topByBestWord : [];
+                // Always initialize arrays if missing
+                data.topByHighScore = Array.isArray(data.topByHighScore) ? data.topByHighScore : [];
+                data.topByTotalScore = Array.isArray(data.topByTotalScore) ? data.topByTotalScore : [];
+                data.topByBestWord = Array.isArray(data.topByBestWord) ? data.topByBestWord : [];
 
-            const oldTotalEntry = data.topByTotalScore.find(e => e.userID === uId);
-            const newTotalScore = (oldTotalEntry?.dailyTotalScore || 0) + finalScore;
-            const gameBestWord = words.length > 0 ? words.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: '' };
-            const oldBestWordEntry = data.topByBestWord.find(e => e.userID === uId);
-            const newBestWord = gameBestWord.score > (oldBestWordEntry?.dailyBestWord?.score || 0) ? gameBestWord : (oldBestWordEntry?.dailyBestWord || gameBestWord);
+                const oldTotalEntry = data.topByTotalScore.find(e => e.userID === uId);
+                const newTotalScore = (oldTotalEntry?.dailyTotalScore || 0) + finalScore;
+                const gameBestWord = words.length > 0 ? words.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: '' };
+                const oldBestWordEntry = data.topByBestWord.find(e => e.userID === uId);
+                const newBestWord = gameBestWord.score > (oldBestWordEntry?.dailyBestWord?.score || 0) ? gameBestWord : (oldBestWordEntry?.dailyBestWord || gameBestWord);
 
-            // Update leaderboard lists
-            data.date = todayStr;  // Always update the date
-            data.topByHighScore = updateLeaderboardList(data.topByHighScore, { userID: uId, name: finalPlayerName, dailyHighScore: updatedStats.dailyHighScore }, 'dailyHighScore');
-            data.topByTotalScore = updateLeaderboardList(data.topByTotalScore, { userID: uId, name: finalPlayerName, dailyTotalScore: newTotalScore }, 'dailyTotalScore');
-            data.topByBestWord = updateLeaderboardList(data.topByBestWord, { userID: uId, name: finalPlayerName, dailyBestWord: newBestWord }, 'dailyBestWord', 'score');
+                // Update leaderboard lists
+                data.date = todayStr;  // Always update the date
+                data.topByHighScore = updateLeaderboardList(data.topByHighScore, { userID: uId, name: playerName, dailyHighScore: updatedStats.dailyHighScore }, 'dailyHighScore');
+                data.topByTotalScore = updateLeaderboardList(data.topByTotalScore, { userID: uId, name: playerName, dailyTotalScore: newTotalScore }, 'dailyTotalScore');
+                data.topByBestWord = updateLeaderboardList(data.topByBestWord, { userID: uId, name: playerName, dailyBestWord: newBestWord }, 'dailyBestWord', 'score');
 
-            // Update with merge
-            await setDoc(dailyRef, data, { merge: true });
+                transaction.set(dailyRef, data, { merge: true });
+                return data.topByHighScore;
+            });
 
-            // data.topByHighScore is exactly what was just written — no need
-            // to pay for another read just to find the rank in it.
-            const rankIndex = (data.topByHighScore || []).findIndex(p => p.userID === uId);
+            // writtenTopByHighScore is exactly what was just committed — no
+            // need to pay for another read just to find the rank in it.
+            const rankIndex = (writtenTopByHighScore || []).findIndex(p => p.userID === uId);
             if (rankIndex !== -1) dailyRank = rankIndex + 1;
         } catch (e) { console.error("Failed to update daily leaderboard:", e); }
     })();
 
     const allTimeLeaderboardPromise = (async () => {
-        if (!canUseLeaderboard) return;
         const allTimeRef = doc(db, "leaderboards", "allTime");
         try {
-            // Get current all-time data
-            const allTimeDoc = await getDoc(allTimeRef);
-            let data = allTimeDoc.exists() ? allTimeDoc.data() : {};
+            // Transactional for the same reason as the daily board above.
+            await runTransaction(db, async (transaction) => {
+                const allTimeDoc = await transaction.get(allTimeRef);
+                let data = allTimeDoc.exists() ? allTimeDoc.data() : {};
 
-            // Initialize arrays if missing
-            data.topByHighScore = Array.isArray(data.topByHighScore) ? data.topByHighScore : [];
-            data.topByTotalPoints = Array.isArray(data.topByTotalPoints) ? data.topByTotalPoints : [];
-            data.topByBestWord = Array.isArray(data.topByBestWord) ? data.topByBestWord : [];
+                // Initialize arrays if missing
+                data.topByHighScore = Array.isArray(data.topByHighScore) ? data.topByHighScore : [];
+                data.topByTotalPoints = Array.isArray(data.topByTotalPoints) ? data.topByTotalPoints : [];
+                data.topByBestWord = Array.isArray(data.topByBestWord) ? data.topByBestWord : [];
 
-            // Update leaderboard lists
-            data.topByHighScore = updateLeaderboardList(data.topByHighScore, { userID: uId, name: finalPlayerName, score: updatedStats.highScore }, 'score');
-            data.topByTotalPoints = updateLeaderboardList(data.topByTotalPoints, { userID: uId, name: finalPlayerName, totalPoints: updatedStats.totalPoints }, 'totalPoints');
-            data.topByBestWord = updateLeaderboardList(data.topByBestWord, { userID: uId, name: finalPlayerName, bestWord: updatedStats.bestWord }, 'bestWord', 'score');
+                // Update leaderboard lists
+                data.topByHighScore = updateLeaderboardList(data.topByHighScore, { userID: uId, name: playerName, score: updatedStats.highScore }, 'score');
+                data.topByTotalPoints = updateLeaderboardList(data.topByTotalPoints, { userID: uId, name: playerName, totalPoints: updatedStats.totalPoints }, 'totalPoints');
+                data.topByBestWord = updateLeaderboardList(data.topByBestWord, { userID: uId, name: playerName, bestWord: updatedStats.bestWord }, 'bestWord', 'score');
 
-            // Update with merge
-            await setDoc(allTimeRef, data, { merge: true });
+                transaction.set(allTimeRef, data, { merge: true });
+            });
         } catch (e) { console.error("Failed to update all-time leaderboard:", e); }
     })();
 
@@ -1764,7 +1821,6 @@ function getTileFromEvent(e) {
     // Uses count() aggregation queries, which are billed per ~1000 matched
     // docs rather than per document, so this stays cheap regardless of scale.
     const percentileRankPromise = (async () => {
-        if (!canUseLeaderboard) return;
         try {
             // The entry itself still stores each player's best-of-day, so the
             // shared pool everyone's compared against stays stable. But *this*
@@ -1782,20 +1838,23 @@ function getTileFromEvent(e) {
         } catch (e) { console.error("Failed to compute daily rank:", e); }
     })();
 
-    await Promise.all([gameHistoryPromise, dailyLeaderboardPromise, allTimeLeaderboardPromise, percentileRankPromise]);
+    await Promise.all([dailyLeaderboardPromise, allTimeLeaderboardPromise, percentileRankPromise]);
 
-    // The non-blocking name prompt owns #submission-container's contents
-    // until it's answered — don't clobber it with the submitted/rank message.
-    if (!needsToSubmitName) {
-        updateEndGameSubmissionUI(finalPlayerName, { rank: dailyRank, percentileRank, totalPlayersToday });
-    }
+    // The leaderboard modal caches its rendered HTML for 60s — drop the
+    // boards we just wrote to, or "You're #2 on today's leaderboard!"
+    // is followed by a (cached) board that doesn't show the player until
+    // the cache expires or the app reloads.
+    delete leaderboardHtmlCache['daily'];
+    delete leaderboardHtmlCache['all-time'];
+
+    return { rank: dailyRank, percentileRank, totalPlayersToday };
 }
 
 // A guest's stats/streak are saved unconditionally in processEndOfGame();
-// this just offers to attach a real name afterward, independently. Submitting
-// only updates the player doc going forward — it doesn't reopen the
-// leaderboard writes already skipped for the game that just ended.
-function showNonBlockingNamePrompt(playerDocRef) {
+// this offers to attach a real name afterward, independently. When a name is
+// submitted (typed, or via completing sign-up), `onNamed` fires so the caller
+// can retroactively post the game that just ended under the new name.
+function showNonBlockingNamePrompt(playerDocRef, onNamed = null) {
     const submissionContainer = document.getElementById('submission-container');
     submissionContainer.innerHTML = `
         <div class="w-full py-1">
@@ -1828,6 +1887,10 @@ function showNonBlockingNamePrompt(playerDocRef) {
         if (document.getElementById('endgame-name-input')) {
             submissionContainer.innerHTML = `<div class="flex items-center justify-center text-green-600 font-bold pop-in whitespace-nowrap">Saved as&nbsp;<strong>${escapeHTML(name)}</strong>!</div>`;
         }
+        // Fire even if the player has navigated away — the game still
+        // happened and its score should post; any UI repaint inside onNamed
+        // no-ops once the end screen is gone.
+        if (onNamed) onNamed(name);
     };
     const doSubmit = async () => {
         const name = (document.getElementById('endgame-name-input').value || '').trim().slice(0, 15);
@@ -2390,22 +2453,24 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         (await Promise.all(queries)).forEach(collect);
 
         // Link challenges whose participants write hasn't landed yet (opened
-        // offline, or pre-participants docs) — one batched query, not a round
-        // trip per id. Revoked (deleted) challenges simply don't come back.
+        // offline, or pre-participants docs). Individual gets, not a batched
+        // documentId-in query: the security rules only allow `list` queries
+        // whose results all reference the caller, and these docs may not
+        // reference us at all yet — `get` by id is what stays open for link
+        // invitees. The list is capped at 20 ids and usually has 0–2, all
+        // fetched in parallel. Revoked (deleted) challenges simply don't come back.
         const localIds = JSON.parse(localStorage.getItem('wordWormChallenges') || '[]').filter(id => !map.has(id));
         if (localIds.length > 0) {
             try {
-                const chunks = [];
-                for (let i = 0; i < localIds.length; i += 30) chunks.push(localIds.slice(i, i + 30));
-                const snaps = await Promise.all(chunks.map(ids =>
-                    getDocsResilient(query(collection(db, 'challenges'), where(documentId(), 'in', ids)))));
+                const snaps = await Promise.all(localIds.map(id =>
+                    getDocResilient(doc(db, 'challenges', id)).catch(() => null)));
                 snaps.forEach(snap => {
+                    if (!snap) return;
                     if (snap.metadata.fromCache) sawCacheFallback = true;
-                    snap.docs.forEach(d => {
-                        map.set(d.id, d.data());
-                        // Already a participant → the main query covers it from now on.
-                        if ((d.data().participants || []).includes(userId)) removeLocalChallengeId(d.id);
-                    });
+                    if (!snap.exists()) return;
+                    map.set(snap.id, snap.data());
+                    // Already a participant → the main query covers it from now on.
+                    if ((snap.data().participants || []).includes(userId)) removeLocalChallengeId(snap.id);
                 });
             } catch(e) {}
         }

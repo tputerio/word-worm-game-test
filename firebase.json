@@ -8,7 +8,19 @@
     "ignore": [
       "firebase.json",
       "**/.*",
-      "**/node_modules/**"
+      "**/node_modules/**",
+      "functions/**",
+      "src/**",
+      "CLAUDE.md",
+      "package.json",
+      "package-lock.json",
+      "firestore.rules",
+      "tailwind.config.js",
+      "bump-version.js",
+      "build_dictionary.js",
+      "build_common_dictionary.js",
+      "clean-dictionary.js",
+      "assets/dictionary.txt"
     ],
     "rewrites": [
       {
@@ -18,7 +30,7 @@
     ],
     "headers": [
       {
-        "source": "**/*.@(jpg|jpeg|gif|png|webp|svg|css|js)",
+        "source": "**/*.@(jpg|jpeg|gif|png|webp|svg|css|js|json)",
         "headers": [
           {
             "key": "Cache-Control",

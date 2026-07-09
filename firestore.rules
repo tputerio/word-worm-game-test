@@ -87,7 +87,18 @@ service cloud.firestore {
                resource.data.get('participants', []).toSet().difference(request.resource.data.participants.toSet()).size() == 0;
       }
       allow create: if isSignedIn() && request.resource.data.createdBy == request.auth.uid;
-      allow read:   if isSignedIn();
+      // `get` stays open to any signed-in player: a challenge link must load
+      // for an invitee who isn't a participant yet. `list` is restricted so
+      // the collection can't be enumerated/scraped wholesale — every query the
+      // client runs only returns challenges the caller is involved in
+      // (participants array-contains, createdBy ==, or toUid == their uid),
+      // and the rule requires each returned doc to satisfy one of those.
+      allow get:  if isSignedIn();
+      allow list: if isSignedIn() && (
+        request.auth.uid in resource.data.get('participants', []) ||
+        resource.data.get('createdBy', '') == request.auth.uid ||
+        resource.data.get('toUid', '') == request.auth.uid
+      );
       allow update: if isSignedIn() && (onlyOwnResultsChange() || onlyAddsSelfToParticipants());
       // Creators may revoke (delete) their own challenges.
       allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
