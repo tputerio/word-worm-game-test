@@ -202,8 +202,23 @@
     }
 
 
+    // Per-day localStorage entries (cached puzzles, completion and progress
+    // records) are only ever read on their own day, but nothing removed them —
+    // each cached puzzle is several KB, so they'd accumulate toward the ~5MB
+    // quota forever. Sweep everything dated before today (NY time) at startup.
+    function sweepStaleDailyKeys() {
+        try {
+            const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            for (const key of Object.keys(localStorage)) {
+                const m = key.match(/^(?:dailyPuzzle-|dailyCompleted-|dailyProgress-)(\d{4}-\d{2}-\d{2})$/);
+                if (m && m[1] < todayStr) localStorage.removeItem(key);
+            }
+        } catch (e) {}
+    }
+
     // --- Init ---
     function main() {
+        sweepStaleDailyKeys();
         setupEventListeners();
         topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">0</div>`;
         if (pendingChallengeId) {
@@ -1279,14 +1294,7 @@ function setupDailyUI(challengeData) {
         grid.style.pointerEvents = 'none';
         menuContainer.classList.add('hidden');
 
-        if (currentGamemode === 'challenge') {
-            showChallengeEndScreen({ score, foundWords });
-            return;
-        }
-
-        // ✅ FIX: No delay needed. Show the end screen immediately.
-        showEndGameScreen();
-
+        // Before the challenge early-return, so challenge games log too.
         if (analytics) {
             logEvent(analytics, 'game_end', {
                 game_mode: currentGamemode,
@@ -1295,6 +1303,13 @@ function setupDailyUI(challengeData) {
                 time_taken_seconds: isPracticeMode ? practiceTimeElapsed : GAME_TIME
             });
         }
+
+        if (currentGamemode === 'challenge') {
+            showChallengeEndScreen({ score, foundWords });
+            return;
+        }
+
+        showEndGameScreen();
 }
 
 function replaceSelectedTiles() {
@@ -2449,11 +2464,6 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         mutateChallengesCache(entries => [[id, data], ...entries.filter(([eid]) => eid !== id)]);
     }
 
-    // Challenges expire after 7 days, so every live doc has a participants
-    // array once this date passes — the legacy queries below (and this const)
-    // can then be deleted.
-    const LEGACY_CHALLENGES_CUTOFF = Date.parse('2026-07-15');
-
     // Every challenge this player is involved in. The participants array covers
     // created, incoming, and opened-via-link challenges in one query.
     async function loadAllMyChallenges() {
@@ -2472,15 +2482,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             if (snap.metadata.fromCache) sawCacheFallback = true;
             snap.docs.forEach(d => map.set(d.id, d.data()));
         };
-        const queries = [
-            getDocsResilient(query(collection(db, 'challenges'), where('participants', 'array-contains', userId), limit(40)))
-        ];
-        if (Date.now() < LEGACY_CHALLENGES_CUTOFF) {
-            // Docs created before the participants field existed.
-            queries.push(getDocsResilient(query(collection(db, 'challenges'), where('createdBy', '==', userId), limit(20))));
-            queries.push(getDocsResilient(query(collection(db, 'challenges'), where('toUid', '==', userId), limit(20))));
-        }
-        (await Promise.all(queries)).forEach(collect);
+        collect(await getDocsResilient(query(collection(db, 'challenges'), where('participants', 'array-contains', userId), limit(40))));
 
         // Link challenges whose participants write hasn't landed yet (opened
         // offline, or pre-participants docs). Individual gets, not a batched
