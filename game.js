@@ -1,7 +1,7 @@
     // --- Firebase SDKs ---
     import { getApps, initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithCredential, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
-    import { getFirestore, initializeFirestore, persistentLocalCache, persistentSingleTabManager, collection, addDoc, getDocs, getDocsFromCache, query, where, orderBy, limit, doc, getDoc, getDocFromServer, getDocFromCache, setDoc, updateDoc, deleteDoc, increment, arrayUnion, runTransaction, serverTimestamp, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
+    import { getFirestore, initializeFirestore, persistentLocalCache, persistentSingleTabManager, collection, addDoc, getDocs, getDocsFromCache, query, where, orderBy, limit, doc, documentId, getDoc, getDocFromServer, getDocFromCache, setDoc, updateDoc, deleteDoc, increment, arrayUnion, runTransaction, serverTimestamp, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
      // --- Google Analytics ---
     import { getAnalytics, logEvent, setUserId } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-analytics.js";
@@ -894,7 +894,37 @@ async function getDailyPuzzleWithTimeout() {
         await new Promise(resolve => setTimeout(resolve, 1500));
     }
 
-    // If the while loop finishes, it means we timed out
+    // Today's puzzle never appeared. Puzzles are pre-generated days ahead
+    // (generateDailyPuzzle), so this means generation has been failing —
+    // serve the most recent published puzzle instead of taking Daily mode
+    // down. Capped at 7 days back: staler than that means the pipeline is
+    // truly dead and repeating a week-old board would be worse than the
+    // error message. NOT cached under today's key, so players near the
+    // midnight rollover (or during a brief outage) pick up the real puzzle
+    // as soon as it lands rather than being pinned to the fallback all day.
+    try {
+        if (db) {
+            const weekAgo = new Date();
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            const weekAgoStr = weekAgo.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            // Plain range on documentId, no orderBy: descending __name__
+            // ordering demands a composite index, while the default
+            // ascending order is index-free. The window holds ≤8 docs, so
+            // fetch them all and take the newest client-side.
+            const snap = await withTimeout(getDocs(query(collection(db, 'dailyPuzzles'),
+                where(documentId(), '>=', weekAgoStr),
+                where(documentId(), '<=', todayStr))), 5000);
+            if (!snap.empty) {
+                const newest = snap.docs[snap.docs.length - 1];
+                console.warn(`Today's puzzle (${todayStr}) is missing; falling back to ${newest.id}.`);
+                return newest.data();
+            }
+        }
+    } catch (e) {
+        console.error("Fallback puzzle fetch failed:", e);
+    }
+
+    // Nothing published in the last week either — give up.
     return null;
 }
 

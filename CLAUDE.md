@@ -46,14 +46,14 @@ firebase deploy  # Full deploy
 
 **Key state in `game.js`:**
 - `validationTrie` / `fullDictionaryTrie` — Trie instances loaded from `assets/common-dictionary.json` and `assets/scrabble-dictionary.json` at startup via `loadAssets()`.
-- `dailyChallengeData` / `allDailyWords` — populated from Firestore `dailyPuzzles/{date}` doc or falls back to the local seeded `createDailyChallengeBoard()`.
+- `dailyChallengeData` / `allDailyWords` — populated from the Firestore `dailyPuzzles/{date}` doc (cached in localStorage per day). If today's doc is missing, `getDailyPuzzleWithTimeout()` falls back to the most recent published puzzle up to 7 days back (uncached, so the real puzzle is picked up once it appears); if nothing that recent exists, Daily mode shows an error.
 - `selectedTiles`, `foundWords`, `score`, `timer` — live game state.
 
 **Game flow:** `main()` → `showWelcomeScreen()` + `loadAssets()` → `startGame()` → `endGame()` / `endDailyChallenge()`.
 
 ### Backend (`functions/index.js`)
 Two scheduled Cloud Functions (Firebase Functions v2, Node 22):
-- `generateDailyPuzzle` — runs daily at midnight ET; generates a quality-checked board and writes it to Firestore `dailyPuzzles/{YYYY-MM-DD}`.
+- `generateDailyPuzzle` — runs daily at midnight ET; keeps `dailyPuzzles/{YYYY-MM-DD}` populated for today plus the next 3 days (never overwrites an existing day). Throws if any day can't be generated, so Cloud Scheduler retries (retryCount 3) and the failure reaches Error Reporting.
 - `resetDailyLeaderboards` — runs daily at midnight ET; resets `leaderboards/daily` (timed mode, 3-category) and `leaderboards/dailyChallenge` (simple top scores).
 
 ### Firestore Collections
@@ -70,11 +70,9 @@ Words are stored as pre-built JSON Trie trees. Two dictionaries:
 The Trie `search(word, isPrefix)` method is duplicated in `game.js` and `functions/index.js` — keep them in sync if modified.
 
 ### Board Generation
-Both `createDailyChallengeBoard()` (client, seeded PRNG) and `generateDailyPuzzle` (Cloud Function, random) apply the same quality rules:
-- 4–8 vowels, ≤2 hard consonants (J/K/Q/X/Z)
-- Q must be adjacent to U
-- No 2×2 clumps of all-vowels or all-consonants
-- ≥30 common words findable, ≤60 total words
+Client (`generateAndValidateBoard()`, standard/challenge boards) and server (`generateQualityBoard()` in the Cloud Function, daily puzzles) enforce similar but NOT identical rules — they have drifted and are maintained separately:
+- Server (daily puzzles): 5–7 vowels, ≤1 hard consonant (J/K/Q/X/Z), Q adjacent to U, no 2×2 all-vowel/all-consonant clumps, ≥30 common words findable, ≤100 total words
+- Client (standard/challenge): 4–7 vowels, ≤1 hard consonant, same Q and clump rules, then word-count minimums by length (≥4 three-letter, ≥3 four-letter, ≥1 five-plus) with structural-only and best-effort fallbacks when the dictionaries aren't loaded
 
 ### CSS
 Tailwind utility classes are used in `index.html`. Custom styles (animations, game-specific) are in `style.css`. Build pipeline: `src/input.css` → `dist/style.css`.

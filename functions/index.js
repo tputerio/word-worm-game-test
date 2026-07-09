@@ -3,9 +3,6 @@ const {initializeApp} = require("firebase-admin/app");
 const {getFirestore, FieldValue, Timestamp} = require("firebase-admin/firestore");
 const {logger} = require("firebase-functions");
 
-const fullDictionaryTrieData = require("./scrabble-dictionary.json");
-const commonDictionaryTrieData = require("./common-dictionary.json");
-
 initializeApp();
 
 // --- Constants & Helper Code ---
@@ -81,30 +78,22 @@ function checkNoClumps(board) {
 }
 
 
-exports.generateDailyPuzzle = onSchedule({
-    schedule: "every day 00:00",
-    timeZone: "America/New_York",
-    timeoutSeconds: 540,
-    memory: "1GiB"
-}, async (event) => {
-    // ✅ FIX: This function now only generates a puzzle for the CURRENT day.
-    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-    logger.info(`Generating new puzzle for ${todayStr}...`);
-    
-    if (!fullDictionaryTrie) {
-        logger.info("Initializing Tries...");
-        const fullDictionaryTrieData = require("./scrabble-dictionary.json");
-        const commonDictionaryTrieData = require("./common-dictionary.json");
-        fullDictionaryTrie = new Trie(fullDictionaryTrieData);
-        commonDictionaryTrie = new Trie(commonDictionaryTrieData);
-    }
+// How many days beyond today to keep pre-generated. A single failed run no
+// longer takes Daily mode down — generation has to fail this many days in a
+// row before players run out of puzzles.
+const PUZZLE_DAYS_AHEAD = 3;
 
-    const db = getFirestore();
-    let foundBoard = null;
+function nyDateString(offsetDays = 0) {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+}
 
+// One quality-checked board, or null if 10k attempts all failed the rules.
+function generateQualityBoard() {
     for (let attempt = 0; attempt < 10000; attempt++) {
         const board = new Array(GRID_SIZE).fill(null).map(() => LETTER_BAG_STRING[Math.floor(Math.random() * LETTER_BAG_STRING.length)]);
-        
+
         const vowelCount = board.filter(l => VOWELS.includes(l)).length;
         if (vowelCount < 5 || vowelCount > 7) continue;
         const hardConsonantCount = board.filter(l => HARD_CONSONANTS.includes(l)).length;
@@ -112,33 +101,69 @@ exports.generateDailyPuzzle = onSchedule({
         const qIndex = board.indexOf("Q");
         if (qIndex !== -1 && !getNeighbors(qIndex, board).some(l => l === "U")) continue;
         if (!checkNoClumps(board)) continue;
-        
+
         const commonWords = solveBoard(board, commonDictionaryTrie);
         if (commonWords.size < 30) continue;
 
         const allWords = solveBoard(board, fullDictionaryTrie);
         if (allWords.size > 100) continue;
 
-        foundBoard = { board, allWords: Array.from(allWords) };
         logger.info(`Found a suitable board on attempt #${attempt + 1}`);
-        break;
+        return { board, allWords: Array.from(allWords) };
+    }
+    return null;
+}
+
+exports.generateDailyPuzzle = onSchedule({
+    schedule: "every day 00:00",
+    timeZone: "America/New_York",
+    timeoutSeconds: 540,
+    memory: "1GiB",
+    // Cloud Scheduler re-runs a failed execution (see the throw below), so a
+    // transient error doesn't cost a day of buffer.
+    retryCount: 3
+}, async (event) => {
+    if (!fullDictionaryTrie) {
+        logger.info("Initializing Tries...");
+        // Required lazily so the other (tiny) scheduled functions in this
+        // file don't parse 6MB of dictionary JSON on their cold starts.
+        fullDictionaryTrie = new Trie(require("./scrabble-dictionary.json"));
+        commonDictionaryTrie = new Trie(require("./common-dictionary.json"));
     }
 
-    if (foundBoard) {
-        const puzzleRef = db.collection('dailyPuzzles').doc(todayStr);
-        const puzzleData = {
-            board: foundBoard.board,
-            allWords: foundBoard.allWords,
+    const db = getFirestore();
+    const failures = [];
+
+    for (let offset = 0; offset <= PUZZLE_DAYS_AHEAD; offset++) {
+        const dateStr = nyDateString(offset);
+        const puzzleRef = db.collection('dailyPuzzles').doc(dateStr);
+
+        // Never overwrite an existing puzzle — once published, players may
+        // already be mid-game on it (and cached copies must stay valid).
+        if ((await puzzleRef.get()).exists) continue;
+
+        const found = generateQualityBoard();
+        if (!found) {
+            logger.error(`Failed to generate a suitable puzzle for ${dateStr}.`);
+            failures.push(dateStr);
+            continue;
+        }
+        await puzzleRef.set({
+            board: found.board,
+            allWords: found.allWords,
             bonuses: [],
             createdAt: FieldValue.serverTimestamp()
-        };
-        // ✅ FIX: This will now CREATE or OVERWRITE the document for today.
-        await puzzleRef.set(puzzleData);
-        logger.info(`Successfully saved puzzle for ${todayStr}.`);
-    } else {
-        logger.error(`Failed to generate a suitable puzzle for ${todayStr}.`);
+        });
+        logger.info(`Successfully saved puzzle for ${dateStr}.`);
     }
-    });
+
+    if (failures.length > 0) {
+        // Marks the run failed: Cloud Scheduler retries it (retryCount above)
+        // and the error lands in Error Reporting, where an alerting policy
+        // can email the owner.
+        throw new Error(`Failed to generate puzzle(s) for: ${failures.join(', ')}`);
+    }
+});
 
     // ✅ NEW: This single function resets BOTH daily leaderboards at midnight.
 exports.resetDailyLeaderboards = onSchedule({
