@@ -5,6 +5,13 @@ const { chromium } = require('playwright');
 
 const BASE_URL = process.env.BASE_URL || 'https://wordworm-test-c7f3a.web.app';
 
+// Creates an anonymous auth account on the target project per run — and its
+// manual setup involves deleting a Firestore doc. Keep it off production.
+if (/wordwormgame\.com|word-rush-game-9010a/i.test(BASE_URL)) {
+    console.error('Refusing to run against production (' + BASE_URL + ') — point BASE_URL at the test site.');
+    process.exit(1);
+}
+
 (async () => {
     const browser = await chromium.launch();
     const page = await browser.newPage();

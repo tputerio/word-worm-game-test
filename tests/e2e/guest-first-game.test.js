@@ -11,6 +11,14 @@ const { chromium } = require('playwright');
 
 const BASE_URL = process.env.BASE_URL || 'https://wordworm-test-c7f3a.web.app';
 
+// This test writes real data to whatever project the page talks to: it plays
+// a game, posts a score to the daily/all-time leaderboards, and permanently
+// claims a throwaway username. Never let it near production.
+if (/wordwormgame\.com|word-rush-game-9010a/i.test(BASE_URL)) {
+    console.error('Refusing to run against production (' + BASE_URL + ') — this test writes scores and claims usernames. Point BASE_URL at the test site.');
+    process.exit(1);
+}
+
 (async () => {
     const name = 'e2e' + Date.now().toString().slice(-9); // fits 15-char username rules
     console.log(`Site: ${BASE_URL}  |  test username: ${name}`);

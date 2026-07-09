@@ -14,6 +14,9 @@ node tests/e2e/config-selection.test.js <url>  # which Firebase project a page t
 Override the target site with `BASE_URL=https://... node tests/e2e/<name>.js`.
 Never point these at production: they create anonymous accounts, claim throwaway
 usernames, and post real scores to whatever project the page is configured for.
+The three gameplay tests refuse to run if `BASE_URL` looks like production
+(`wordwormgame.com` / `word-rush-game-9010a`); only `config-selection.test.js`
+may target prod — it's read-only by design.
 
 `guest-first-game.test.js` takes ~90s (it waits out a full 60s game timer).
 
