@@ -728,6 +728,13 @@ function showGameMessage(message, type = 'info', startTile = null) {
             highScore = playerData.highScore || 0;
             playerName = playerData.name && playerData.name !== 'Anonymous' ? playerData.name : 'Anonymous';
             playStreak = playerData.playStreak || 0;
+            const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayStr = yesterday.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            if (playerData.lastPlayDate !== todayStr && playerData.lastPlayDate !== yesterdayStr) {
+                playStreak = 0;
+            }
             knownUsername = playerData.username || null;
             if (playerData.username) storeUsername(playerData.username);
             if (playerData.challengeStats) lastKnownChallengeStats = { wins: 0, losses: 0, ties: 0, ...playerData.challengeStats };
