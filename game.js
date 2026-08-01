@@ -1,6 +1,6 @@
     // --- Firebase SDKs ---
     import { getApps, initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithCredential, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
+    import { getAuth, initializeAuth, indexedDBLocalPersistence, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithCredential, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
     import { getFirestore, initializeFirestore, persistentLocalCache, persistentSingleTabManager, collection, addDoc, getDocs, getDocsFromCache, query, where, orderBy, limit, doc, documentId, getDoc, getDocFromServer, getDocFromCache, setDoc, updateDoc, deleteDoc, increment, arrayUnion, runTransaction, serverTimestamp, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
      // --- Google Analytics ---
@@ -490,7 +490,17 @@ function showSubmitConfirmation() {
             const firebaseConfig = isProdHost ? PROD_FIREBASE_CONFIG : TEST_FIREBASE_CONFIG;
 
             const app = initializeApp(firebaseConfig);
-            auth = getAuth(app);
+            // Inside the Capacitor iOS shell, getAuth()'s default popup/redirect
+            // resolver loads a hidden iframe from the authDomain to check for a
+            // pending redirect sign-in; that iframe never finishes loading in
+            // WKWebView, so auth init never settles — and since Firestore asks
+            // auth for a token before every read, every read hangs with no
+            // network request ever sent. initializeAuth without a resolver
+            // skips the iframe entirely (no redirect sign-ins in the shell).
+            const isCapacitorApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+            auth = isCapacitorApp
+                ? initializeAuth(app, { persistence: indexedDBLocalPersistence })
+                : getAuth(app);
             // Persistent local cache: reads fall back to IndexedDB when the
             // network is slow/unavailable, data survives reloads, and writes
             // queue offline. Single-tab manager, deliberately NOT multi-tab:
@@ -501,19 +511,29 @@ function showSubmitConfirmation() {
             // already holds the cache lock, the SDK falls back to in-memory
             // cache (also the case where IndexedDB isn't available, e.g. some
             // private-browsing modes).
-            try {
-                db = initializeFirestore(app, {
-                    localCache: persistentLocalCache({ tabManager: persistentSingleTabManager(undefined) }),
-                    // Firestore's streaming transport silently stalls for 10-30s
-                    // on some mobile browsers/networks (iOS content blockers,
-                    // iCloud Private Relay). Long polling works everywhere, and
-                    // this app only does one-shot reads — no realtime listeners
-                    // that would benefit from streaming.
-                    experimentalForceLongPolling: true
-                });
-            } catch (e) {
-                console.warn('Persistent cache unavailable, using default Firestore:', e);
-                db = getFirestore(app);
+            //
+            // Inside the Capacitor iOS shell the persistent cache can't be
+            // used at all: WKWebView's IndexedDB under the app's local origin
+            // hangs on open — initializeFirestore succeeds, then the first
+            // read blocks forever without ever hitting the network, so the
+            // try/catch below never sees an error. Memory-only cache there.
+            if (isCapacitorApp) {
+                db = initializeFirestore(app, { experimentalForceLongPolling: true });
+            } else {
+                try {
+                    db = initializeFirestore(app, {
+                        localCache: persistentLocalCache({ tabManager: persistentSingleTabManager(undefined) }),
+                        // Firestore's streaming transport silently stalls for 10-30s
+                        // on some mobile browsers/networks (iOS content blockers,
+                        // iCloud Private Relay). Long polling works everywhere, and
+                        // this app only does one-shot reads — no realtime listeners
+                        // that would benefit from streaming.
+                        experimentalForceLongPolling: true
+                    });
+                } catch (e) {
+                    console.warn('Persistent cache unavailable, using default Firestore:', e);
+                    db = getFirestore(app);
+                }
             }
             // measurementId is only set on the prod config, so this stays a
             // no-op locally/on the test project instead of erroring on a

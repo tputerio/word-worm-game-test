@@ -1,4 +1,8 @@
-        body { font-family: 'Inter', sans-serif; overflow: hidden; touch-action: none; }
+        body {
+            font-family: 'Inter', sans-serif; overflow: hidden; touch-action: none;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
         .tile {
             position: relative;
             transition: all 0.2s ease-in-out; -webkit-user-select: none; user-select: none;

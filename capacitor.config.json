@@ -1,0 +1,8 @@
+{
+  "appId": "com.wordwormgame.app",
+  "appName": "Word Worm",
+  "webDir": "www",
+  "server": {
+    "iosScheme": "https"
+  }
+}
