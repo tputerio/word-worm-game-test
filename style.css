@@ -354,3 +354,31 @@ html.dark #mode-daily-btn:hover { background-color: #1e3a5f !important; }
    deployed build). */
 #challenge-rematch-btn { background-color: #22c55e; }
 #challenge-rematch-btn:hover { background-color: #16a34a; }
+
+/* Native iOS shell only (html.capacitor-native, set by game.js). The
+   welcome/home screen is rendered through #message-modal, the same
+   fixed-inset-0-with-dark-backdrop overlay system used for challenge
+   join/loading/error screens — never shown over live gameplay, so it's
+   safe to flatten everywhere it appears. On the website this dark-backdrop
+   "card floating over a dimmed page" look is intentional; inside the app
+   shell there's nothing behind it to dim, so it just reads as a popup
+   sitting over a gray page. Fill it white edge-to-edge and drop the card
+   chrome so it reads as the app's own home screen instead. */
+html.capacitor-native body {
+    background-color: #fff;
+}
+html.capacitor-native #message-modal {
+    background-color: #fff;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    align-items: flex-start;
+    /* #message-modal is position:fixed, so it never inherited body's
+       safe-area padding — that was masked before by items-center pushing
+       content away from the top edge regardless. Needs its own now. */
+    padding-top: calc(1rem + env(safe-area-inset-top));
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+}
+html.capacitor-native #welcome-card {
+    box-shadow: none;
+    border-radius: 0;
+}

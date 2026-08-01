@@ -7,6 +7,11 @@
     import { getAnalytics, logEvent, setUserId } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-analytics.js";
     
     // --- Config ---
+    // True only inside the Capacitor iOS shell, never on the website. Used to
+    // gate native-only behavior (Firebase init workarounds, app-like styling)
+    // so the web build is never affected.
+    const isCapacitorApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+    if (isCapacitorApp) document.documentElement.classList.add('capacitor-native');
     const [GRID_SIZE, GRID_COLS, GAME_TIME] = [16, 4, 60];
     const letterConfig={'A':{p:1},'B':{p:3},'C':{p:3},'D':{p:2},'E':{p:1},'F':{p:4},'G':{p:2},'H':{p:4},'I':{p:1},'J':{p:8},'K':{p:5},'L':{p:1},'M':{p:3},'N':{p:1},'O':{p:1},'P':{p:3},'Q':{p:10},'R':{p:1},'S':{p:1},'T':{p:1},'U':{p:1},'V':{p:4},'W':{p:4},'X':{p:8},'Y':{p:4},'Z':{p:10}};
     const VOWELS = ['A', 'E', 'I', 'O', 'U'];
@@ -497,7 +502,6 @@ function showSubmitConfirmation() {
             // auth for a token before every read, every read hangs with no
             // network request ever sent. initializeAuth without a resolver
             // skips the iframe entirely (no redirect sign-ins in the shell).
-            const isCapacitorApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
             auth = isCapacitorApp
                 ? initializeAuth(app, { persistence: indexedDBLocalPersistence })
                 : getAuth(app);
@@ -2189,7 +2193,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
    function showWelcomeScreen() {
     modalContent.innerHTML = `
-        <div class="bg-white rounded-2xl shadow-lg p-6 text-center">
+        <div id="welcome-card" class="bg-white rounded-2xl shadow-lg p-6 text-center">
             <div class="flex items-center justify-between mb-1">
                 <div class="w-8 h-8"></div>
                 <h1 class="flex items-center text-3xl font-black text-slate-800 tracking-tighter">
