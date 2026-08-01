@@ -1424,10 +1424,7 @@ function replaceSelectedTiles() {
 
         foundWords.push({ word, score: finalScore, length: word.length });
         score += finalScore;
-
-        // Score digit is deferred — updateDailyChallengeUI(false) skips it so the
-        // counter only counts up once the flying token actually lands on it.
-        updateDailyChallengeUI(false);
+        updateDailyChallengeUI();
 
         saveDailyProgress();
 
@@ -1452,27 +1449,27 @@ function replaceSelectedTiles() {
             else if (word.length === 6) finalScore += 20;
             else if (word.length === 5) finalScore += 10;
             else if (word.length === 4) finalScore += 5;
-            
+
             if (analytics) { logEvent(analytics, 'submit_word', { word_length: word.length, score: finalScore, game_mode: isPracticeMode ? 'practice' : 'timed' }); }
 
-            if (timeBonus > 0 && !isPracticeMode && currentGamemode !== 'challenge') { timer += timeBonus; updateTimerUI(); }
+            // animate=true so the digit ticks up rather than snapping straight
+            // to the new value.
+            if (timeBonus > 0 && !isPracticeMode && currentGamemode !== 'challenge') { timer += timeBonus; updateTimerUI(true); }
 
             foundWords.push({ word, score: finalScore, length: word.length });
             score += finalScore;
-            // Display update is deferred to createFlyingScore's landing callback
-            // (updateScoreDisplay(true)), so the counter only counts up once the
-            // flying token actually lands on it.
+            updateScoreDisplay(true);
             createFlyingScore(finalScore, selectedTiles[0]);
             triggerConfetti(selectedTiles);
             vibrateOnWord();
             replaceSelectedTiles();
         }
     }
-    
+
     clearSelection();
 }
 
-function updateDailyChallengeUI(updateScoreText = true) {
+function updateDailyChallengeUI() {
     const dailyContent = document.getElementById('daily-challenge-content');
     if (!dailyContent || !allDailyWords) return;
 
@@ -1487,7 +1484,7 @@ function updateDailyChallengeUI(updateScoreText = true) {
     const collapsedView = dailyContent.querySelector('#collapsed-view');
 
     // --- Update main scoreboard ---
-    if (scoreEl && updateScoreText) scoreEl.textContent = score;
+    if (scoreEl) scoreEl.textContent = score;
     if (wordsEl) wordsEl.textContent = `${foundWords.length} / ${allDailyWords.size}`;
     if (progressBar) {
         const progressPercent = allDailyWords.size > 0 ? (foundWords.length / allDailyWords.size) * 100 : 0;
@@ -1969,8 +1966,8 @@ function showNonBlockingNamePrompt(playerDocRef, onNamed = null) {
 }
     
     // animate=true counts up from whatever's currently on screen instead of
-    // snapping straight to `score` — used when a flying-score token lands, so
-    // the digits visibly tick up right as the points arrive.
+    // snapping straight to `score`, so the digits visibly tick up right as
+    // points are earned.
     function updateScoreDisplay(animate = false) {
         if (animate) countUpDisplay(scoreEl, parseInt(scoreEl.textContent) || 0, score);
         else scoreEl.textContent = score;
@@ -1992,8 +1989,12 @@ function showNonBlockingNamePrompt(playerDocRef, onNamed = null) {
         }
     }
 
-    function updateTimerUI() {
-    timerEl.textContent = timer;
+    // animate=true counts up from whatever's on screen instead of snapping —
+    // used when a +Ns time bonus is earned, so the digit ticks up rather than
+    // jumping straight to the new value.
+    function updateTimerUI(animate = false) {
+    if (animate) countUpDisplay(timerEl, parseInt(timerEl.textContent) || 0, timer);
+    else timerEl.textContent = timer;
     timerEl.classList.remove('text-green-500', 'text-yellow-500', 'text-red-500', 'timer-warning');
 
     if (timer <= 10) {
@@ -2062,91 +2063,6 @@ function triggerConfetti(tiles) {
     }
 }
     
-// Score-tier lookup shared by the flying token's color/shake and its landing
-// punch — bigger words hit the counter harder (more glow, bigger scale).
-function getScoreTier(points) {
-    if (points > 100) return { intensity: 5,   gradient: 'linear-gradient(45deg, #b91c1c, #7f1d1d)', glow: '#f87171' };
-    if (points > 50)  return { intensity: 3.5, gradient: 'linear-gradient(45deg, #dc2626, #b91c1c)', glow: '#f87171' };
-    if (points > 30)  return { intensity: 2.5, gradient: 'linear-gradient(45deg, #ef4444, #dc2626)', glow: '#fca5a5' };
-    if (points > 10)  return { intensity: 1.5, gradient: 'linear-gradient(45deg, #fca5a5, #ef4444)', glow: '#fca5a5' };
-    return { intensity: 0, gradient: 'linear-gradient(45deg, #facc15, #f59e0b)', glow: '#facc15' };
-}
-
-function createFlyingScore(points, startTile) {
-    const tier = getScoreTier(points);
-    const targetEl = currentGamemode === 'daily'
-        ? document.querySelector('#daily-challenge-content #daily-score')
-        : document.getElementById('score');
-    if (!targetEl) return;
-
-    const startRect = startTile.getBoundingClientRect();
-    const targetRect = targetEl.getBoundingClientRect();
-    const startX = startRect.left + startRect.width / 2, startY = startRect.top + startRect.height / 2;
-    const endX = targetRect.left + targetRect.width / 2, endY = targetRect.top + targetRect.height / 2;
-
-    // 1. Outer wrapper flies along the arc; viewport-fixed so the path math
-    // below can work directly in getBoundingClientRect coordinates.
-    const wrapper = document.createElement('div');
-    wrapper.style.position = 'fixed';
-    wrapper.style.left = '0px';
-    wrapper.style.top = '0px';
-    wrapper.style.zIndex = '100';
-    wrapper.style.pointerEvents = 'none';
-    wrapper.style.willChange = 'transform, opacity';
-
-    // 2. Inner element holds the label and the per-frame shake jitter.
-    const el = document.createElement('div');
-    el.className = 'flying-score';
-    el.textContent = `+${points}`;
-    el.style.background = tier.gradient;
-
-    wrapper.appendChild(el);
-    document.body.appendChild(wrapper);
-
-    // Hang briefly over the word (reads as "picking up" the points), then
-    // arc into the score counter — a quadratic curve through a point above
-    // the midpoint, so it launches up before diving into the HUD. The ease is
-    // baked into the sampled points (not the WAAPI `easing` option) and the
-    // animation itself runs linear between them — applying an easing curve on
-    // top of coarse keyframes re-eases every segment and reads as stuttery.
-    const hangMs = 200, flightMs = 550, steps = 24;
-    const midX = (startX + endX) / 2, midY = Math.min(startY, endY) - 90;
-    const easeInOutCubic = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-    const keyframes = [];
-    for (let i = 0; i <= steps; i++) {
-        const rawT = i / steps;
-        const t = easeInOutCubic(rawT), inv = 1 - t;
-        const x = inv * inv * startX + 2 * inv * t * midX + t * t * endX;
-        const y = inv * inv * startY + 2 * inv * t * midY + t * t * endY;
-        const scale = 1.15 - 0.55 * rawT;
-        const opacity = rawT < 0.8 ? 1 : 1 - (rawT - 0.8) / 0.2;
-        keyframes.push({ transform: `translate(${x}px, ${y}px) translate(-50%, -50%) scale(${scale})`, opacity });
-    }
-    const flight = wrapper.animate(keyframes, { duration: flightMs, delay: hangMs, easing: 'linear', fill: 'both' });
-
-    if (tier.intensity > 0) {
-        let frameId;
-        const jitter = () => {
-            const x = (Math.random() - 0.5) * tier.intensity, y = (Math.random() - 0.5) * tier.intensity;
-            el.style.transform = `translate(${x}px, ${y}px)`;
-            frameId = requestAnimationFrame(jitter);
-        };
-        jitter();
-        setTimeout(() => cancelAnimationFrame(frameId), hangMs + flightMs);
-    }
-
-    flight.onfinish = () => {
-        wrapper.remove();
-        landScoreBump(targetEl, tier);
-        // The digit count-up itself: daily's score element is counted up
-        // directly, standard/challenge/practice route through
-        // updateScoreDisplay(true) so the high-score overtake check/pulse
-        // (and its own count-up) fires at the same moment.
-        if (currentGamemode === 'daily') countUpDisplay(targetEl, parseInt(targetEl.textContent) || 0, score);
-        else updateScoreDisplay(true);
-    };
-}
-
 // Rapid integer count-up (not an instant snap) from whatever's on screen up
 // to the target — used so watchers see the digits tick up when points land,
 // rather than jump. Cancels any count-up already in flight on the same
@@ -2169,34 +2085,65 @@ function countUpDisplay(el, from, to) {
     requestAnimationFrame(tick);
 }
 
-// Punch + glow on the score counter, timed to the flying token's arrival,
-// plus a small particle burst — the visual "thud" that sells points landing.
-function landScoreBump(targetEl, tier) {
-    targetEl.style.setProperty('--score-glow', tier.glow);
-    targetEl.style.setProperty('--score-punch-peak', tier.intensity >= 3.5 ? '1.6' : '1.32');
-    targetEl.classList.remove('score-landed');
-    void targetEl.offsetWidth; // restart the animation even if a previous hit is still playing
-    targetEl.classList.add('score-landed');
-    spawnScoreBurst(targetEl, tier.glow, tier.intensity >= 2.5 ? 12 : 7);
-}
+   function createFlyingScore(points, startTile) {
+    const scale = 1; // All popups are now the same size
+    let vibrationIntensity = 0;
+    let colorGradient = 'linear-gradient(45deg, #facc15, #f59e0b)'; // Default yellow for scores <= 10
 
-function spawnScoreBurst(targetEl, color, count) {
-    const rect = targetEl.getBoundingClientRect();
-    const originX = rect.left + rect.width / 2, originY = rect.top + rect.height / 2;
-    for (let i = 0; i < count; i++) {
-        const p = document.createElement('div');
-        p.className = 'particle';
-        const angle = Math.random() * Math.PI * 2, dist = Math.random() * 26 + 12;
-        p.style.setProperty('--transform-end', `translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px)`);
-        p.style.left = `${originX - 3}px`;
-        p.style.top = `${originY - 3}px`;
-        p.style.width = '6px';
-        p.style.height = '6px';
-        p.style.background = color;
-        p.style.animationDuration = '0.6s';
-        document.body.appendChild(p);
-        setTimeout(() => p.remove(), 650);
+    // Set vibration and redness based on score tier
+    if (points > 100) {
+        vibrationIntensity = 5;
+        colorGradient = 'linear-gradient(45deg, #b91c1c, #7f1d1d)'; // Darkest "full" red
+    } else if (points > 50) {
+        vibrationIntensity = 3.5;
+        colorGradient = 'linear-gradient(45deg, #dc2626, #b91c1c)'; // Darker red
+    } else if (points > 30) {
+        vibrationIntensity = 2.5;
+        colorGradient = 'linear-gradient(45deg, #ef4444, #dc2626)'; // Medium red
+    } else if (points > 10) {
+        vibrationIntensity = 1.5;
+        colorGradient = 'linear-gradient(45deg, #fca5a5, #ef4444)'; // Light red
     }
+
+    const rect = startTile.getBoundingClientRect();
+
+    // 1. Create the outer wrapper that will fly up
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'absolute';
+    wrapper.style.left = `${rect.left}px`;
+    wrapper.style.top = `${rect.top}px`;
+    wrapper.style.zIndex = '100';
+    wrapper.style.pointerEvents = 'none';
+    wrapper.style.animation = 'fly-to-score 1.5s ease-in-out forwards';
+
+    // 2. Create the inner score element that will vibrate
+    const el = document.createElement('div');
+    el.className = 'flying-score';
+    el.style.animation = 'none';
+    el.textContent = `+${points}`;
+    el.style.position = 'static';
+    el.style.transform = `scale(${scale})`; // Apply the standard scale
+    el.style.background = colorGradient; // Apply the tiered color
+
+    // 3. Append and start the animation
+    wrapper.appendChild(el);
+    document.body.appendChild(wrapper);
+
+    // If vibration is needed, start the vibration loop on the inner element
+    if (vibrationIntensity > 0) {
+        let animationFrameId;
+        const vibrate = () => {
+            const x = (Math.random() - 0.5) * vibrationIntensity;
+            const y = (Math.random() - 0.5) * vibrationIntensity;
+            el.style.transform = `scale(${scale}) translate(${x}px, ${y}px)`;
+            animationFrameId = requestAnimationFrame(vibrate);
+        };
+        vibrate();
+        setTimeout(() => cancelAnimationFrame(animationFrameId), 1300);
+    }
+
+    // Remove the entire wrapper after the animation is complete
+    setTimeout(() => wrapper.remove(), 1500);
 }
 
 function updateCurrentWord() {
