@@ -834,14 +834,25 @@ function showGameMessage(message, type = 'info', startTile = null) {
         const tabBar = document.getElementById('bottom-tab-bar');
         if (tabBar) tabBar.style.display = visible ? '' : 'none';
     }
+    // Leaderboard/Profile/Settings act as true tab-level pages when reached
+    // via the bottom tab bar, but the same modals are also opened from other
+    // contexts that predate the tab bar (end-game screen's Leaderboard
+    // button, for one) where the tab bar is hidden and there's no other way
+    // back — so their close (×) buttons stay functional rather than being
+    // removed. What close-* handlers gained instead: syncing the tab bar's
+    // highlighted icon to Home, since dismissing back to messageModal
+    // *is* arriving at the Home page. Callable from anywhere, not just
+    // setupNativeTabBar's own click handlers.
+    function setActiveNativeTab(tab) {
+        const tabBar = document.getElementById('bottom-tab-bar');
+        if (!tabBar) return;
+        tabBar.querySelectorAll('.tab-bar-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tab);
+        });
+    }
     function setupNativeTabBar() {
         const tabBar = document.getElementById('bottom-tab-bar');
         if (!tabBar) return;
-        const setActiveTab = (tab) => {
-            tabBar.querySelectorAll('.tab-bar-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.tab === tab);
-            });
-        };
         // messageModal is deliberately never hidden here — it stays as a
         // permanent base layer once shown, so each overlay's own existing
         // close button (unrelated to this tab bar) keeps working correctly:
@@ -855,24 +866,23 @@ function showGameMessage(message, type = 'info', startTile = null) {
         document.getElementById('tab-home').onclick = () => {
             hideOtherOverlays();
             showWelcomeScreen();
-            setActiveTab('home');
         };
         document.getElementById('tab-leaderboard').onclick = () => {
             hideOtherOverlays();
             showLeaderboardModal();
-            setActiveTab('leaderboard');
+            setActiveNativeTab('leaderboard');
         };
         document.getElementById('tab-profile').onclick = () => {
             hideOtherOverlays();
             showProfileModal('profile');
-            setActiveTab('profile');
+            setActiveNativeTab('profile');
         };
         document.getElementById('tab-settings').onclick = () => {
             hideOtherOverlays();
             document.getElementById('settings-modal').classList.remove('hidden');
-            setActiveTab('settings');
+            setActiveNativeTab('settings');
         };
-        setActiveTab('home');
+        setActiveNativeTab('home');
     }
 
     // Native home screen's 7-day streak timeline. There's no stored list of
@@ -2473,6 +2483,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     menuContainer.classList.add('hidden');
     messageModal.classList.remove('hidden');
     setNativeTabBarVisible(true);
+    setActiveNativeTab('home');
 
     // Native has no in-card leaderboard button or settings gear — both
     // moved to the persistent bottom tab bar (wired separately, once, in
@@ -2490,6 +2501,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     };
     document.getElementById('close-settings-modal').onclick = () => {
         document.getElementById('settings-modal').classList.add('hidden');
+        if (isCapacitorApp) setActiveNativeTab('home');
     };
     document.getElementById('settings-modal-stats').onclick = () => {
         document.getElementById('settings-modal').classList.add('hidden');
@@ -4430,7 +4442,10 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     // Display the specified initial tab
     displayTab(initialTab); 
     
-    document.getElementById('close-leaderboard-button').onclick = () => { leaderboardModal.classList.add('hidden'); };
+    document.getElementById('close-leaderboard-button').onclick = () => {
+        leaderboardModal.classList.add('hidden');
+        if (isCapacitorApp) setActiveNativeTab('home');
+    };
 }
 
     async function showProfileModal(defaultTab = 'profile') {
@@ -4454,7 +4469,10 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             </div>`;
 
             const attachShared = () => {
-                document.getElementById('close-profile-btn').onclick = () => statsModal.classList.add('hidden');
+                document.getElementById('close-profile-btn').onclick = () => {
+                    statsModal.classList.add('hidden');
+                    if (isCapacitorApp) setActiveNativeTab('home');
+                };
             };
 
             if (activeTab === 'stats') {
