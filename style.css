@@ -279,6 +279,7 @@ html.dark .tile.bonus-Time { background-color: #16a34a !important; }
 /* bg-slate-50 rows */
 html.dark .bg-slate-50 { background-color: #293548 !important; }
 html.dark .bg-blue-100 { background-color: #1e3a5f !important; }
+html.dark .bg-teal-100 { background-color: #134e4a !important; }
 
 /* Scoreboard border during gameplay */
 html.dark #scoreboard { border: 1px solid #475569; }
@@ -385,11 +386,10 @@ html.capacitor-native.dark #message-modal {
 html.capacitor-native #message-modal {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
-    /* items-center (the original Tailwind class) already clears the Dynamic
-       Island fine — this content is short enough that natural centering
-       leaves far more clearance up top than the safe-area minimum below
-       needs anyway. */
-    padding-top: calc(1rem + env(safe-area-inset-top));
+    /* padding-top is exactly the safe-area floor, no extra buffer — that's
+       as high as the header can sit without going back under the Dynamic
+       Island, which is what the extra 1rem here used to guard against. */
+    padding-top: env(safe-area-inset-top);
     padding-bottom: calc(1rem + env(safe-area-inset-bottom));
 }
 html.capacitor-native #welcome-card {

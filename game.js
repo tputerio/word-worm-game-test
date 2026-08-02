@@ -797,6 +797,33 @@ function showGameMessage(message, type = 'info', startTile = null) {
     }
 }
 
+    // Native home screen's exact "#N" daily rank stats. dailyScores (Quick
+    // Play) and dailyPuzzleScores (Daily Puzzle) hold one best-score doc per
+    // player per day — rank is "how many players beat my score, plus one,"
+    // which stays cheap at any scale since getCountFromServer is billed per
+    // ~1000 matched docs rather than per document. Shows "—" instead of a
+    // number if the player hasn't posted a score for that mode today.
+    async function fetchHomeScreenDailyRanks(uid) {
+        if (!db) return;
+        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+        const rankFor = async (collectionName) => {
+            const entriesCol = collection(db, collectionName, todayStr, 'entries');
+            const myDoc = await withTimeout(getDoc(doc(entriesCol, uid)));
+            if (!myDoc.exists()) return null;
+            const myScore = myDoc.data().score;
+            const beatenBySnap = await withTimeout(getCountFromServer(query(entriesCol, where('score', '>', myScore))));
+            return beatenBySnap.data().count + 1;
+        };
+        const [quickPlayRank, puzzleRank] = await Promise.all([
+            rankFor('dailyScores').catch(e => { console.error('Quick Play rank fetch failed:', e); return null; }),
+            rankFor('dailyPuzzleScores').catch(e => { console.error('Puzzle rank fetch failed:', e); return null; })
+        ]);
+        const qpEl = document.getElementById('welcome-quickplay-rank');
+        if (qpEl) qpEl.textContent = quickPlayRank ? `#${quickPlayRank}` : '—';
+        const puzzleEl = document.getElementById('welcome-puzzle-rank');
+        if (puzzleEl) puzzleEl.textContent = puzzleRank ? `#${puzzleRank}` : '—';
+    }
+
     // Native home screen's 7-day streak timeline. There's no stored list of
     // which specific days were played — only a running count (playStreak)
     // and the date it was last extended (lastPlayDate). But a streak only
@@ -847,12 +874,12 @@ function showGameMessage(message, type = 'info', startTile = null) {
             if (!playStreak || playStreak === 0) {
                 welcomeStreakEl.style.display = 'none';
                 if (streakFlameEl) streakFlameEl.style.color = '#94a3b8';
-                if (streakLabelEl) { streakLabelEl.textContent = 'Start a streak!'; streakLabelEl.style.fontSize = '8px'; }
+                if (streakLabelEl) { streakLabelEl.textContent = 'Start a streak!'; streakLabelEl.style.fontSize = isCapacitorApp ? '16px' : '8px'; }
             } else {
                 welcomeStreakEl.textContent = playStreak;
                 welcomeStreakEl.style.display = '';
                 if (streakFlameEl) streakFlameEl.style.color = '#f97316';
-                if (streakLabelEl) { streakLabelEl.textContent = 'Day Streak'; streakLabelEl.style.fontSize = '10px'; }
+                if (streakLabelEl) { streakLabelEl.textContent = 'Day Streak'; streakLabelEl.style.fontSize = isCapacitorApp ? '16px' : '10px'; }
             }
         }
 
@@ -1685,6 +1712,11 @@ async function submitDailyScoreToLeaderboard(finalScore) {
             
             transaction.set(leaderboardRef, { topScores: newTopScores, date: todayStr });
         });
+        // Mirrors dailyScores (standard mode) — lets the native home screen
+        // compute an exact rank via count query instead of only knowing
+        // whether you're in the top 10.
+        setDoc(doc(db, 'dailyPuzzleScores', todayStr, 'entries', userId), { score: finalScore })
+            .catch(e => console.error('Failed to write dailyPuzzleScores entry:', e));
         // Same staleness guard as postScoreToLeaderboards: the modal's 60s
         // HTML cache must not outlive a board we just changed.
         delete leaderboardHtmlCache['challenge'];
@@ -2321,10 +2353,10 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     // dropped in favor of the mode cards, which explain themselves.
     const nativeLayout = `
         <div id="welcome-card">
-            <div id="welcome-header" class="flex items-center justify-between px-4 pt-2">
+            <div id="welcome-header" class="flex items-center justify-between px-4">
                 <div id="welcome-header-spacer" class="w-9 h-9"></div>
-                <h1 id="welcome-title" class="flex items-center text-3xl font-black text-slate-800 tracking-tighter">
-                    <img id="welcome-logo" src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-12 h-12 mr-2" width="48" height="48">
+                <h1 id="welcome-title" class="flex items-center text-4xl font-black text-slate-800 tracking-tighter">
+                    <img id="welcome-logo" src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-14 h-14 mr-2" width="56" height="56">
                     <span>Word Worm</span>
                 </h1>
                 <button id="settings-gear-btn" class="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center text-slate-500 hover:text-slate-700 transition-colors">${gearIconSvg}</button>
@@ -2335,25 +2367,25 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 <div class="bg-white rounded-2xl shadow-sm p-4 flex items-center justify-between">
                     <div class="flex items-center gap-2">
                         ${flameIconSvg}
-                        <span class="font-bold text-slate-800"><span id="welcome-streak" style="display:none;">0</span> <span id="welcome-streak-label">Start a streak!</span></span>
+                        <span class="font-bold text-slate-800 text-lg"><span id="welcome-streak" style="display:none;">0</span> <span id="welcome-streak-label">Start a streak!</span></span>
                     </div>
                     <div id="welcome-streak-dots" class="flex items-center gap-2"></div>
                 </div>
 
                 <div class="bg-green-500 rounded-2xl p-5 text-white">
-                    <div class="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider opacity-90">${rocketIconSvg} Quick Play</div>
+                    <div class="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider opacity-90">${rocketIconSvg} Quick Play</div>
                     <p class="text-sm opacity-90 mt-1 mb-4">Unlimited 60-second games</p>
                     <button id="mode-timed-btn" class="bg-white text-green-600 font-bold px-5 py-2.5 rounded-xl text-sm">Play Now</button>
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
-                    <div class="bg-blue-50 rounded-2xl p-4 flex flex-col">
+                    <div class="bg-blue-100 rounded-2xl p-4 flex flex-col">
                         <div class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">Today's Puzzle</div>
                         <p class="text-xs text-slate-500 mb-3 flex-grow">New puzzle daily, untimed</p>
-                        <button id="mode-daily-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 rounded-lg text-xs transition-colors">Play Daily<span id="daily-mode-badge" style="display:none;margin-left:4px;">✓</span></button>
+                        <button id="mode-daily-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 rounded-lg text-[11px] transition-colors">Play Daily Puzzle<span id="daily-mode-badge" style="display:none;margin-left:4px;">✓</span></button>
                     </div>
-                    <div class="bg-teal-50 rounded-2xl p-4 flex flex-col">
-                        <div class="text-xs font-bold text-teal-700 uppercase tracking-wider mb-1">Challenge Friends</div>
+                    <div class="bg-teal-100 rounded-2xl p-4 flex flex-col">
+                        <div class="text-[10px] font-bold text-teal-700 uppercase tracking-normal mb-1 whitespace-nowrap">Challenge Friends</div>
                         <p class="text-xs text-slate-500 mb-3 flex-grow">Same board, 60 seconds</p>
                         <button id="mode-challenge-btn" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 rounded-lg text-xs transition-colors">Challenge</button>
                     </div>
@@ -2362,7 +2394,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 <a href="#" id="welcome-leaderboard-button" class="flex items-center justify-between bg-amber-50 hover:bg-amber-100 rounded-2xl p-4 transition-colors">
                     <div>
                         <div class="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">Leaderboard</div>
-                        <p class="text-xs text-slate-500">See how you rank</p>
+                        <p class="text-xs text-slate-500 mb-3">See how you rank</p>
+                        <div class="bg-amber-500 text-white font-bold text-xs px-4 py-2 rounded-lg inline-block">View Leaderboard</div>
                     </div>
                     <div class="text-amber-500">${trophyIconSvg}</div>
                 </a>
@@ -2373,12 +2406,12 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">High Score</div>
                     </div>
                     <div class="bg-white rounded-xl p-2.5 shadow-sm">
-                        <div id="welcome-words-found" class="font-black text-lg text-slate-800">${lastKnownWordsFound.toLocaleString()}</div>
-                        <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Words Found</div>
+                        <div id="welcome-puzzle-rank" class="font-black text-lg text-slate-800">—</div>
+                        <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Puzzle Daily Rank</div>
                     </div>
                     <div class="bg-white rounded-xl p-2.5 shadow-sm">
-                        <div id="welcome-games-played" class="font-black text-lg text-slate-800">${lastKnownGamesPlayed.toLocaleString()}</div>
-                        <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Games Played</div>
+                        <div id="welcome-quickplay-rank" class="font-black text-lg text-slate-800">—</div>
+                        <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Quick Play Rank</div>
                     </div>
                 </div>
             </div>
@@ -2428,8 +2461,12 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     // not yet replaced by the new anonymous uid) — render the guest state
     // directly instead of skipping the repaint, so the old identity doesn't
     // linger on screen while the new anonymous sign-in is still in flight.
-    if (userId) fetchPlayerStats(userId);
-    else renderPlayerStatsUI('Anonymous', 0);
+    if (userId) {
+        fetchPlayerStats(userId);
+        if (isCapacitorApp) fetchHomeScreenDailyRanks(userId);
+    } else {
+        renderPlayerStatsUI('Anonymous', 0);
+    }
 
     // Daily puzzle status on the button: ✓ once submitted, red dot when a
     // started puzzle is still waiting to be submitted.
