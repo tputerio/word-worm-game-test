@@ -415,21 +415,52 @@ html.capacitor-native #welcome-card {
     box-shadow: none !important;
     border-radius: 0 !important;
 }
+/* Leaderboard/Profile/Settings: the outer #message-modal-style wrapper was
+   flattened already, but each one *also* wraps its actual content in a
+   small centered card (max-w-xs/max-w-sm + rounded + shadow) — with the
+   dark backdrop gone, that card just floats over the previous screen still
+   showing through around its edges, reading as a popup rather than a page.
+   Same !important reasoning as #welcome-card above (dark mode's shadow
+   rule is also !important). Scoped to these 3 modals' own content wrappers
+   specifically, not a blanket rule, so pause/account/end-game modals
+   elsewhere keep their intentional floating-dialog look. */
+html.capacitor-native #leaderboard-modal-content,
+html.capacitor-native #stats-modal-content {
+    max-width: none !important;
+    /* align-items:stretch on the parent (#leaderboard-modal/#stats-modal)
+       only stretches *this* div to full height — a plain block child of a
+       stretched block doesn't inherit that height automatically. Making
+       this a flex container too lets its own child (the actual visible
+       white card, targeted below) stretch to fill it in turn. */
+    display: flex !important;
+}
+html.capacitor-native #leaderboard-modal-content > div,
+html.capacitor-native #stats-modal-content > div,
+html.capacitor-native #settings-modal > div {
+    max-width: none !important;
+    width: 100% !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+}
 
 /* Leaderboard/Profile(&Stats)/Settings modals become tab-level destinations
    alongside Home rather than transient overlays, once the bottom tab bar
    exists — same flattening as #message-modal (drop the dark backdrop so
    body's background shows through, own safe-area-top since these are all
-   position:fixed too, reserve bottom space for the tab bar). Their inner
-   content keeps its own card chrome (rounded/shadow) — unlike the welcome
-   card, a floating white card over the scenic background reads fine here
-   and doesn't need flattening to avoid a "popup" look. */
+   position:fixed too, reserve bottom space for the tab bar). align-items
+   switches from center to stretch so the (now-flattened, no-max-width)
+   inner card fills the full page height with its own solid background —
+   without this, a short card (e.g. "No scores yet") only fills its own
+   content height and stays vertically centered, leaving the previous
+   screen's cards visible above/below it, which is exactly the "still
+   looks like a popup" problem the width-only fix above didn't solve. */
 html.capacitor-native #leaderboard-modal,
 html.capacitor-native #stats-modal,
 html.capacitor-native #settings-modal {
     background-color: transparent;
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
+    align-items: stretch;
     padding-top: max(calc(env(safe-area-inset-top) - 16px), 0px);
     padding-bottom: calc(var(--native-tab-bar-height) + env(safe-area-inset-bottom) + 1rem);
 }
