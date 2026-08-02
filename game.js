@@ -233,6 +233,7 @@
     function main() {
         sweepStaleDailyKeys();
         setupEventListeners();
+        if (isCapacitorApp) setupNativeTabBar();
         topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">0</div>`;
         if (pendingChallengeId) {
             showChallengeAcceptScreen(pendingChallengeId);
@@ -824,6 +825,56 @@ function showGameMessage(message, type = 'info', startTile = null) {
         if (puzzleEl) puzzleEl.textContent = puzzleRank ? `#${puzzleRank}` : '—';
     }
 
+    // Persistent bottom tab bar (native only). Hidden during gameplay by
+    // whichever startGame() branch sets gameContentEl visible; shown again
+    // by showWelcomeScreen(), which every "return to home" path already
+    // calls, so that one hook covers all of them.
+    function setNativeTabBarVisible(visible) {
+        if (!isCapacitorApp) return;
+        const tabBar = document.getElementById('bottom-tab-bar');
+        if (tabBar) tabBar.style.display = visible ? '' : 'none';
+    }
+    function setupNativeTabBar() {
+        const tabBar = document.getElementById('bottom-tab-bar');
+        if (!tabBar) return;
+        const setActiveTab = (tab) => {
+            tabBar.querySelectorAll('.tab-bar-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.tab === tab);
+            });
+        };
+        // messageModal is deliberately never hidden here — it stays as a
+        // permanent base layer once shown, so each overlay's own existing
+        // close button (unrelated to this tab bar) keeps working correctly:
+        // closing it reveals messageModal underneath via z-index, instead of
+        // a blank screen if this had hidden messageModal too.
+        const hideOtherOverlays = () => {
+            leaderboardModal.classList.add('hidden');
+            statsModal.classList.add('hidden');
+            document.getElementById('settings-modal').classList.add('hidden');
+        };
+        document.getElementById('tab-home').onclick = () => {
+            hideOtherOverlays();
+            showWelcomeScreen();
+            setActiveTab('home');
+        };
+        document.getElementById('tab-leaderboard').onclick = () => {
+            hideOtherOverlays();
+            showLeaderboardModal();
+            setActiveTab('leaderboard');
+        };
+        document.getElementById('tab-profile').onclick = () => {
+            hideOtherOverlays();
+            showProfileModal('profile');
+            setActiveTab('profile');
+        };
+        document.getElementById('tab-settings').onclick = () => {
+            hideOtherOverlays();
+            document.getElementById('settings-modal').classList.remove('hidden');
+            setActiveTab('settings');
+        };
+        setActiveTab('home');
+    }
+
     // Native home screen's 7-day streak timeline. There's no stored list of
     // which specific days were played — only a running count (playStreak)
     // and the date it was last extended (lastPlayDate). But a streak only
@@ -1067,6 +1118,7 @@ async function getDailyPuzzleWithTimeout() {
         timerInterval = null;
         document.getElementById('daily-challenge-content').style.display = 'none';
         gameContentEl.style.display = 'block';
+        setNativeTabBarVisible(false);
         currentGamemode = 'challenge';
         isPracticeMode = false;
         menuContainer.classList.remove('hidden');
@@ -1169,6 +1221,7 @@ async function getDailyPuzzleWithTimeout() {
         timerInterval = null;
         document.getElementById('daily-challenge-content').style.display = 'none';
         gameContentEl.style.display = 'block';
+        setNativeTabBarVisible(false);
         currentGamemode = practiceMode ? 'practice' : 'standard';
         isPracticeMode = practiceMode;
         menuContainer.classList.remove('hidden');
@@ -2353,13 +2406,11 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     // dropped in favor of the mode cards, which explain themselves.
     const nativeLayout = `
         <div id="welcome-card">
-            <div id="welcome-header" class="flex items-center justify-between px-4">
-                <div id="welcome-header-spacer" class="w-3 h-3"></div>
+            <div id="welcome-header" class="flex items-center justify-center px-4">
                 <h1 id="welcome-title" class="flex items-center text-3xl font-black text-slate-800 tracking-tighter">
                     <img id="welcome-logo" src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-16 h-16 mr-2" width="64" height="64">
                     <span>Word Worm</span>
                 </h1>
-                <button id="settings-gear-btn" class="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center text-slate-500 hover:text-slate-700 transition-colors">${gearIconSvg}</button>
             </div>
             <p id="player-greeting" class="text-slate-500 text-sm mt-1 mb-4 font-medium text-center"></p>
 
@@ -2381,27 +2432,23 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     <img src="assets/word-worm-quick-play-icon.png" alt="" class="w-20 h-20 flex-shrink-0 -mr-2" width="80" height="80">
                 </div>
 
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="bg-blue-100 rounded-2xl p-4 flex flex-col">
-                        <div class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">Today's Puzzle</div>
-                        <p class="text-xs text-slate-500 mb-3 flex-grow">New puzzle daily, untimed</p>
-                        <button id="mode-daily-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 rounded-lg text-[11px] transition-colors">Play Daily Puzzle<span id="daily-mode-badge" style="display:none;margin-left:4px;">✓</span></button>
+                <div class="bg-blue-100 rounded-2xl p-5 flex items-center justify-between gap-2 overflow-hidden">
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-1.5 text-sm font-bold text-blue-600 uppercase tracking-wider">${calendarIconSvg} Today's Puzzle</div>
+                        <p class="text-sm text-slate-500 mt-1 mb-4">New puzzle daily, untimed</p>
+                        <button id="mode-daily-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition-colors">Play Daily Puzzle<span id="daily-mode-badge" style="display:none;margin-left:4px;">✓</span></button>
                     </div>
-                    <div class="bg-teal-100 rounded-2xl p-4 flex flex-col">
-                        <div class="text-[11px] font-bold text-teal-700 uppercase tracking-normal mb-1 whitespace-nowrap">Challenge Friends</div>
-                        <p class="text-xs text-slate-500 mb-3 flex-grow">Same board, 60 seconds</p>
-                        <button id="mode-challenge-btn" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 rounded-lg text-xs transition-colors">Challenge</button>
-                    </div>
+                    <div class="text-blue-500 flex-shrink-0">${calendarIconSvg.replace('w-4 h-4', 'w-14 h-14').replace('stroke-width="2"', 'stroke-width="1"')}</div>
                 </div>
 
-                <a href="#" id="welcome-leaderboard-button" class="flex items-center justify-between bg-amber-50 hover:bg-amber-100 rounded-2xl p-4 transition-colors">
-                    <div>
-                        <div class="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">Leaderboard</div>
-                        <p class="text-xs text-slate-500 mb-3">See how you rank</p>
-                        <div class="bg-amber-500 text-white font-bold text-xs px-4 py-2 rounded-lg inline-block">View Leaderboard</div>
+                <div class="bg-teal-100 rounded-2xl p-5 flex items-center justify-between gap-2 overflow-hidden">
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-1.5 text-sm font-bold text-teal-700 uppercase tracking-wider">${peopleIconSvg} Challenge Friends</div>
+                        <p class="text-sm text-slate-500 mt-1 mb-4">Same board, 60 seconds</p>
+                        <button id="mode-challenge-btn" class="bg-teal-600 hover:bg-teal-700 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition-colors">Challenge</button>
                     </div>
-                    <div class="text-amber-500">${trophyIconSvg}</div>
-                </a>
+                    <div class="text-teal-600 flex-shrink-0">${peopleIconSvg.replace('w-4 h-4', 'w-14 h-14').replace('stroke-width="1.5"', 'stroke-width="1"')}</div>
+                </div>
 
                 <div class="grid grid-cols-3 gap-2 text-center">
                     <div class="bg-white rounded-xl p-2.5 shadow-sm">
@@ -2425,13 +2472,20 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
     menuContainer.classList.add('hidden');
     messageModal.classList.remove('hidden');
-    
-    document.getElementById('welcome-leaderboard-button').onclick = (e) => {
+    setNativeTabBarVisible(true);
+
+    // Native has no in-card leaderboard button or settings gear — both
+    // moved to the persistent bottom tab bar (wired separately, once, in
+    // setupNativeTabBar rather than here, since the tab bar isn't part of
+    // this regenerated modalContent HTML).
+    const welcomeLeaderboardBtn = document.getElementById('welcome-leaderboard-button');
+    if (welcomeLeaderboardBtn) welcomeLeaderboardBtn.onclick = (e) => {
         e.preventDefault();
         showLeaderboardModal();
     };
 
-    document.getElementById('settings-gear-btn').onclick = () => {
+    const settingsGearBtn = document.getElementById('settings-gear-btn');
+    if (settingsGearBtn) settingsGearBtn.onclick = () => {
         document.getElementById('settings-modal').classList.remove('hidden');
     };
     document.getElementById('close-settings-modal').onclick = () => {

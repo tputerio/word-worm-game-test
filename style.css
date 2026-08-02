@@ -368,6 +368,12 @@ html.dark #mode-daily-btn:hover { background-color: #1e3a5f !important; }
    Background image lives on body (not #message-modal) so it shows behind
    gameplay too, once the modal hides — #message-modal is left transparent
    and just lets body show through while it's up. */
+html.capacitor-native {
+    /* Content height of the bottom tab bar, excluding safe-area-inset-bottom
+       — combine the two wherever a "tab" screen needs to reserve space so
+       its content doesn't sit behind the bar. */
+    --native-tab-bar-height: 4.25rem;
+}
 html.capacitor-native:not(.dark) body {
     background-color: #fff;
     background-image: url('assets/word-worm-app-background.png');
@@ -396,7 +402,7 @@ html.capacitor-native #message-modal {
        screenshot if this value ever changes; don't go further without
        checking, this is what caused the notch-collision bug before. */
     padding-top: max(calc(env(safe-area-inset-top) - 16px), 0px);
-    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--native-tab-bar-height) + env(safe-area-inset-bottom) + 1rem);
 }
 html.capacitor-native #gameplay-logo {
     width: 2.75rem;
@@ -408,4 +414,62 @@ html.capacitor-native #welcome-card {
        higher specificity — so a plain override only worked in light mode. */
     box-shadow: none !important;
     border-radius: 0 !important;
+}
+
+/* Leaderboard/Profile(&Stats)/Settings modals become tab-level destinations
+   alongside Home rather than transient overlays, once the bottom tab bar
+   exists — same flattening as #message-modal (drop the dark backdrop so
+   body's background shows through, own safe-area-top since these are all
+   position:fixed too, reserve bottom space for the tab bar). Their inner
+   content keeps its own card chrome (rounded/shadow) — unlike the welcome
+   card, a floating white card over the scenic background reads fine here
+   and doesn't need flattening to avoid a "popup" look. */
+html.capacitor-native #leaderboard-modal,
+html.capacitor-native #stats-modal,
+html.capacitor-native #settings-modal {
+    background-color: transparent;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    padding-top: max(calc(env(safe-area-inset-top) - 16px), 0px);
+    padding-bottom: calc(var(--native-tab-bar-height) + env(safe-area-inset-bottom) + 1rem);
+}
+
+#bottom-tab-bar { display: none; }
+html.capacitor-native #bottom-tab-bar {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(var(--native-tab-bar-height) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    background-color: #fff;
+    border-top: 1px solid #e2e8f0;
+    align-items: stretch;
+    justify-content: space-around;
+    z-index: 110;
+}
+html.capacitor-native.dark #bottom-tab-bar {
+    background-color: #0f172a;
+    border-top-color: #334155;
+}
+html.capacitor-native .tab-bar-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.125rem;
+    color: #94a3b8;
+    font-size: 0.6875rem;
+    font-weight: 700;
+}
+html.capacitor-native .tab-bar-btn.active {
+    color: #22c55e;
+}
+html.capacitor-native.dark .tab-bar-btn {
+    color: #64748b;
+}
+html.capacitor-native.dark .tab-bar-btn.active {
+    color: #4ade80;
 }
