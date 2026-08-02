@@ -364,21 +364,38 @@ html.dark #mode-daily-btn:hover { background-color: #1e3a5f !important; }
    shell there's nothing behind it to dim, so it just reads as a popup
    sitting over a gray page. Fill it white edge-to-edge and drop the card
    chrome so it reads as the app's own home screen instead. */
-html.capacitor-native body {
+html.capacitor-native:not(.dark) body {
     background-color: #fff;
 }
-html.capacitor-native #message-modal {
+html.capacitor-native:not(.dark) #message-modal {
     background-color: #fff;
+    background-image: url('assets/word-worm-app-background.png');
+    background-repeat: no-repeat;
+    background-position: top center;
+    background-size: cover;
+}
+/* Dark mode uses html.dark body{#0f172a} elsewhere in this file — match it
+   here rather than hardcoding, so the whole screen goes dark, not just the
+   card (dark mode never touched #message-modal before since its original
+   bg-black/50 already read fine over a dimmed page). */
+html.capacitor-native.dark body,
+html.capacitor-native.dark #message-modal {
+    background-color: #0f172a;
+}
+html.capacitor-native #message-modal {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
-    align-items: flex-start;
-    /* #message-modal is position:fixed, so it never inherited body's
-       safe-area padding — that was masked before by items-center pushing
-       content away from the top edge regardless. Needs its own now. */
+    /* items-center (the original Tailwind class) already clears the Dynamic
+       Island fine — this content is short enough that natural centering
+       leaves far more clearance up top than the safe-area minimum below
+       needs anyway. */
     padding-top: calc(1rem + env(safe-area-inset-top));
     padding-bottom: calc(1rem + env(safe-area-inset-bottom));
 }
 html.capacitor-native #welcome-card {
-    box-shadow: none;
-    border-radius: 0;
+    /* !important: dark mode's html.dark .shadow-lg rule is also !important
+       and wins ties by being !important, regardless of this ID selector's
+       higher specificity — so a plain override only worked in light mode. */
+    box-shadow: none !important;
+    border-radius: 0 !important;
 }

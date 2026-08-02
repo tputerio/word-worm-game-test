@@ -167,6 +167,11 @@
     // even when the first Firestore read is slow or fails outright.
     let lastKnownStreak = parseInt(localStorage.getItem('wordWormLastStreak'), 10) || 0;
     let lastKnownHighScore = parseInt(localStorage.getItem('wordWormLastHighScore'), 10) || 0;
+    // Native home screen's stats row + streak-dot timeline. Same player doc
+    // read that already populates the fields above — no extra Firestore cost.
+    let lastKnownGamesPlayed = parseInt(localStorage.getItem('wordWormLastGamesPlayed'), 10) || 0;
+    let lastKnownWordsFound = parseInt(localStorage.getItem('wordWormLastWordsFound'), 10) || 0;
+    let lastKnownPlayDate = localStorage.getItem('wordWormLastPlayDate') || null;
     let lastKnownChallengeStats = (() => {
         try { return JSON.parse(localStorage.getItem('wordWormChallengeStats')) || { wins: 0, losses: 0, ties: 0 }; }
         catch(e) { return { wins: 0, losses: 0, ties: 0 }; }
@@ -175,6 +180,9 @@
         try {
             localStorage.setItem('wordWormLastStreak', String(lastKnownStreak));
             localStorage.setItem('wordWormLastHighScore', String(lastKnownHighScore));
+            localStorage.setItem('wordWormLastGamesPlayed', String(lastKnownGamesPlayed));
+            localStorage.setItem('wordWormLastWordsFound', String(lastKnownWordsFound));
+            if (lastKnownPlayDate) localStorage.setItem('wordWormLastPlayDate', lastKnownPlayDate);
             localStorage.setItem('wordWormChallengeStats', JSON.stringify(lastKnownChallengeStats));
         } catch(e) {}
     }
@@ -762,6 +770,9 @@ function showGameMessage(message, type = 'info', startTile = null) {
             knownUsername = playerData.username || null;
             if (playerData.username) storeUsername(playerData.username);
             if (playerData.challengeStats) lastKnownChallengeStats = { wins: 0, losses: 0, ties: 0, ...playerData.challengeStats };
+            lastKnownGamesPlayed = playerData.totalGamesPlayed || 0;
+            lastKnownWordsFound = playerData.totalWordsFound || 0;
+            lastKnownPlayDate = playerData.lastPlayDate || null;
         }
         lastKnownStreak = playStreak;
         lastKnownHighScore = Math.max(lastKnownHighScore, highScore);
@@ -786,6 +797,42 @@ function showGameMessage(message, type = 'info', startTile = null) {
     }
 }
 
+    // Native home screen's 7-day streak timeline. There's no stored list of
+    // which specific days were played — only a running count (playStreak)
+    // and the date it was last extended (lastPlayDate). But a streak only
+    // ever increments on the day immediately after the previous one, so a
+    // streak of N ending on lastPlayDate means exactly those N consecutive
+    // days were played — no new data needed, just derived from what's
+    // already fetched for the "N day streak" number.
+    function renderStreakDots(playStreak, lastPlayDateStr) {
+        const container = document.getElementById('welcome-streak-dots');
+        if (!container) return;
+        const playedDates = new Set();
+        if (playStreak && lastPlayDateStr) {
+            for (let i = 0; i < playStreak; i++) {
+                const d = new Date(lastPlayDateStr + 'T12:00:00');
+                d.setDate(d.getDate() - i);
+                playedDates.add(d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }));
+            }
+        }
+        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+        let html = '';
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const dateStr = d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            const label = d.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'narrow' });
+            const filled = playedDates.has(dateStr);
+            const isToday = dateStr === todayStr;
+            html += `
+                <div class="flex flex-col items-center gap-1">
+                    <div class="w-2.5 h-2.5 rounded-full ${filled ? 'bg-orange-500' : 'bg-slate-200'} ${isToday && !filled ? 'ring-2 ring-orange-300' : ''}"></div>
+                    <div class="text-[9px] font-bold ${isToday ? 'text-slate-700' : 'text-slate-400'} uppercase">${label}</div>
+                </div>`;
+        }
+        container.innerHTML = html;
+    }
+
     function renderPlayerStatsUI(playerName, playStreak) {
         const highScoreEl = document.getElementById('high-score');
         if (highScoreEl) highScoreEl.textContent = lastKnownHighScore;
@@ -808,6 +855,12 @@ function showGameMessage(message, type = 'info', startTile = null) {
                 if (streakLabelEl) { streakLabelEl.textContent = 'Day Streak'; streakLabelEl.style.fontSize = '10px'; }
             }
         }
+
+        const wordsFoundEl = document.getElementById('welcome-words-found');
+        if (wordsFoundEl) wordsFoundEl.textContent = lastKnownWordsFound.toLocaleString();
+        const gamesPlayedEl = document.getElementById('welcome-games-played');
+        if (gamesPlayedEl) gamesPlayedEl.textContent = lastKnownGamesPlayed.toLocaleString();
+        renderStreakDots(playStreak, lastKnownPlayDate);
 
         const playerGreetingEl = document.getElementById('player-greeting');
         if (playerGreetingEl) {
@@ -2192,17 +2245,22 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 }
 
    function showWelcomeScreen() {
-    modalContent.innerHTML = `
+    const gearIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path fill-rule="evenodd" d="M11.078 2.25c-.917 0-1.699.663-1.85 1.567L9.05 4.889c-.02.12-.115.26-.297.348a7.493 7.493 0 0 0-.986.57c-.166.115-.334.126-.45.083L6.3 5.508a1.875 1.875 0 0 0-2.282.819l-.922 1.597a1.875 1.875 0 0 0 .432 2.385l.84.692c.095.078.17.229.154.43a7.598 7.598 0 0 0 0 1.139c.015.2-.059.352-.153.43l-.841.692a1.875 1.875 0 0 0-.432 2.385l.922 1.597a1.875 1.875 0 0 0 2.282.818l1.019-.382c.115-.043.283-.031.45.082.312.214.641.405.985.57.182.088.277.228.297.35l.178 1.071c.151.904.933 1.567 1.85 1.567h1.844c.916 0 1.699-.663 1.85-1.567l.178-1.072c.02-.12.114-.26.297-.349.344-.165.673-.356.985-.57.167-.114.335-.125.45-.082l1.02.382a1.875 1.875 0 0 0 2.28-.819l.923-1.597a1.875 1.875 0 0 0-.432-2.385l-.84-.692c-.095-.078-.17-.229-.154-.43a7.614 7.614 0 0 0 0-1.139c-.016-.2.059-.352.153-.43l.84-.692c.708-.582.891-1.59.433-2.385l-.922-1.597a1.875 1.875 0 0 0-2.282-.818l-1.02.382c-.114.043-.282.031-.449-.083a7.49 7.49 0 0 0-.985-.57c-.183-.087-.277-.227-.297-.348l-.179-1.072a1.875 1.875 0 0 0-1.85-1.567h-1.843ZM12 15.75a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5Z" clip-rule="evenodd" /></svg>`;
+    const rocketIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg>`;
+    const calendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 flex-shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M14.25 6.087c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003 0-1.036-1.007-1.875-2.25-1.875c-1.243 0-2.25.84-2.25 1.875 0 .369.128.713.349 1.003.215.283.401.604.401.959v0a.64.64 0 0 1-.657.643 48.39 48.39 0 0 1-4.163-.3c.186 1.613.293 3.25.315 4.907a.656.656 0 0 1-.658.663v0c-.355 0-.676-.186-.959-.401a1.647 1.647 0 0 0-1.003-.349c-1.036 0-1.875 1.007-1.875 2.25s.84 2.25 1.875 2.25c.369 0 .713-.128 1.003-.349.283-.215.604-.401.959-.401v0c.31 0 .555.26.532.57a48.039 48.039 0 0 1-.642 5.056c1.518.19 3.058.309 4.616.354a.64.64 0 0 0 .657-.643v0c0-.355-.186-.676-.401-.959a1.647 1.647 0 0 1-.349-1.003c0-1.035 1.008-1.875 2.25-1.875 1.243 0 2.25.84 2.25 1.875 0 .369-.128.713-.349 1.003-.215.283-.401.604-.401.959v0c0 .333.277.599.61.58a48.1 48.1 0 0 0 5.427-.63 48.05 48.05 0 0 0 .582-4.717.532.532 0 0 0-.533-.57v0c-.355 0-.676.186-.959.401-.29.221-.634.349-1.003.349-1.036 0-1.875-1.007-1.875-2.25s.84-2.25 1.875-2.25c.37 0 .713.128 1.003.349.283.215.604.401.959.401v0a.656.656 0 0 0 .658-.663 48.422 48.422 0 0 0-.37-5.36c-1.886.342-3.81.574-5.766.689a.578.578 0 0 1-.61-.58v0Z" /></svg>`;
+    const peopleIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 flex-shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>`;
+    const trophyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8"><path stroke-linecap="round" stroke-linejoin="round" d="m6.115 5.19.319 1.913A6 6 0 0 0 8.11 10.36L9.75 12l-.387.775c-.217.433-.132.956.21 1.298l1.348 1.348c.21.21.329.497.329.795v1.089c0 .426.24.815.622 1.006l.153.076c.433.217.956.132 1.298-.21l.723-.723a8.7 8.7 0 0 0 2.288-4.042 1.087 1.087 0 0 0-.358-1.099l-1.33-1.108c-.251-.21-.582-.299-.905-.245l-1.17.195a1.125 1.125 0 0 1-.98-.314l-.295-.295a1.125 1.125 0 0 1 0-1.591l.13-.132a1.125 1.125 0 0 1 1.3-.21l.603.302a.809.809 0 0 0 1.086-1.086L14.25 7.5l1.256-.837a4.5 4.5 0 0 0 1.528-1.732l.146-.292M6.115 5.19A9 9 0 1 0 17.18 4.64M6.115 5.19A8.965 8.965 0 0 1 12 3c1.929 0 3.716.607 5.18 1.64" /></svg>`;
+    const flameIconSvg = `<svg id="welcome-streak-flame" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6" style="color:#94a3b8;"><path fill-rule="evenodd" d="M12.963 2.286a.75.75 0 0 0-1.071-.136 9.742 9.742 0 0 0-3.539 6.176 7.547 7.547 0 0 1-1.705-1.715.75.75 0 0 0-1.152-.082A9 9 0 1 0 15.68 4.534a7.46 7.46 0 0 1-2.717-2.248ZM15.75 14.25a3.75 3.75 0 1 1-7.313-1.172c.628.465 1.35.81 2.133 1a5.99 5.99 0 0 1 1.925-3.546 3.75 3.75 0 0 1 3.255 3.718Z" clip-rule="evenodd" /></svg>`;
+
+    const webLayout = `
         <div id="welcome-card" class="bg-white rounded-2xl shadow-lg p-6 text-center">
-            <div class="flex items-center justify-between mb-1">
-                <div class="w-8 h-8"></div>
-                <h1 class="flex items-center text-3xl font-black text-slate-800 tracking-tighter">
-                    <img src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-11 h-11 mr-2" width="44" height="44">
+            <div id="welcome-header" class="flex items-center justify-between mb-1">
+                <div id="welcome-header-spacer" class="w-8 h-8"></div>
+                <h1 id="welcome-title" class="flex items-center text-3xl font-black text-slate-800 tracking-tighter">
+                    <img id="welcome-logo" src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-11 h-11 mr-2" width="44" height="44">
                     <span>Word Worm</span>
                 </h1>
-                <button id="settings-gear-btn" class="p-1 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6"><path fill-rule="evenodd" d="M11.078 2.25c-.917 0-1.699.663-1.85 1.567L9.05 4.889c-.02.12-.115.26-.297.348a7.493 7.493 0 0 0-.986.57c-.166.115-.334.126-.45.083L6.3 5.508a1.875 1.875 0 0 0-2.282.819l-.922 1.597a1.875 1.875 0 0 0 .432 2.385l.84.692c.095.078.17.229.154.43a7.598 7.598 0 0 0 0 1.139c.015.2-.059.352-.153.43l-.841.692a1.875 1.875 0 0 0-.432 2.385l.922 1.597a1.875 1.875 0 0 0 2.282.818l1.019-.382c.115-.043.283-.031.45.082.312.214.641.405.985.57.182.088.277.228.297.35l.178 1.071c.151.904.933 1.567 1.85 1.567h1.844c.916 0 1.699-.663 1.85-1.567l.178-1.072c.02-.12.114-.26.297-.349.344-.165.673-.356.985-.57.167-.114.335-.125.45-.082l1.02.382a1.875 1.875 0 0 0 2.28-.819l.923-1.597a1.875 1.875 0 0 0-.432-2.385l-.84-.692c-.095-.078-.17-.229-.154-.43a7.614 7.614 0 0 0 0-1.139c-.016-.2.059-.352.153-.43l.84-.692c.708-.582.891-1.59.433-2.385l-.922-1.597a1.875 1.875 0 0 0-2.282-.818l-1.02.382c-.114.043-.282.031-.449-.083a7.49 7.49 0 0 0-.985-.57c-.183-.087-.277-.227-.297-.348l-.179-1.072a1.875 1.875 0 0 0-1.85-1.567h-1.843ZM12 15.75a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5Z" clip-rule="evenodd" /></svg>
-                </button>
+                <button id="settings-gear-btn" class="p-1 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors">${gearIconSvg.replace('w-5 h-5', 'w-6 h-6')}</button>
             </div>
             <p id="player-greeting" class="text-slate-500 text-sm mb-3 font-medium text-center"></p>
 
@@ -2210,26 +2268,26 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
      <div class="mt-4 flex flex-col gap-3">
     <button id="mode-timed-btn" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold h-11 px-4 rounded-xl text-base flex items-center justify-center transition-colors gap-2">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg>
+        ${rocketIconSvg.replace('w-4 h-4', 'w-5 h-5')}
         <span>Play</span>
     </button>
     <div class="grid grid-cols-2 gap-3">
         <button id="mode-daily-btn" class="flex items-center justify-center gap-2 bg-white border-2 text-blue-600 font-bold text-sm h-10 rounded-lg hover:bg-blue-50 transition-colors" style="border-color:#3b82f6;">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width:18px;height:18px;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M14.25 6.087c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003 0-1.036-1.007-1.875-2.25-1.875c-1.243 0-2.25.84-2.25 1.875 0 .369.128.713.349 1.003.215.283.401.604.401.959v0a.64.64 0 0 1-.657.643 48.39 48.39 0 0 1-4.163-.3c.186 1.613.293 3.25.315 4.907a.656.656 0 0 1-.658.663v0c-.355 0-.676-.186-.959-.401a1.647 1.647 0 0 0-1.003-.349c-1.036 0-1.875 1.007-1.875 2.25s.84 2.25 1.875 2.25c.369 0 .713-.128 1.003-.349.283-.215.604-.401.959-.401v0c.31 0 .555.26.532.57a48.039 48.039 0 0 1-.642 5.056c1.518.19 3.058.309 4.616.354a.64.64 0 0 0 .657-.643v0c0-.355-.186-.676-.401-.959a1.647 1.647 0 0 1-.349-1.003c0-1.035 1.008-1.875 2.25-1.875 1.243 0 2.25.84 2.25 1.875 0 .369-.128.713-.349 1.003-.215.283-.401.604-.401.959v0c0 .333.277.599.61.58a48.1 48.1 0 0 0 5.427-.63 48.05 48.05 0 0 0 .582-4.717.532.532 0 0 0-.533-.57v0c-.355 0-.676.186-.959.401-.29.221-.634.349-1.003.349-1.036 0-1.875-1.007-1.875-2.25s.84-2.25 1.875-2.25c.37 0 .713.128 1.003.349.283.215.604.401.959.401v0a.656.656 0 0 0 .658-.663 48.422 48.422 0 0 0-.37-5.36c-1.886.342-3.81.574-5.766.689a.578.578 0 0 1-.61-.58v0Z" /></svg>
+            ${calendarIconSvg}
             Daily Puzzle<span id="daily-mode-badge" style="display:none;margin-left:4px;font-size:0.7rem;opacity:0.8;">✓</span>
         </button>
         <button id="mode-challenge-btn" class="flex items-center justify-center gap-2 bg-white border-2 text-slate-600 font-bold h-10 rounded-lg hover:bg-slate-50 transition-colors" style="border-color:#64748b;font-size:0.8rem;">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:18px;height:18px;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>
+            ${peopleIconSvg}
             Challenge a Friend
         </button>
     </div>
 </div>
-            
+
             <div class="bg-white rounded-xl mt-4 overflow-hidden border border-slate-200">
                 <div class="grid grid-cols-3 text-center">
                     <div class="p-2 flex flex-col items-center justify-center">
                         <div class="h-7 flex items-center justify-center gap-1">
-                            <svg id="welcome-streak-flame" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5" style="color:#94a3b8;"><path fill-rule="evenodd" d="M12.963 2.286a.75.75 0 0 0-1.071-.136 9.742 9.742 0 0 0-3.539 6.176 7.547 7.547 0 0 1-1.705-1.715.75.75 0 0 0-1.152-.082A9 9 0 1 0 15.68 4.534a7.46 7.46 0 0 1-2.717-2.248ZM15.75 14.25a3.75 3.75 0 1 1-7.313-1.172c.628.465 1.35.81 2.133 1a5.99 5.99 0 0 1 1.925-3.546 3.75 3.75 0 0 1 3.255 3.718Z" clip-rule="evenodd" /></svg>
+                            ${flameIconSvg.replace('w-6 h-6', 'w-5 h-5')}
                             <span id="welcome-streak" class="text-xl font-black" style="color:#f97316;display:none;">0</span>
                         </div>
                         <div id="welcome-streak-label" class="font-bold text-slate-500 uppercase tracking-wider" style="font-size:8px;white-space:nowrap;">Start a streak!</div>
@@ -2243,9 +2301,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     </div>
 
                     <a href="#" id="welcome-leaderboard-button" class="p-2 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors">
-                        <div class="h-7 flex items-center justify-center text-green-500">
-                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="m6.115 5.19.319 1.913A6 6 0 0 0 8.11 10.36L9.75 12l-.387.775c-.217.433-.132.956.21 1.298l1.348 1.348c.21.21.329.497.329.795v1.089c0 .426.24.815.622 1.006l.153.076c.433.217.956.132 1.298-.21l.723-.723a8.7 8.7 0 0 0 2.288-4.042 1.087 1.087 0 0 0-.358-1.099l-1.33-1.108c-.251-.21-.582-.299-.905-.245l-1.17.195a1.125 1.125 0 0 1-.98-.314l-.295-.295a1.125 1.125 0 0 1 0-1.591l.13-.132a1.125 1.125 0 0 1 1.3-.21l.603.302a.809.809 0 0 0 1.086-1.086L14.25 7.5l1.256-.837a4.5 4.5 0 0 0 1.528-1.732l.146-.292M6.115 5.19A9 9 0 1 0 17.18 4.64M6.115 5.19A8.965 8.965 0 0 1 12 3c1.929 0 3.716.607 5.18 1.64" /></svg>
-                        </div>
+                        <div class="h-7 flex items-center justify-center text-green-500">${trophyIconSvg.replace('w-8 h-8', 'w-6 h-6')}</div>
                         <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Leaderboard</div>
                     </a>
                 </div>
@@ -2253,6 +2309,83 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
         </div>
     `;
+
+    // Card-based native home screen. Same functional elements (button IDs,
+    // greeting, streak) as the web layout above, just restructured — the
+    // event wiring below works unchanged for either. Daily-rank stats from
+    // the reference mockup aren't shown: those need a fresh Firestore count
+    // query per load (fine as a one-off at end-of-game, too costly to run
+    // every time the home screen opens), so the stats row uses lifetime
+    // totals already fetched for the streak/high-score numbers instead.
+    // The animated tutorial grid preview (#how-to-play-container) is
+    // dropped in favor of the mode cards, which explain themselves.
+    const nativeLayout = `
+        <div id="welcome-card">
+            <div id="welcome-header" class="flex items-center justify-between px-4 pt-2">
+                <div id="welcome-header-spacer" class="w-9 h-9"></div>
+                <h1 id="welcome-title" class="flex items-center text-3xl font-black text-slate-800 tracking-tighter">
+                    <img id="welcome-logo" src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-12 h-12 mr-2" width="48" height="48">
+                    <span>Word Worm</span>
+                </h1>
+                <button id="settings-gear-btn" class="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center text-slate-500 hover:text-slate-700 transition-colors">${gearIconSvg}</button>
+            </div>
+            <p id="player-greeting" class="text-slate-500 text-sm mt-1 mb-4 font-medium text-center"></p>
+
+            <div class="px-4 space-y-3 pb-6">
+                <div class="bg-white rounded-2xl shadow-sm p-4 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        ${flameIconSvg}
+                        <span class="font-bold text-slate-800"><span id="welcome-streak" style="display:none;">0</span> <span id="welcome-streak-label">Start a streak!</span></span>
+                    </div>
+                    <div id="welcome-streak-dots" class="flex items-center gap-2"></div>
+                </div>
+
+                <div class="bg-green-500 rounded-2xl p-5 text-white">
+                    <div class="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider opacity-90">${rocketIconSvg} Quick Play</div>
+                    <p class="text-sm opacity-90 mt-1 mb-4">Unlimited 60-second games</p>
+                    <button id="mode-timed-btn" class="bg-white text-green-600 font-bold px-5 py-2.5 rounded-xl text-sm">Play Now</button>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-blue-50 rounded-2xl p-4 flex flex-col">
+                        <div class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">Today's Puzzle</div>
+                        <p class="text-xs text-slate-500 mb-3 flex-grow">New puzzle daily, untimed</p>
+                        <button id="mode-daily-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 rounded-lg text-xs transition-colors">Play Daily<span id="daily-mode-badge" style="display:none;margin-left:4px;">✓</span></button>
+                    </div>
+                    <div class="bg-teal-50 rounded-2xl p-4 flex flex-col">
+                        <div class="text-xs font-bold text-teal-700 uppercase tracking-wider mb-1">Challenge Friends</div>
+                        <p class="text-xs text-slate-500 mb-3 flex-grow">Same board, 60 seconds</p>
+                        <button id="mode-challenge-btn" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 rounded-lg text-xs transition-colors">Challenge</button>
+                    </div>
+                </div>
+
+                <a href="#" id="welcome-leaderboard-button" class="flex items-center justify-between bg-amber-50 hover:bg-amber-100 rounded-2xl p-4 transition-colors">
+                    <div>
+                        <div class="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">Leaderboard</div>
+                        <p class="text-xs text-slate-500">See how you rank</p>
+                    </div>
+                    <div class="text-amber-500">${trophyIconSvg}</div>
+                </a>
+
+                <div class="grid grid-cols-3 gap-2 text-center">
+                    <div class="bg-white rounded-xl p-2.5 shadow-sm">
+                        <div id="welcome-high-score" class="font-black text-lg text-slate-800">${lastKnownHighScore.toLocaleString()}</div>
+                        <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">High Score</div>
+                    </div>
+                    <div class="bg-white rounded-xl p-2.5 shadow-sm">
+                        <div id="welcome-words-found" class="font-black text-lg text-slate-800">${lastKnownWordsFound.toLocaleString()}</div>
+                        <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Words Found</div>
+                    </div>
+                    <div class="bg-white rounded-xl p-2.5 shadow-sm">
+                        <div id="welcome-games-played" class="font-black text-lg text-slate-800">${lastKnownGamesPlayed.toLocaleString()}</div>
+                        <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Games Played</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    modalContent.innerHTML = isCapacitorApp ? nativeLayout : webLayout;
 
     menuContainer.classList.add('hidden');
     messageModal.classList.remove('hidden');
