@@ -2354,9 +2354,9 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     const nativeLayout = `
         <div id="welcome-card">
             <div id="welcome-header" class="flex items-center justify-between px-4">
-                <div id="welcome-header-spacer" class="w-9 h-9"></div>
+                <div id="welcome-header-spacer" class="w-3 h-3"></div>
                 <h1 id="welcome-title" class="flex items-center text-4xl font-black text-slate-800 tracking-tighter">
-                    <img id="welcome-logo" src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-14 h-14 mr-2" width="56" height="56">
+                    <img id="welcome-logo" src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-16 h-16 mr-2" width="64" height="64">
                     <span>Word Worm</span>
                 </h1>
                 <button id="settings-gear-btn" class="w-9 h-9 rounded-full bg-white shadow-sm flex items-center justify-center text-slate-500 hover:text-slate-700 transition-colors">${gearIconSvg}</button>
@@ -2372,10 +2372,13 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     <div id="welcome-streak-dots" class="flex items-center gap-2"></div>
                 </div>
 
-                <div class="bg-green-500 rounded-2xl p-5 text-white">
-                    <div class="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider opacity-90">${rocketIconSvg} Quick Play</div>
-                    <p class="text-sm opacity-90 mt-1 mb-4">Unlimited 60-second games</p>
-                    <button id="mode-timed-btn" class="bg-white text-green-600 font-bold px-5 py-2.5 rounded-xl text-sm">Play Now</button>
+                <div class="bg-green-500 rounded-2xl p-5 text-white flex items-center justify-between gap-2 overflow-hidden">
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider opacity-90">${rocketIconSvg} Quick Play</div>
+                        <p class="text-sm opacity-90 mt-1 mb-4">Unlimited 60-second games</p>
+                        <button id="mode-timed-btn" class="bg-white text-green-600 font-bold px-5 py-2.5 rounded-xl text-sm">Play Now</button>
+                    </div>
+                    <img src="assets/word-worm-quick-play-icon.png" alt="" class="w-20 h-20 flex-shrink-0 -mr-2" width="80" height="80">
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
