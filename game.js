@@ -2355,7 +2355,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         <div id="welcome-card">
             <div id="welcome-header" class="flex items-center justify-between px-4">
                 <div id="welcome-header-spacer" class="w-3 h-3"></div>
-                <h1 id="welcome-title" class="flex items-center text-4xl font-black text-slate-800 tracking-tighter">
+                <h1 id="welcome-title" class="flex items-center text-3xl font-black text-slate-800 tracking-tighter">
                     <img id="welcome-logo" src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-16 h-16 mr-2" width="64" height="64">
                     <span>Word Worm</span>
                 </h1>
@@ -2388,7 +2388,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         <button id="mode-daily-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 rounded-lg text-[11px] transition-colors">Play Daily Puzzle<span id="daily-mode-badge" style="display:none;margin-left:4px;">✓</span></button>
                     </div>
                     <div class="bg-teal-100 rounded-2xl p-4 flex flex-col">
-                        <div class="text-[10px] font-bold text-teal-700 uppercase tracking-normal mb-1 whitespace-nowrap">Challenge Friends</div>
+                        <div class="text-[11px] font-bold text-teal-700 uppercase tracking-normal mb-1 whitespace-nowrap">Challenge Friends</div>
                         <p class="text-xs text-slate-500 mb-3 flex-grow">Same board, 60 seconds</p>
                         <button id="mode-challenge-btn" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 rounded-lg text-xs transition-colors">Challenge</button>
                     </div>

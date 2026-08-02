@@ -386,10 +386,12 @@ html.capacitor-native.dark #message-modal {
 html.capacitor-native #message-modal {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
-    /* padding-top is exactly the safe-area floor, no extra buffer — that's
-       as high as the header can sit without going back under the Dynamic
-       Island, which is what the extra 1rem here used to guard against. */
-    padding-top: env(safe-area-inset-top);
+    /* A few px under the full safe-area guideline — Apple's guideline is
+       conservative about the Dynamic Island's actual bounds, so this small
+       a trim should stay clear of it. Verify against a real device/
+       simulator screenshot if this value ever changes; don't go further
+       without checking, this is what caused the notch-collision bug before. */
+    padding-top: max(calc(env(safe-area-inset-top) - 8px), 0px);
     padding-bottom: calc(1rem + env(safe-area-inset-bottom));
 }
 html.capacitor-native #welcome-card {
