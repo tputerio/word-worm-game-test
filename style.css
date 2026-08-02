@@ -390,13 +390,17 @@ html.capacitor-native #message-modal {
     background-color: transparent;
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
-    /* A few px under the full safe-area guideline — Apple's guideline is
-       conservative about the Dynamic Island's actual bounds, so this small
-       a trim should stay clear of it. Verify against a real device/
-       simulator screenshot if this value ever changes; don't go further
-       without checking, this is what caused the notch-collision bug before. */
-    padding-top: max(calc(env(safe-area-inset-top) - 8px), 0px);
+    /* A bit under the full safe-area guideline — Apple's guideline is
+       conservative about the Dynamic Island's actual bounds, so this trim
+       should stay clear of it. Verify against a real device/simulator
+       screenshot if this value ever changes; don't go further without
+       checking, this is what caused the notch-collision bug before. */
+    padding-top: max(calc(env(safe-area-inset-top) - 16px), 0px);
     padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+}
+html.capacitor-native #gameplay-logo {
+    width: 2.75rem;
+    height: 2.75rem;
 }
 html.capacitor-native #welcome-card {
     /* !important: dark mode's html.dark .shadow-lg rule is also !important
