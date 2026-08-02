@@ -364,26 +364,30 @@ html.dark #mode-daily-btn:hover { background-color: #1e3a5f !important; }
    "card floating over a dimmed page" look is intentional; inside the app
    shell there's nothing behind it to dim, so it just reads as a popup
    sitting over a gray page. Fill it white edge-to-edge and drop the card
-   chrome so it reads as the app's own home screen instead. */
+   chrome so it reads as the app's own home screen instead.
+   Background image lives on body (not #message-modal) so it shows behind
+   gameplay too, once the modal hides — #message-modal is left transparent
+   and just lets body show through while it's up. */
 html.capacitor-native:not(.dark) body {
-    background-color: #fff;
-}
-html.capacitor-native:not(.dark) #message-modal {
     background-color: #fff;
     background-image: url('assets/word-worm-app-background.png');
     background-repeat: no-repeat;
     background-position: top center;
     background-size: cover;
+    background-attachment: fixed;
 }
-/* Dark mode uses html.dark body{#0f172a} elsewhere in this file — match it
-   here rather than hardcoding, so the whole screen goes dark, not just the
-   card (dark mode never touched #message-modal before since its original
-   bg-black/50 already read fine over a dimmed page). */
-html.capacitor-native.dark body,
-html.capacitor-native.dark #message-modal {
+html.capacitor-native.dark body {
     background-color: #0f172a;
+    background-image: url('assets/word-worm-app-background-dark.png');
+    background-repeat: no-repeat;
+    background-position: top center;
+    background-size: cover;
+    background-attachment: fixed;
 }
 html.capacitor-native #message-modal {
+    /* Its own bg-black/50 class would otherwise tint body's background
+       image dark on top of whatever's showing through underneath. */
+    background-color: transparent;
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     /* A few px under the full safe-area guideline — Apple's guideline is
