@@ -843,10 +843,14 @@ function showGameMessage(message, type = 'info', startTile = null) {
     // Persistent bottom tab bar (web + native both). Hidden during gameplay
     // by whichever startGame() branch sets gameContentEl visible; shown
     // again by showWelcomeScreen(), which every "return to home" path
-    // already calls, so that one hook covers all of them.
+    // already calls, so that one hook covers all of them. Doubles as the
+    // gameplay/home-screen background-image switch (the "in-gameplay" class
+    // toggled here is what style.css keys off of) since both need to flip
+    // at exactly the same moments.
     function setNativeTabBarVisible(visible) {
         const tabBar = document.getElementById('bottom-tab-bar');
         if (tabBar) tabBar.style.display = visible ? '' : 'none';
+        document.documentElement.classList.toggle('in-gameplay', !visible);
     }
     // Leaderboard/Profile/Settings act as true tab-level pages when reached
     // via the bottom tab bar, but the same modals are also opened from other
@@ -925,7 +929,12 @@ function showGameMessage(message, type = 'info', startTile = null) {
             }
         }
         const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-        let html = '';
+        // Dots and their connecting line share one flex row (line segments as
+        // flex-1 divs between dots) so the line is guaranteed to hit dot
+        // centers without any absolute-position math; labels sit in their own
+        // row underneath, spaced the same way via justify-between.
+        let dotsHtml = '';
+        let labelsHtml = '';
         for (let i = 6; i >= 0; i--) {
             const d = new Date();
             d.setDate(d.getDate() - i);
@@ -933,13 +942,13 @@ function showGameMessage(message, type = 'info', startTile = null) {
             const label = d.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'narrow' });
             const filled = playedDates.has(dateStr);
             const isToday = dateStr === todayStr;
-            html += `
-                <div class="flex flex-col items-center gap-1">
-                    <div class="w-2.5 h-2.5 rounded-full ${filled ? 'bg-orange-500' : 'bg-slate-200'} ${isToday && !filled ? 'ring-2 ring-orange-300' : ''}"></div>
-                    <div class="text-[9px] font-bold ${isToday ? 'text-slate-700' : 'text-slate-400'} uppercase">${label}</div>
-                </div>`;
+            if (i < 6) dotsHtml += `<div class="flex-1 h-px bg-slate-200"></div>`;
+            dotsHtml += `<div class="w-2.5 h-2.5 rounded-full flex-shrink-0 ${filled ? 'bg-orange-500' : 'bg-slate-200'} ${isToday && !filled ? 'ring-2 ring-orange-300' : ''}"></div>`;
+            labelsHtml += `<div class="text-[9px] font-bold ${isToday ? 'text-slate-700' : 'text-slate-400'} uppercase">${label}</div>`;
         }
-        container.innerHTML = html;
+        container.innerHTML = `
+            <div class="flex items-center w-full">${dotsHtml}</div>
+            <div class="flex justify-between w-full mt-1">${labelsHtml}</div>`;
     }
 
     function renderPlayerStatsUI(playerName, playStreak) {
@@ -1185,7 +1194,13 @@ async function getDailyPuzzleWithTimeout() {
             if (modeBtn) { modeBtn.disabled = false; modeBtn.innerHTML = modeBtnHTML; }
             return;
         }
-        
+
+        // Puzzle data is in hand, so we're committed to entering daily mode
+        // (either straight to setupDailyUI below, or to the completed end
+        // screen) — hide the tab bar now that we're actually leaving the
+        // welcome screen.
+        setNativeTabBarVisible(false);
+
         allDailyWords = new Set(puzzleData.allWords);
         const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
         
@@ -2381,7 +2396,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     const nativeLayout = `
         <div id="welcome-card">
             <div id="welcome-header" class="flex items-center justify-center px-4">
-                <img id="welcome-logo" src="assets/word-worm-home-screen-logo-new.png" alt="Word Worm" class="h-auto" width="144" height="124">
+                <img id="welcome-logo" src="assets/word-worm-home-screen-logo.png" alt="Word Worm" class="h-auto" width="144" height="124">
             </div>
 
             <div class="px-4 mt-2 pb-4">
@@ -2393,7 +2408,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                             ${flameIconSvg.replace('w-6 h-6', 'w-5 h-5')}
                             <span class="font-black text-slate-800 text-sm whitespace-nowrap"><span id="welcome-streak" style="display:none;">0</span> <span id="welcome-streak-label">Start a streak!</span></span>
                         </div>
-                        <div id="welcome-streak-dots" class="flex items-center justify-between flex-1 min-w-0"></div>
+                        <div id="welcome-streak-dots" class="flex flex-col flex-1 min-w-0"></div>
                     </div>
                 </div>
 

@@ -382,7 +382,7 @@ html.capacitor-native {
 }
 html.capacitor-native:not(.dark) body {
     background-color: #fff;
-    background-image: url('assets/home-screen-background-light-new.png');
+    background-image: url('assets/home-screen-background-light.png');
     background-repeat: no-repeat;
     background-position: top center;
     background-size: cover;
@@ -390,11 +390,21 @@ html.capacitor-native:not(.dark) body {
 }
 html.capacitor-native.dark body {
     background-color: #0f172a;
-    background-image: url('assets/home-screen-background-dark-new.png');
+    background-image: url('assets/home-screen-background-dark.png');
     background-repeat: no-repeat;
     background-position: top center;
     background-size: cover;
     background-attachment: fixed;
+}
+/* Gameplay swaps in a calmer, lower-detail background than the home
+   screen's illustrated scene — less to visually compete with the grid
+   while swiping. Higher specificity than the rules above (extra class)
+   so it wins without needing !important or rule ordering. */
+html.capacitor-native.in-gameplay:not(.dark) body {
+    background-image: url('assets/game-play-background-light.png');
+}
+html.capacitor-native.in-gameplay.dark body {
+    background-image: url('assets/game-play-background-dark.png');
 }
 /* On a phone-width viewport (native shell, or the website on mobile)
    "cover" is correct — it's already portrait-shaped like the art. Past
@@ -521,14 +531,16 @@ html.capacitor-native .tab-bar-icon {
     align-items: center;
     justify-content: center;
     color: #fff;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-    transition: transform 0.15s ease;
+    border: 2px solid rgba(255,255,255,0.35);
+    box-shadow: 0 3px 0 rgba(0,0,0,0.25), 0 6px 12px rgba(0,0,0,0.25);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 html.capacitor-native .tab-bar-btn:active .tab-bar-icon {
     transform: scale(0.92);
+    box-shadow: 0 1px 0 rgba(0,0,0,0.25), 0 2px 6px rgba(0,0,0,0.2);
 }
 html.capacitor-native .tab-bar-btn.active .tab-bar-icon {
-    box-shadow: 0 0 0 3px rgba(255,255,255,0.65), 0 4px 10px rgba(0,0,0,0.2);
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.65), 0 3px 0 rgba(0,0,0,0.25), 0 6px 12px rgba(0,0,0,0.25);
 }
 html.capacitor-native .tab-bar-label {
     font-size: 0.6875rem;
