@@ -41,21 +41,21 @@
   <link rel="preconnect" href="https://word-rush-game-9010a.firebaseapp.com">
   <link rel="preconnect" href="https://firestore.googleapis.com">
 
-<link rel="stylesheet" href="./dist/style.css?v=1785793284766">
+<link rel="stylesheet" href="./dist/style.css?v=1785795818199">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=Fredoka+One&display=block" media="print" onload="this.media='all'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=Fredoka+One&display=block"></noscript>
-    <link rel="stylesheet" href="style.css?v=1785793284766">
+    <link rel="stylesheet" href="style.css?v=1785795818199">
 </head>
 <body class="bg-slate-100 flex justify-center items-start md:items-center min-h-screen">
 
     <div id="game-container" class="w-full max-w-sm mx-auto p-4 relative">
 
         <div id="menu-container" class="absolute top-4 right-4 z-30 hidden">
-            <button id="menu-button" class="text-slate-700 p-2 transition-transform hover:scale-105">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            <button id="menu-button" class="text-slate-700 transition-transform hover:scale-105" aria-label="Pause">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
+                    <path fill-rule="evenodd" d="M6.75 5.25a.75.75 0 0 1 .75-.75H9a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H7.5a.75.75 0 0 1-.75-.75V5.25Zm7.5 0A.75.75 0 0 1 15 4.5h1.5a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H15a.75.75 0 0 1-.75-.75V5.25Z" clip-rule="evenodd" />
                 </svg>
             </button>
         </div>
@@ -63,9 +63,8 @@
         <div id="game-content" class="z-0 hidden">
             <div class="flex items-center justify-between mb-3">
                 <div class="flex-grow flex items-center justify-center">
-                    <h1 class="text-3xl font-black text-slate-800 tracking-tighter flex items-center justify-center">
-                        <img id="gameplay-logo" src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-9 h-9 mr-2" width="36" height="36">
-                        <span>Word Worm</span>
+                    <h1 class="flex items-center justify-center">
+                        <img id="gameplay-logo" src="assets/game-play-top-icon.png" alt="Word Worm" class="h-10 w-auto" width="204" height="40">
                     </h1>
                 </div>
             </div>
@@ -252,6 +251,6 @@
         </button>
     </div>
 
-<script src="game.js?v=1785793284766" type="module" defer></script>
+<script src="game.js?v=1785795818199" type="module" defer></script>
 </body>
 </html>

@@ -168,6 +168,11 @@
             background-color: #3b82f6;
             color: white;
         }
+        /* Challenge a Friend modal's tabs use the green "challenge" theme
+           instead of the default blue, matching the rest of that flow. */
+        #challenge-tab-create.active, #challenge-tab-mine.active {
+            background-color: #16a34a;
+        }
 
         /* Tutorial Animation */
         .tutorial-tile.highlight {
@@ -359,8 +364,8 @@ html.capacitor-native.dark #mode-daily-btn:hover { background-color: #2563eb !im
    utilities: dist/style.css is gitignored and can be deployed stale, which
    left this button white-on-white in prod (bg-indigo-400 missing from the
    deployed build). */
-#challenge-rematch-btn { background-color: #22c55e; }
-#challenge-rematch-btn:hover { background-color: #16a34a; }
+#challenge-rematch-btn { background-color: #16a34a; }
+#challenge-rematch-btn:hover { background-color: #15803d; }
 
 /* Native iOS shell only (html.capacitor-native, set by game.js). The
    welcome/home screen is rendered through #message-modal, the same
@@ -446,9 +451,21 @@ html.capacitor-native #message-modal {
 html.capacitor-native #message-modal:has(#welcome-card) {
     align-items: flex-start;
 }
-html.capacitor-native #gameplay-logo {
-    width: 2.75rem;
-    height: 2.75rem;
+/* Pause button: was a plain hamburger glyph that blended into the
+   background art; a filled circle + shadow (same depth language as the
+   tab bar icons) makes it read as a tappable control at a glance. */
+html.capacitor-native #menu-button {
+    width: 2.5rem;
+    height: 2.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(255,255,255,0.95);
+    border-radius: 9999px;
+    box-shadow: 0 3px 0 rgba(0,0,0,0.15), 0 4px 10px rgba(0,0,0,0.2);
+}
+html.capacitor-native #menu-button:active {
+    box-shadow: 0 1px 0 rgba(0,0,0,0.15), 0 2px 6px rgba(0,0,0,0.15);
 }
 html.capacitor-native #welcome-card {
     /* !important: dark mode's html.dark .shadow-lg rule is also !important

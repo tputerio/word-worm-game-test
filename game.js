@@ -313,11 +313,11 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
             <hr class="my-4">
             <div class="text-left w-full">
                 <h3 class="text-lg font-bold text-slate-700 mb-2">All Possible Words (${foundCount}/${totalCount})</h3>
-                <div class="flex flex-wrap gap-2 max-h-24 overflow-y-auto pr-2">${allWordsHTML}</div>
+                <div class="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-2">${allWordsHTML}</div>
             </div>
             <div id="share-link-container" class="h-10 flex items-center justify-center mt-4"></div>
             <div class="flex space-x-2 mt-2">
-                <button id="endgame-leaderboard-button" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 px-4 rounded-lg text-base flex-1">Leaderboard</button>
+                <button id="endgame-leaderboard-button" class="bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 px-4 rounded-lg text-base flex-1">Leaderboard</button>
                 <button id="return-home-button" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base flex-1">Home</button>
             </div>
             <p id="next-puzzle-countdown" class="text-xs font-semibold text-slate-500 mt-3"></p>
@@ -1372,9 +1372,8 @@ function setupDailyUI(challengeData) {
         <div class="w-full max-w-sm mx-auto">
             <div class="flex items-center justify-between mb-3">
                 <div class="flex-grow flex items-center justify-center">
-                    <h1 class="text-3xl font-black text-slate-800 tracking-tighter flex items-center justify-center">
-                        <img src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-9 h-9 mr-2" width="36" height="36">
-                        <span>Word Worm</span>
+                    <h1 class="flex items-center justify-center">
+                        <img src="assets/game-play-top-icon.png" alt="Word Worm" class="h-10 w-auto" width="204" height="40">
                     </h1>
                 </div>
             </div>
@@ -2412,7 +2411,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     </div>
                 </div>
 
-                <button id="mode-timed-btn" class="mode-btn w-full bg-green-600 hover:bg-green-700 text-white font-black uppercase tracking-wide text-base rounded-2xl flex items-center justify-center gap-2 transition-colors mb-2 border-2 border-green-800 shadow-[0_4px_0_rgba(0,0,0,0.25),0_8px_16px_rgba(0,0,0,0.2)]">
+                <button id="mode-timed-btn" class="mode-btn w-full bg-green-500 hover:bg-green-600 text-white font-black uppercase tracking-wide text-base rounded-2xl flex items-center justify-center gap-2 transition-colors mb-2 border-2 border-green-700 shadow-[0_4px_0_rgba(0,0,0,0.25),0_8px_16px_rgba(0,0,0,0.2)]">
                     ${rocketIconSvg.replace('w-4 h-4', 'w-5 h-5')}
                     <span>Quick Play</span>
                 </button>
@@ -2422,7 +2421,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     <span>Daily Puzzle</span><span id="daily-mode-badge" style="display:none;margin-left:2px;">✓</span>
                 </button>
 
-                <button id="mode-challenge-btn" class="mode-btn w-full bg-green-500 hover:bg-green-600 text-white font-black uppercase tracking-wide text-base rounded-2xl flex items-center justify-center gap-2 transition-colors border-2 border-green-700 shadow-[0_4px_0_rgba(0,0,0,0.25),0_8px_16px_rgba(0,0,0,0.2)]">
+                <button id="mode-challenge-btn" class="mode-btn w-full bg-green-600 hover:bg-green-700 text-white font-black uppercase tracking-wide text-base rounded-2xl flex items-center justify-center gap-2 transition-colors border-2 border-green-800 shadow-[0_4px_0_rgba(0,0,0,0.25),0_8px_16px_rgba(0,0,0,0.2)]">
                     ${peopleIconSvg.replace('w-4 h-4', 'w-5 h-5')}
                     <span>Challenge Friends</span>
                 </button>
@@ -2950,39 +2949,66 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     function showChallengeFriendModal(view = 'create') {
         const accountModal = document.getElementById('account-modal');
         const accountModalContent = document.getElementById('account-modal-content');
-
-        if (view === 'my-challenges') {
-            renderMyChallenges(accountModalContent);
-        } else {
-            renderCreateChallenge(accountModalContent);
-        }
-
+        renderChallengeShell(accountModalContent, view === 'my-challenges' ? 'mine' : 'create');
         accountModal.classList.remove('hidden');
     }
 
-    function renderCreateChallenge(container) {
+    // Shared shell for the Challenge a Friend modal: a close button plus two
+    // tabs that swap the content beneath them. Replaces the old drill-down
+    // (Challenge screen -> "My Challenges" button -> back arrow) with direct
+    // switching either way.
+    function renderChallengeShell(container, activeTab = 'create') {
         container.innerHTML = `
-            <div class="flex justify-between items-center mb-5">
-                <h2 class="text-lg font-bold text-slate-800 flex items-center">Challenge a Friend <span class="inline-block w-6 h-6 ml-2"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-slate-600"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg></span></h2>
+            <div class="flex justify-end mb-1">
                 <button id="close-challenge-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
             </div>
+            <div class="flex p-1 bg-slate-200 rounded-lg mb-4">
+                <button id="challenge-tab-create" class="tab-button flex-1 py-1.5 px-2 rounded-md font-semibold text-sm transition-colors duration-200">Challenge</button>
+                <button id="challenge-tab-mine" class="tab-button flex-1 py-1.5 px-2 rounded-md font-semibold text-sm transition-colors duration-200">My Challenges</button>
+            </div>
+            <div id="challenge-tab-content"></div>`;
+
+        document.getElementById('close-challenge-modal').onclick = () => document.getElementById('account-modal').classList.add('hidden');
+
+        const createTab = document.getElementById('challenge-tab-create');
+        const mineTab = document.getElementById('challenge-tab-mine');
+        const contentEl = document.getElementById('challenge-tab-content');
+
+        const activate = (tab) => {
+            createTab.classList.toggle('active', tab === 'create');
+            mineTab.classList.toggle('active', tab === 'mine');
+            // Reset the "My Challenges" scrollable-list sizing every switch —
+            // only that tab needs it, and it must not leak into the other.
+            contentEl.style.maxHeight = '';
+            contentEl.style.display = '';
+            contentEl.style.flexDirection = '';
+            contentEl.style.overflow = '';
+            if (tab === 'mine') {
+                renderMyChallengesContent(contentEl);
+            } else {
+                renderCreateChallengeContent(contentEl);
+            }
+        };
+
+        createTab.onclick = () => activate('create');
+        mineTab.onclick = () => activate('mine');
+
+        activate(activeTab);
+    }
+
+    function renderCreateChallengeContent(container) {
+        container.innerHTML = `
             <div id="incoming-challenges"></div>
             <div id="username-challenge-section" class="mb-4"></div>
             <button id="generate-challenge-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors flex items-center justify-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" /></svg>
                 Share Challenge Link
             </button>
-            <div id="challenge-link-result" class="mt-3"></div>
-            <button id="view-my-challenges-btn" class="mt-3 w-full flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold py-2.5 px-4 rounded-lg text-sm transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5m4-1v5l4 2" /></svg>
-                My Challenges
-            </button>`;
+            <div id="challenge-link-result" class="mt-3"></div>`;
 
         document.getElementById('generate-challenge-btn').onclick = () => generateAndSaveChallenge();
-        document.getElementById('view-my-challenges-btn').onclick = () => renderMyChallenges(container);
-        document.getElementById('close-challenge-modal').onclick = () => document.getElementById('account-modal').classList.add('hidden');
 
-        populateIncomingChallenges(document.getElementById('incoming-challenges'), document.getElementById('view-my-challenges-btn'));
+        populateIncomingChallenges(document.getElementById('incoming-challenges'), document.getElementById('challenge-tab-mine'));
         populateUsernameChallengeSection(document.getElementById('username-challenge-section'));
     }
 
@@ -3043,7 +3069,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     btn.disabled = true;
                     try {
                         await declineChallenge(btn.dataset.id);
-                        renderCreateChallenge(document.getElementById('account-modal-content'));
+                        renderChallengeShell(document.getElementById('account-modal-content'), 'create');
                     } catch(e) {
                         console.error('Failed to decline challenge:', e);
                         btn.disabled = false;
@@ -3051,7 +3077,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 };
             });
             const moreLink = sectionEl.querySelector('#incoming-more-link');
-            if (moreLink) moreLink.onclick = () => renderMyChallenges(document.getElementById('account-modal-content'));
+            if (moreLink) moreLink.onclick = () => renderChallengeShell(document.getElementById('account-modal-content'), 'mine');
         };
 
         // Render immediately from the cached list (in-memory, or persisted from
@@ -3205,8 +3231,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     function renderClaimUsernamePrompt(sectionEl, nameKnownTaken = false) {
         const displayName = localStorage.getItem('wordRushPlayerName');
         const takenNote = nameKnownTaken && displayName && isValidUsername(displayName)
-            ? `"${escapeHTML(displayName)}" is already taken. Pick another to challenge friends directly:`
-            : 'Claim a username so friends can find and challenge you:';
+            ? `"${escapeHTML(displayName)}" is already taken. Pick another to challenge friends directly.`
+            : 'Claim a username so friends can find and challenge you.';
 
         // A username claimed here is tied to this browser's anonymous account,
         // which doesn't roam across devices — a returning player who already
@@ -3214,12 +3240,12 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         // up as an invisible second identity that can't see challenges sent
         // to their real username.
         const signInNote = !isUserSignedIn()
-            ? `<p class="text-xs text-slate-500 mb-3 text-left">Already have an account? <span id="claim-signin-link" class="text-green-600 hover:underline cursor-pointer font-semibold">Sign in</span> instead.</p>`
+            ? `<p class="text-sm text-slate-500 mb-3 text-left">Already have an account? <span id="claim-signin-link" class="text-green-600 hover:underline cursor-pointer font-semibold">Sign in</span> instead.</p>`
             : '';
 
         sectionEl.innerHTML = `
             <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5 text-left">Your username</label>
-            <p class="text-xs text-slate-500 mb-2 text-left">${takenNote}</p>
+            <p class="text-sm text-slate-500 mb-2 text-left">${takenNote}</p>
             ${signInNote}
             <div class="flex gap-2">
                 <input id="claim-username-input" type="text" maxlength="15" placeholder="Pick a username"
@@ -3351,8 +3377,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         await _createAndShareChallenge(btn, resultEl);
     }
 
-    async function renderMyChallenges(container) {
-        container.style.maxHeight = '70dvh';
+    async function renderMyChallengesContent(container) {
+        container.style.maxHeight = '65dvh';
         container.style.display = 'flex';
         container.style.flexDirection = 'column';
         container.style.overflow = 'hidden';
@@ -3366,26 +3392,10 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             : '';
 
         container.innerHTML = `
-            <div class="flex items-center mb-2 flex-shrink-0">
-                <button id="my-challenges-back" class="text-slate-400 hover:text-slate-700 mr-3">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
-                </button>
-                <h2 class="text-lg font-bold text-slate-800">My Challenges</h2>
-                <button id="close-challenge-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800 ml-auto">&times;</button>
-            </div>
             ${recordLine}
             <div id="challenges-list" class="overflow-y-auto flex flex-col gap-2 pr-0.5" style="flex:1;min-height:0">
                 <div class="flex justify-center py-4"><svg class="animate-spin h-6 w-6 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>
             </div>`;
-
-        document.getElementById('my-challenges-back').onclick = () => {
-            container.style.maxHeight = '';
-            container.style.display = '';
-            container.style.flexDirection = '';
-            container.style.overflow = '';
-            renderCreateChallenge(container);
-        };
-        document.getElementById('close-challenge-modal').onclick = () => document.getElementById('account-modal').classList.add('hidden');
 
         const listEl = document.getElementById('challenges-list');
 
@@ -3498,14 +3508,10 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             });
             listEl.querySelectorAll('.challenge-rematch-btn').forEach(btn => {
                 btn.onclick = async () => {
-                    container.style.maxHeight = '';
-                    container.style.display = '';
-                    container.style.flexDirection = '';
-                    container.style.overflow = '';
                     // A rematch targets the same opponent so it lands in their
                     // incoming list; fall back to the create screen if we somehow
                     // don't know who they are.
-                    if (!btn.dataset.touid) { renderCreateChallenge(container); return; }
+                    if (!btn.dataset.touid) { renderChallengeShell(document.getElementById('account-modal-content'), 'create'); return; }
                     btn.disabled = true;
                     try {
                         const created = await createOrReuseRematch(btn.dataset.touid, btn.dataset.toname || 'A friend');
@@ -3523,7 +3529,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         if (btn.dataset.action === 'decline') await declineChallenge(btn.dataset.id);
                         else if (btn.dataset.action === 'revoke') await revokeChallenge(btn.dataset.id);
                         else hideChallengeLocally(btn.dataset.id);
-                        renderMyChallenges(container);
+                        renderChallengeShell(document.getElementById('account-modal-content'), 'mine');
                     } catch(e) {
                         console.error('Failed to remove challenge:', e);
                         btn.disabled = false;
@@ -5254,14 +5260,14 @@ function getTileCenter(tile) {
             <button id="play-again-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">
                 ${rocketIcon} Play Again
             </button>
-            <button id="endgame-challenge-btn" class="bg-blue-500 hover:bg-blue-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">
+            <button id="endgame-challenge-btn" class="bg-green-600 hover:bg-green-700 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">
                 ${challengeIcon} Challenge a Friend
             </button>
         </div>
 
         <div class="grid grid-cols-3 gap-2 mt-4">
             <button id="endgame-leaderboard-button" class="bg-white border border-slate-200 hover:bg-slate-50 rounded-xl p-2 flex flex-col items-center justify-center gap-1 transition-colors">
-                <span class="text-green-500">${leaderboardIcon}</span>
+                <span class="text-amber-500">${leaderboardIcon}</span>
                 <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Leaderboard</span>
             </button>
             <button id="endgame-stats-button" class="bg-white border border-slate-200 hover:bg-slate-50 rounded-xl p-2 flex flex-col items-center justify-center gap-1 transition-colors">
