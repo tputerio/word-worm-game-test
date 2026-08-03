@@ -7,11 +7,26 @@
     import { getAnalytics, logEvent, setUserId } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-analytics.js";
     
     // --- Config ---
-    // True only inside the Capacitor iOS shell, never on the website. Used to
-    // gate native-only behavior (Firebase init workarounds, app-like styling)
-    // so the web build is never affected.
+    // True only inside the Capacitor iOS shell, never on the website. Still
+    // used to gate genuinely native-only behavior (Firebase init
+    // workarounds below). The "capacitor-native" CSS class, on the other
+    // hand, is now applied unconditionally — the app-style home screen
+    // (background art, flattened welcome card, floating tab bar) is the
+    // design for both the website and the iOS shell, so both need the same
+    // class rather than forking into two parallel rule sets.
     const isCapacitorApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
-    if (isCapacitorApp) document.documentElement.classList.add('capacitor-native');
+    document.documentElement.classList.add('capacitor-native');
+    // viewport-fit=cover opts into edge-to-edge drawing behind the OS/browser
+    // chrome, compensated for elsewhere via env(safe-area-inset-*) padding.
+    // Only add it inside the iOS shell, which actually needs that
+    // compensation for the notch/Dynamic Island/home indicator — on the
+    // website it isn't paired with real safe-area insets and just causes
+    // some mobile browsers to draw their own UI over the page instead of
+    // beside it. See index.html's viewport meta tag for the full story.
+    if (isCapacitorApp) {
+        const viewportMeta = document.querySelector('meta[name="viewport"]');
+        if (viewportMeta) viewportMeta.setAttribute('content', viewportMeta.content + ', viewport-fit=cover');
+    }
     const [GRID_SIZE, GRID_COLS, GAME_TIME] = [16, 4, 60];
     const letterConfig={'A':{p:1},'B':{p:3},'C':{p:3},'D':{p:2},'E':{p:1},'F':{p:4},'G':{p:2},'H':{p:4},'I':{p:1},'J':{p:8},'K':{p:5},'L':{p:1},'M':{p:3},'N':{p:1},'O':{p:1},'P':{p:3},'Q':{p:10},'R':{p:1},'S':{p:1},'T':{p:1},'U':{p:1},'V':{p:4},'W':{p:4},'X':{p:8},'Y':{p:4},'Z':{p:10}};
     const VOWELS = ['A', 'E', 'I', 'O', 'U'];
@@ -233,7 +248,7 @@
     function main() {
         sweepStaleDailyKeys();
         setupEventListeners();
-        if (isCapacitorApp) setupNativeTabBar();
+        setupNativeTabBar();
         topLeftDisplayEl.innerHTML = `<div class="text-xs font-bold text-slate-500 uppercase tracking-wider">High</div><div id="high-score" class="text-3xl font-black text-slate-400">0</div>`;
         if (pendingChallengeId) {
             showChallengeAcceptScreen(pendingChallengeId);
@@ -798,7 +813,7 @@ function showGameMessage(message, type = 'info', startTile = null) {
     }
 }
 
-    // Native home screen's exact "#N" daily rank stats. dailyScores (Quick
+    // Home screen's exact "#N" daily rank stats. dailyScores (Quick
     // Play) and dailyPuzzleScores (Daily Puzzle) hold one best-score doc per
     // player per day — rank is "how many players beat my score, plus one,"
     // which stays cheap at any scale since getCountFromServer is billed per
@@ -825,12 +840,11 @@ function showGameMessage(message, type = 'info', startTile = null) {
         if (puzzleEl) puzzleEl.textContent = puzzleRank ? `#${puzzleRank}` : '—';
     }
 
-    // Persistent bottom tab bar (native only). Hidden during gameplay by
-    // whichever startGame() branch sets gameContentEl visible; shown again
-    // by showWelcomeScreen(), which every "return to home" path already
-    // calls, so that one hook covers all of them.
+    // Persistent bottom tab bar (web + native both). Hidden during gameplay
+    // by whichever startGame() branch sets gameContentEl visible; shown
+    // again by showWelcomeScreen(), which every "return to home" path
+    // already calls, so that one hook covers all of them.
     function setNativeTabBarVisible(visible) {
-        if (!isCapacitorApp) return;
         const tabBar = document.getElementById('bottom-tab-bar');
         if (tabBar) tabBar.style.display = visible ? '' : 'none';
     }
@@ -862,20 +876,27 @@ function showGameMessage(message, type = 'info', startTile = null) {
             leaderboardModal.classList.add('hidden');
             statsModal.classList.add('hidden');
             document.getElementById('settings-modal').classList.add('hidden');
+            document.getElementById('instructions-modal').classList.add('hidden');
         };
-        document.getElementById('tab-home').onclick = () => {
-            hideOtherOverlays();
-            showWelcomeScreen();
-        };
+        // No Home tab — the bar only holds the 4 secondary destinations, so
+        // returning to the welcome screen happens via each page's own close
+        // (×) button, same as the tab bar's own leftover "active" state:
+        // setActiveNativeTab('home') below just clears every button's
+        // highlight since no button carries data-tab="home" anymore.
         document.getElementById('tab-leaderboard').onclick = () => {
             hideOtherOverlays();
             showLeaderboardModal();
             setActiveNativeTab('leaderboard');
         };
-        document.getElementById('tab-profile').onclick = () => {
+        document.getElementById('tab-stats').onclick = () => {
             hideOtherOverlays();
-            showProfileModal('profile');
-            setActiveNativeTab('profile');
+            showProfileModal('stats');
+            setActiveNativeTab('stats');
+        };
+        document.getElementById('tab-howtoplay').onclick = () => {
+            hideOtherOverlays();
+            showHowToPlayModal();
+            setActiveNativeTab('howtoplay');
         };
         document.getElementById('tab-settings').onclick = () => {
             hideOtherOverlays();
@@ -935,12 +956,12 @@ function showGameMessage(message, type = 'info', startTile = null) {
             if (!playStreak || playStreak === 0) {
                 welcomeStreakEl.style.display = 'none';
                 if (streakFlameEl) streakFlameEl.style.color = '#94a3b8';
-                if (streakLabelEl) { streakLabelEl.textContent = 'Start a streak!'; streakLabelEl.style.fontSize = isCapacitorApp ? '16px' : '8px'; }
+                if (streakLabelEl) { streakLabelEl.textContent = 'Start a streak!'; streakLabelEl.style.fontSize = '13px'; }
             } else {
                 welcomeStreakEl.textContent = playStreak;
                 welcomeStreakEl.style.display = '';
                 if (streakFlameEl) streakFlameEl.style.color = '#f97316';
-                if (streakLabelEl) { streakLabelEl.textContent = 'Day Streak'; streakLabelEl.style.fontSize = isCapacitorApp ? '16px' : '10px'; }
+                if (streakLabelEl) { streakLabelEl.textContent = 'Day Streak'; streakLabelEl.style.fontSize = '14px'; }
             }
         }
 
@@ -2340,136 +2361,70 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 }
 
    function showWelcomeScreen() {
-    const gearIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path fill-rule="evenodd" d="M11.078 2.25c-.917 0-1.699.663-1.85 1.567L9.05 4.889c-.02.12-.115.26-.297.348a7.493 7.493 0 0 0-.986.57c-.166.115-.334.126-.45.083L6.3 5.508a1.875 1.875 0 0 0-2.282.819l-.922 1.597a1.875 1.875 0 0 0 .432 2.385l.84.692c.095.078.17.229.154.43a7.598 7.598 0 0 0 0 1.139c.015.2-.059.352-.153.43l-.841.692a1.875 1.875 0 0 0-.432 2.385l.922 1.597a1.875 1.875 0 0 0 2.282.818l1.019-.382c.115-.043.283-.031.45.082.312.214.641.405.985.57.182.088.277.228.297.35l.178 1.071c.151.904.933 1.567 1.85 1.567h1.844c.916 0 1.699-.663 1.85-1.567l.178-1.072c.02-.12.114-.26.297-.349.344-.165.673-.356.985-.57.167-.114.335-.125.45-.082l1.02.382a1.875 1.875 0 0 0 2.28-.819l.923-1.597a1.875 1.875 0 0 0-.432-2.385l-.84-.692c-.095-.078-.17-.229-.154-.43a7.614 7.614 0 0 0 0-1.139c-.016-.2.059-.352.153-.43l.84-.692c.708-.582.891-1.59.433-2.385l-.922-1.597a1.875 1.875 0 0 0-2.282-.818l-1.02.382c-.114.043-.282.031-.449-.083a7.49 7.49 0 0 0-.985-.57c-.183-.087-.277-.227-.297-.348l-.179-1.072a1.875 1.875 0 0 0-1.85-1.567h-1.843ZM12 15.75a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5Z" clip-rule="evenodd" /></svg>`;
     const rocketIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg>`;
     const calendarIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 flex-shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M14.25 6.087c0-.355.186-.676.401-.959.221-.29.349-.634.349-1.003 0-1.036-1.007-1.875-2.25-1.875c-1.243 0-2.25.84-2.25 1.875 0 .369.128.713.349 1.003.215.283.401.604.401.959v0a.64.64 0 0 1-.657.643 48.39 48.39 0 0 1-4.163-.3c.186 1.613.293 3.25.315 4.907a.656.656 0 0 1-.658.663v0c-.355 0-.676-.186-.959-.401a1.647 1.647 0 0 0-1.003-.349c-1.036 0-1.875 1.007-1.875 2.25s.84 2.25 1.875 2.25c.369 0 .713-.128 1.003-.349.283-.215.604-.401.959-.401v0c.31 0 .555.26.532.57a48.039 48.039 0 0 1-.642 5.056c1.518.19 3.058.309 4.616.354a.64.64 0 0 0 .657-.643v0c0-.355-.186-.676-.401-.959a1.647 1.647 0 0 1-.349-1.003c0-1.035 1.008-1.875 2.25-1.875 1.243 0 2.25.84 2.25 1.875 0 .369-.128.713-.349 1.003-.215.283-.401.604-.401.959v0c0 .333.277.599.61.58a48.1 48.1 0 0 0 5.427-.63 48.05 48.05 0 0 0 .582-4.717.532.532 0 0 0-.533-.57v0c-.355 0-.676.186-.959.401-.29.221-.634.349-1.003.349-1.036 0-1.875-1.007-1.875-2.25s.84-2.25 1.875-2.25c.37 0 .713.128 1.003.349.283.215.604.401.959.401v0a.656.656 0 0 0 .658-.663 48.422 48.422 0 0 0-.37-5.36c-1.886.342-3.81.574-5.766.689a.578.578 0 0 1-.61-.58v0Z" /></svg>`;
     const peopleIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 flex-shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>`;
-    const trophyIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8"><path stroke-linecap="round" stroke-linejoin="round" d="m6.115 5.19.319 1.913A6 6 0 0 0 8.11 10.36L9.75 12l-.387.775c-.217.433-.132.956.21 1.298l1.348 1.348c.21.21.329.497.329.795v1.089c0 .426.24.815.622 1.006l.153.076c.433.217.956.132 1.298-.21l.723-.723a8.7 8.7 0 0 0 2.288-4.042 1.087 1.087 0 0 0-.358-1.099l-1.33-1.108c-.251-.21-.582-.299-.905-.245l-1.17.195a1.125 1.125 0 0 1-.98-.314l-.295-.295a1.125 1.125 0 0 1 0-1.591l.13-.132a1.125 1.125 0 0 1 1.3-.21l.603.302a.809.809 0 0 0 1.086-1.086L14.25 7.5l1.256-.837a4.5 4.5 0 0 0 1.528-1.732l.146-.292M6.115 5.19A9 9 0 1 0 17.18 4.64M6.115 5.19A8.965 8.965 0 0 1 12 3c1.929 0 3.716.607 5.18 1.64" /></svg>`;
     const flameIconSvg = `<svg id="welcome-streak-flame" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6" style="color:#94a3b8;"><path fill-rule="evenodd" d="M12.963 2.286a.75.75 0 0 0-1.071-.136 9.742 9.742 0 0 0-3.539 6.176 7.547 7.547 0 0 1-1.705-1.715.75.75 0 0 0-1.152-.082A9 9 0 1 0 15.68 4.534a7.46 7.46 0 0 1-2.717-2.248ZM15.75 14.25a3.75 3.75 0 1 1-7.313-1.172c.628.465 1.35.81 2.133 1a5.99 5.99 0 0 1 1.925-3.546 3.75 3.75 0 0 1 3.255 3.718Z" clip-rule="evenodd" /></svg>`;
+    const starIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path fill-rule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.007 5.404.433c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.433 2.082-5.007Z" clip-rule="evenodd" /></svg>`;
+    const trendUpIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" /></svg>`;
+    const boltIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path fill-rule="evenodd" d="M14.615 1.595a.75.75 0 0 1 .359.852L12.982 9.75h7.268a.75.75 0 0 1 .548 1.262l-10.5 11.25a.75.75 0 0 1-1.272-.71l1.992-7.302H3.75a.75.75 0 0 1-.548-1.262l10.5-11.25a.75.75 0 0 1 .913-.143Z" clip-rule="evenodd" /></svg>`;
 
-    const webLayout = `
-        <div id="welcome-card" class="bg-white rounded-2xl shadow-lg p-6 text-center">
-            <div id="welcome-header" class="flex items-center justify-between mb-1">
-                <div id="welcome-header-spacer" class="w-8 h-8"></div>
-                <h1 id="welcome-title" class="flex items-center text-3xl font-black text-slate-800 tracking-tighter">
-                    <img id="welcome-logo" src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-11 h-11 mr-2" width="44" height="44">
-                    <span>Word Worm</span>
-                </h1>
-                <button id="settings-gear-btn" class="p-1 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors">${gearIconSvg.replace('w-5 h-5', 'w-6 h-6')}</button>
-            </div>
-            <p id="player-greeting" class="text-slate-500 text-sm mb-3 font-medium text-center"></p>
-
-<div id="how-to-play-container" class="bg-slate-100 p-3 rounded-lg flex flex-col w-full"></div>
-
-     <div class="mt-4 flex flex-col gap-3">
-    <button id="mode-timed-btn" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold h-11 px-4 rounded-xl text-base flex items-center justify-center transition-colors gap-2">
-        ${rocketIconSvg.replace('w-4 h-4', 'w-5 h-5')}
-        <span>Play</span>
-    </button>
-    <div class="grid grid-cols-2 gap-3">
-        <button id="mode-daily-btn" class="flex items-center justify-center gap-2 bg-white border-2 text-blue-600 font-bold text-sm h-10 rounded-lg hover:bg-blue-50 transition-colors" style="border-color:#3b82f6;">
-            ${calendarIconSvg}
-            Daily Puzzle<span id="daily-mode-badge" style="display:none;margin-left:4px;font-size:0.7rem;opacity:0.8;">✓</span>
-        </button>
-        <button id="mode-challenge-btn" class="flex items-center justify-center gap-2 bg-white border-2 text-slate-600 font-bold h-10 rounded-lg hover:bg-slate-50 transition-colors" style="border-color:#64748b;font-size:0.8rem;">
-            ${peopleIconSvg}
-            Challenge a Friend
-        </button>
-    </div>
-</div>
-
-            <div class="bg-white rounded-xl mt-4 overflow-hidden border border-slate-200">
-                <div class="grid grid-cols-3 text-center">
-                    <div class="p-2 flex flex-col items-center justify-center">
-                        <div class="h-7 flex items-center justify-center gap-1">
-                            ${flameIconSvg.replace('w-6 h-6', 'w-5 h-5')}
-                            <span id="welcome-streak" class="text-xl font-black" style="color:#f97316;display:none;">0</span>
-                        </div>
-                        <div id="welcome-streak-label" class="font-bold text-slate-500 uppercase tracking-wider" style="font-size:8px;white-space:nowrap;">Start a streak!</div>
-                    </div>
-
-                    <div class="p-2 flex flex-col items-center justify-center border-l border-r border-slate-200">
-                        <div class="h-7 flex items-center justify-center">
-                            <span id="welcome-high-score" class="text-xl font-black text-slate-800">${lastKnownHighScore.toLocaleString()}</span>
-                        </div>
-                        <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Your High</div>
-                    </div>
-
-                    <a href="#" id="welcome-leaderboard-button" class="p-2 flex flex-col items-center justify-center hover:bg-slate-50 transition-colors">
-                        <div class="h-7 flex items-center justify-center text-green-500">${trophyIconSvg.replace('w-8 h-8', 'w-6 h-6')}</div>
-                        <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Leaderboard</div>
-                    </a>
-                </div>
-            </div>
-
-        </div>
-    `;
-
-    // Card-based native home screen. Same functional elements (button IDs,
-    // greeting, streak) as the web layout above, just restructured — the
-    // event wiring below works unchanged for either. Daily-rank stats from
-    // the reference mockup aren't shown: those need a fresh Firestore count
-    // query per load (fine as a one-off at end-of-game, too costly to run
-    // every time the home screen opens), so the stats row uses lifetime
-    // totals already fetched for the streak/high-score numbers instead.
-    // The animated tutorial grid preview (#how-to-play-container) is
-    // dropped in favor of the mode cards, which explain themselves.
+    // Same home screen markup for both the website and the iOS shell — the
+    // "app-style" design (background art, flattened welcome card, floating
+    // tab bar) applies everywhere now, gated by the always-on
+    // "capacitor-native" CSS class rather than forking into a separate web
+    // layout. Daily-rank stats from the reference mockup aren't shown:
+    // those need a fresh Firestore count query per load (fine as a
+    // one-off at end-of-game, too costly to run every time the home
+    // screen opens), so the stats row uses lifetime totals already
+    // fetched for the streak/high-score numbers instead.
     const nativeLayout = `
         <div id="welcome-card">
             <div id="welcome-header" class="flex items-center justify-center px-4">
-                <h1 id="welcome-title" class="flex items-center text-3xl font-black text-slate-800 tracking-tighter">
-                    <img id="welcome-logo" src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-16 h-16 mr-2" width="64" height="64">
-                    <span>Word Worm</span>
-                </h1>
+                <img id="welcome-logo" src="assets/word-worm-home-screen-logo-new.png" alt="Word Worm" class="h-auto" width="144" height="124">
             </div>
-            <p id="player-greeting" class="text-slate-500 text-sm mt-1 mb-4 font-medium text-center"></p>
 
-            <div class="px-4 space-y-3 pb-6">
-                <div class="bg-white rounded-2xl shadow-sm p-4 flex items-center justify-between">
-                    <div class="flex items-center gap-2">
-                        ${flameIconSvg}
-                        <span class="font-bold text-slate-800 text-lg"><span id="welcome-streak" style="display:none;">0</span> <span id="welcome-streak-label">Start a streak!</span></span>
+            <div class="px-4 mt-2 pb-4">
+                <p id="player-greeting" class="text-slate-700 text-sm font-semibold text-center mb-2"></p>
+
+                <div class="bg-white rounded-2xl shadow-sm p-3">
+                    <div class="flex items-center gap-3">
+                        <div class="flex items-center gap-1.5 flex-shrink-0">
+                            ${flameIconSvg.replace('w-6 h-6', 'w-5 h-5')}
+                            <span class="font-black text-slate-800 text-sm whitespace-nowrap"><span id="welcome-streak" style="display:none;">0</span> <span id="welcome-streak-label">Start a streak!</span></span>
+                        </div>
+                        <div id="welcome-streak-dots" class="flex items-center justify-between flex-1 min-w-0"></div>
                     </div>
-                    <div id="welcome-streak-dots" class="flex items-center gap-2"></div>
                 </div>
 
-                <div class="bg-green-500 rounded-2xl p-5 text-white flex items-center justify-between gap-2 overflow-hidden">
-                    <div class="min-w-0">
-                        <div class="flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider opacity-90">${rocketIconSvg} Quick Play</div>
-                        <p class="text-sm opacity-90 mt-1 mb-4">Unlimited 60-second games</p>
-                        <button id="mode-timed-btn" class="bg-white text-green-600 font-bold px-5 py-2.5 rounded-xl text-sm">Play Now</button>
-                    </div>
-                    <img src="assets/word-worm-quick-play-icon.png" alt="" class="w-20 h-20 flex-shrink-0 -mr-2" width="80" height="80">
-                </div>
+                <button id="mode-timed-btn" class="mode-btn w-full bg-green-600 hover:bg-green-700 text-white font-black uppercase tracking-wide text-base rounded-2xl flex items-center justify-center gap-2 transition-colors mb-2 border-2 border-green-800 shadow-[0_4px_0_rgba(0,0,0,0.25),0_8px_16px_rgba(0,0,0,0.2)]">
+                    ${rocketIconSvg.replace('w-4 h-4', 'w-5 h-5')}
+                    <span>Quick Play</span>
+                </button>
 
-                <div class="bg-blue-100 rounded-2xl p-5 flex items-center justify-between gap-2 overflow-hidden">
-                    <div class="min-w-0">
-                        <div class="flex items-center gap-1.5 text-sm font-bold text-blue-600 uppercase tracking-wider">${calendarIconSvg} Today's Puzzle</div>
-                        <p class="text-sm text-slate-500 mt-1 mb-4">New puzzle daily, untimed</p>
-                        <button id="mode-daily-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition-colors">Play Daily Puzzle<span id="daily-mode-badge" style="display:none;margin-left:4px;">✓</span></button>
-                    </div>
-                    <div class="text-blue-500 flex-shrink-0">${calendarIconSvg.replace('w-4 h-4', 'w-14 h-14').replace('stroke-width="2"', 'stroke-width="1"')}</div>
-                </div>
+                <button id="mode-daily-btn" class="mode-btn w-full bg-blue-500 hover:bg-blue-600 text-white font-black uppercase tracking-wide text-base rounded-2xl flex items-center justify-center gap-2 transition-colors mb-2 border-2 border-blue-700 shadow-[0_4px_0_rgba(0,0,0,0.25),0_8px_16px_rgba(0,0,0,0.2)]">
+                    ${calendarIconSvg.replace('w-4 h-4', 'w-5 h-5')}
+                    <span>Daily Puzzle</span><span id="daily-mode-badge" style="display:none;margin-left:2px;">✓</span>
+                </button>
 
-                <div class="bg-teal-100 rounded-2xl p-5 flex items-center justify-between gap-2 overflow-hidden">
-                    <div class="min-w-0">
-                        <div class="flex items-center gap-1.5 text-sm font-bold text-teal-700 uppercase tracking-wider">${peopleIconSvg} Challenge Friends</div>
-                        <p class="text-sm text-slate-500 mt-1 mb-4">Same board, 60 seconds</p>
-                        <button id="mode-challenge-btn" class="bg-teal-600 hover:bg-teal-700 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition-colors">Challenge</button>
-                    </div>
-                    <div class="text-teal-600 flex-shrink-0">${peopleIconSvg.replace('w-4 h-4', 'w-14 h-14').replace('stroke-width="1.5"', 'stroke-width="1"')}</div>
-                </div>
+                <button id="mode-challenge-btn" class="mode-btn w-full bg-green-500 hover:bg-green-600 text-white font-black uppercase tracking-wide text-base rounded-2xl flex items-center justify-center gap-2 transition-colors border-2 border-green-700 shadow-[0_4px_0_rgba(0,0,0,0.25),0_8px_16px_rgba(0,0,0,0.2)]">
+                    ${peopleIconSvg.replace('w-4 h-4', 'w-5 h-5')}
+                    <span>Challenge Friends</span>
+                </button>
 
                 <div class="grid grid-cols-3 gap-2 text-center">
-                    <div class="bg-white rounded-xl p-2.5 shadow-sm">
+                    <div class="bg-white rounded-xl p-2 shadow-sm">
+                        <div class="flex justify-center text-amber-400 mb-0.5">${starIconSvg}</div>
                         <div id="welcome-high-score" class="font-black text-lg text-slate-800">${lastKnownHighScore.toLocaleString()}</div>
                         <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">High Score</div>
                     </div>
-                    <div class="bg-white rounded-xl p-2.5 shadow-sm">
+                    <div class="bg-white rounded-xl p-2 shadow-sm">
+                        <div class="flex justify-center text-green-500 mb-0.5">${trendUpIconSvg}</div>
                         <div id="welcome-puzzle-rank" class="font-black text-lg text-slate-800">—</div>
-                        <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Puzzle Daily Rank</div>
+                        <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Daily Rank</div>
                     </div>
-                    <div class="bg-white rounded-xl p-2.5 shadow-sm">
+                    <div class="bg-white rounded-xl p-2 shadow-sm">
+                        <div class="flex justify-center text-purple-500 mb-0.5">${boltIconSvg}</div>
                         <div id="welcome-quickplay-rank" class="font-black text-lg text-slate-800">—</div>
                         <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Quick Play Rank</div>
                     </div>
@@ -2478,34 +2433,24 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         </div>
     `;
 
-    modalContent.innerHTML = isCapacitorApp ? nativeLayout : webLayout;
+    modalContent.innerHTML = nativeLayout;
 
     menuContainer.classList.add('hidden');
     messageModal.classList.remove('hidden');
     setNativeTabBarVisible(true);
     setActiveNativeTab('home');
 
-    // Native has no in-card leaderboard button or settings gear — both
-    // moved to the persistent bottom tab bar (wired separately, once, in
-    // setupNativeTabBar rather than here, since the tab bar isn't part of
-    // this regenerated modalContent HTML).
-    const welcomeLeaderboardBtn = document.getElementById('welcome-leaderboard-button');
-    if (welcomeLeaderboardBtn) welcomeLeaderboardBtn.onclick = (e) => {
-        e.preventDefault();
-        showLeaderboardModal();
-    };
-
-    const settingsGearBtn = document.getElementById('settings-gear-btn');
-    if (settingsGearBtn) settingsGearBtn.onclick = () => {
-        document.getElementById('settings-modal').classList.remove('hidden');
-    };
+    // Leaderboard/Settings access lives entirely in the persistent bottom
+    // tab bar now (wired separately, once, in setupNativeTabBar) — there's
+    // no in-card leaderboard button or settings gear in this layout.
     document.getElementById('close-settings-modal').onclick = () => {
         document.getElementById('settings-modal').classList.add('hidden');
-        if (isCapacitorApp) setActiveNativeTab('home');
+        setActiveNativeTab('home');
     };
     document.getElementById('settings-modal-stats').onclick = () => {
         document.getElementById('settings-modal').classList.add('hidden');
         showProfileModal('stats');
+        setActiveNativeTab('stats');
     };
     document.getElementById('settings-modal-profile').onclick = () => {
         document.getElementById('settings-modal').classList.add('hidden');
@@ -2514,11 +2459,10 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     document.getElementById('settings-modal-how-to-play').onclick = () => {
         document.getElementById('settings-modal').classList.add('hidden');
         showHowToPlayModal();
+        setActiveNativeTab('howtoplay');
     };
 
-    setupTutorial();
-    menuContainer.classList.add('hidden');
-    
+
     document.getElementById('mode-timed-btn').onclick = () => startGame(false, 'standard');
     document.getElementById('mode-challenge-btn').onclick = () => showChallengeFriendModal();
     document.getElementById('mode-daily-btn').onclick = () => startGame(false, 'daily');
@@ -2532,7 +2476,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     // linger on screen while the new anonymous sign-in is still in flight.
     if (userId) {
         fetchPlayerStats(userId);
-        if (isCapacitorApp) fetchHomeScreenDailyRanks(userId);
+        fetchHomeScreenDailyRanks(userId);
     } else {
         renderPlayerStatsUI('Anonymous', 0);
     }
@@ -4393,7 +4337,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 <h2 class="text-2xl font-bold text-slate-800 flex items-center">
                     Leaderboard 
                     <span class="inline-block w-6 h-6 ml-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="m6.115 5.19.319 1.913A6 6 0 0 0 8.11 10.36L9.75 12l-.387.775c-.217.433-.132.956.21 1.298l1.348 1.348c.21.21.329.497.329.795v1.089c0 .426.24.815.622 1.006l.153.076c.433.217.956.132 1.298-.21l.723-.723a8.7 8.7 0 0 0 2.288-4.042 1.087 1.087 0 0 0-.358-1.099l-1.33-1.108c-.251-.21-.582-.299-.905-.245l-1.17.195a1.125 1.125 0 0 1-.98-.314l-.295-.295a1.125 1.125 0 0 1 0-1.591l.13-.132a1.125 1.125 0 0 1 1.3-.21l.603.302a.809.809 0 0 0 1.086-1.086L14.25 7.5l1.256-.837a4.5 4.5 0 0 0 1.528-1.732l.146-.292M6.115 5.19A9 9 0 1 0 17.18 4.64M6.115 5.19A8.965 8.965 0 0 1 12 3c1.929 0 3.716.607 5.18 1.64" /></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg>
                     </span>
                 </h2>
                 <button id="close-leaderboard-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
@@ -4444,7 +4388,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     
     document.getElementById('close-leaderboard-button').onclick = () => {
         leaderboardModal.classList.add('hidden');
-        if (isCapacitorApp) setActiveNativeTab('home');
+        setActiveNativeTab('home');
     };
 }
 
@@ -4471,7 +4415,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             const attachShared = () => {
                 document.getElementById('close-profile-btn').onclick = () => {
                     statsModal.classList.add('hidden');
-                    if (isCapacitorApp) setActiveNativeTab('home');
+                    setActiveNativeTab('home');
                 };
             };
 
@@ -5275,7 +5219,7 @@ function getTileCenter(tile) {
 
     const rocketIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg>`;
     const challengeIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>`;
-    const leaderboardIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="m6.115 5.19.319 1.913A6 6 0 0 0 8.11 10.36L9.75 12l-.387.775c-.217.433-.132.956.21 1.298l1.348 1.348c.21.21.329.497.329.795v1.089c0 .426.24.815.622 1.006l.153.076c.433.217.956.132 1.298-.21l.723-.723a8.7 8.7 0 0 0 2.288-4.042 1.087 1.087 0 0 0-.358-1.099l-1.33-1.108c-.251-.21-.582-.299-.905-.245l-1.17.195a1.125 1.125 0 0 1-.98-.314l-.295-.295a1.125 1.125 0 0 1 0-1.591l.13-.132a1.125 1.125 0 0 1 1.3-.21l.603.302a.809.809 0 0 0 1.086-1.086L14.25 7.5l1.256-.837a4.5 4.5 0 0 0 1.528-1.732l.146-.292M6.115 5.19A9 9 0 1 0 17.18 4.64M6.115 5.19A8.965 8.965 0 0 1 12 3c1.929 0 3.716.607 5.18 1.64" /></svg>`;
+    const leaderboardIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg>`;
     const statsIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" /></svg>`;
     const homeIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg>`;
 
@@ -5369,136 +5313,6 @@ function getTileCenter(tile) {
 }
     
     
-   function setupTutorial() {
-    const container = document.getElementById('how-to-play-container');
-    if (!container) return;
-
-    container.innerHTML = `
-        <div class="flex flex-col items-center">
-            <div id="tutorial-word-builder" class="h-7 p-1 bg-white rounded-lg shadow-inner w-32 flex items-center justify-center space-x-1 mb-2"></div>
-            <div id="tutorial-grid" class="grid grid-cols-4 gap-1 w-40 h-40 relative"></div>
-        </div>
-    `;
-
-    const gridEl = document.getElementById('tutorial-grid');
-    const wordBuilderEl = document.getElementById('tutorial-word-builder');
-
-    const initialLetters = ['W', 'A', 'R', 'D', 'O', 'R', 'D', 'E', 'B', 'N', 'M', 'I', 'S', 'L', 'P', 'T'];
-    const bonusTiles = [
-        { index: 5, type: 'TL', label: 'TL' },
-        { index: 15, type: 'DW', label: 'DW' },
-        { index: 12, type: 'Time', label: '+5s' }
-    ];
-
-    function setupGrid(letters) {
-        gridEl.innerHTML = '';
-        letters.forEach((letter, i) => {
-            const tile = document.createElement('div');
-            const points = letterConfig[letter]?.p || 1;
-            tile.className = 'tut-tile';
-            tile.id = `tut-tile-${i}`;
-            tile.innerHTML = `<span>${letter}<sub>${points}</sub></span>`;
-            const bonus = bonusTiles.find(b => b.index === i);
-            if (bonus) {
-                tile.classList.add(`bonus-${bonus.type.toLowerCase()}-tut`);
-                const bonusLabel = document.createElement('div');
-                bonusLabel.className = 'bonus-label';
-                bonusLabel.textContent = bonus.label;
-                tile.appendChild(bonusLabel);
-            }
-            gridEl.appendChild(tile);
-        });
-    }
-
-    function createFlyingScore(points, container) {
-        const scoreEl = document.createElement('div');
-        scoreEl.className = 'flying-score-tut';
-        scoreEl.textContent = `+${points}`;
-        container.appendChild(scoreEl);
-        setTimeout(() => scoreEl.remove(), 1500);
-    }
-
-    function drawLine(startTile, endTile) {
-        const line = document.createElement('div');
-        line.className = 'line-segment';
-        const rect1 = startTile.getBoundingClientRect();
-        const rect2 = endTile.getBoundingClientRect();
-        const gridRect = gridEl.getBoundingClientRect();
-        const x1 = rect1.left + rect1.width / 2 - gridRect.left;
-        const y1 = rect1.top + rect1.height / 2 - gridRect.top;
-        const x2 = rect2.left + rect2.width / 2 - gridRect.left;
-        const y2 = rect2.top + rect2.height / 2 - gridRect.top;
-        const length = Math.sqrt((x2 - x1)**2 + (y2 - y1)**2);
-        const angle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
-        line.style.width = `${length}px`;
-        line.style.left = `${x1}px`;
-        line.style.top = `${y1 - 3}px`;
-        line.style.transform = `rotate(${angle}deg)`;
-        gridEl.appendChild(line);
-        setTimeout(() => { line.style.opacity = '1'; }, 10);
-    }
-
-    async function animateWord(sequence, score) {
-        for (let i = 0; i < sequence.length; i++) {
-            if (messageModal.classList.contains('hidden')) return false;
-            const step = sequence[i];
-            const tile = document.getElementById(`tut-tile-${step.index}`);
-            if (!tile) return false;
-            if (i > 0) {
-                const prevTile = document.getElementById(`tut-tile-${sequence[i-1].index}`);
-                if (!prevTile) return false;
-                drawLine(prevTile, tile);
-                await new Promise(r => setTimeout(r, 100));
-            }
-            tile.classList.add('highlight');
-            wordBuilderEl.innerHTML += `<span class="bg-white dark:bg-slate-300 text-blue-500 dark:text-blue-700 font-bold text-sm p-0.5 rounded-md shadow-sm">${step.letter}</span>`;
-            await new Promise(r => setTimeout(r, 600));
-        }
-        if (messageModal.classList.contains('hidden')) return false;
-        createFlyingScore(score, gridEl);
-        return true;
-    }
-
-    async function runAnimation() {
-        if (messageModal.classList.contains('hidden')) {
-            if (animationInterval) clearInterval(animationInterval);
-            return;
-        }
-
-        // WORD: W(0)→O(4)→R(5)→D(6)
-        wordBuilderEl.innerHTML = '';
-        gridEl.querySelectorAll('.line-segment').forEach(l => l.remove());
-        setupGrid(initialLetters);
-        const wordSeq = [
-            { index: 0, letter: 'W' }, { index: 4, letter: 'O' },
-            { index: 5, letter: 'R' }, { index: 6, letter: 'D' }
-        ];
-        const ok1 = await animateWord(wordSeq, 9);
-        if (!ok1) return;
-
-        await new Promise(r => setTimeout(r, 1200));
-        if (messageModal.classList.contains('hidden')) return;
-
-        // WORM: W(0)→O(4)→R(5)→M(10)
-        wordBuilderEl.innerHTML = '';
-        gridEl.querySelectorAll('.line-segment').forEach(l => l.remove());
-        setupGrid(initialLetters);
-        const wormSeq = [
-            { index: 0, letter: 'W' }, { index: 4, letter: 'O' },
-            { index: 5, letter: 'R' }, { index: 10, letter: 'M' }
-        ];
-        const ok2 = await animateWord(wormSeq, 13);
-        if (!ok2) return;
-
-        await new Promise(r => setTimeout(r, 1200));
-    }
-
-    if (animationInterval) clearInterval(animationInterval);
-    runAnimation();
-    // Total cycle: 2 words × (4 tiles × 700ms) + 2 pauses × 1200ms = ~8s
-    animationInterval = setInterval(runAnimation, 8000);
-
-}
 
    function showHowToPlayModal() {
         const modal = document.getElementById('instructions-modal');
@@ -5609,7 +5423,10 @@ function getTileCenter(tile) {
         }, { passive: true });
 
         modal.classList.remove('hidden');
-        document.getElementById('close-instructions-button').onclick = () => modal.classList.add('hidden');
+        document.getElementById('close-instructions-button').onclick = () => {
+            modal.classList.add('hidden');
+            setActiveNativeTab('home');
+        };
         document.getElementById('instructions-practice-button').onclick = () => {
             modal.classList.add('hidden');
             startGame(true);

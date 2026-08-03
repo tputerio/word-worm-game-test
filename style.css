@@ -345,9 +345,15 @@ html.dark #mode-dropdown-inner {
     box-shadow: 0 8px 24px rgba(0,0,0,0.4);
 }
 
-/* Home screen Daily Puzzle button: brighter blue for contrast on the dark card */
+/* Home screen Daily Puzzle button: brighter blue for contrast on the dark card.
+   Only applies to the web layout's white-card/blue-border button style — the
+   native layout's button is already a solid blue pill with white text, so
+   this would just wash it out there. The native override below (higher
+   specificity via the extra .capacitor-native class) restores solid colors. */
 html.dark #mode-daily-btn { color: #60a5fa !important; border-color: #60a5fa !important; }
 html.dark #mode-daily-btn:hover { background-color: #1e3a5f !important; }
+html.capacitor-native.dark #mode-daily-btn { color: #fff !important; border-color: transparent !important; }
+html.capacitor-native.dark #mode-daily-btn:hover { background-color: #2563eb !important; }
 
 /* Challenge results Rematch button. Plain CSS on the id rather than Tailwind
    utilities: dist/style.css is gitignored and can be deployed stale, which
@@ -372,11 +378,11 @@ html.capacitor-native {
     /* Content height of the bottom tab bar, excluding safe-area-inset-bottom
        — combine the two wherever a "tab" screen needs to reserve space so
        its content doesn't sit behind the bar. */
-    --native-tab-bar-height: 4.25rem;
+    --native-tab-bar-height: 4.75rem;
 }
 html.capacitor-native:not(.dark) body {
     background-color: #fff;
-    background-image: url('assets/word-worm-app-background.png');
+    background-image: url('assets/home-screen-background-light-new.png');
     background-repeat: no-repeat;
     background-position: top center;
     background-size: cover;
@@ -384,11 +390,23 @@ html.capacitor-native:not(.dark) body {
 }
 html.capacitor-native.dark body {
     background-color: #0f172a;
-    background-image: url('assets/word-worm-app-background-dark.png');
+    background-image: url('assets/home-screen-background-dark-new.png');
     background-repeat: no-repeat;
     background-position: top center;
     background-size: cover;
     background-attachment: fixed;
+}
+/* On a phone-width viewport (native shell, or the website on mobile)
+   "cover" is correct — it's already portrait-shaped like the art. Past
+   phone width (website on a desktop browser) "cover" would zoom/crop the
+   art brutally to fill a much wider viewport, so switch to fitting it to
+   the viewport height instead — same portrait image, letterboxed with the
+   plain background-color at the sides instead of stretched. */
+@media (min-width: 640px) {
+    html.capacitor-native:not(.dark) body,
+    html.capacitor-native.dark body {
+        background-size: auto 100%;
+    }
 }
 html.capacitor-native #message-modal {
     /* Its own bg-black/50 class would otherwise tint body's background
@@ -404,6 +422,20 @@ html.capacitor-native #message-modal {
     padding-top: max(calc(env(safe-area-inset-top) - 16px), 0px);
     padding-bottom: calc(var(--native-tab-bar-height) + env(safe-area-inset-bottom) + 1rem);
 }
+/* #message-modal centers its content vertically (items-center in
+   index.html) — fine for the short loading/error cards it also hosts, but
+   the home screen is tall and on a small phone (iPhone SE, or any phone
+   with the browser's own chrome eating into the viewport) it's taller than
+   the available height. A centered flex item that overflows its
+   scrollable container starts scrolled to show its middle, not its top —
+   so the page loads with the logo already clipped above the fold and the
+   tab bar clipped below, instead of a normal "scroll down to see more."
+   Scoped to just the home screen (the only #message-modal content with a
+   #welcome-card) via :has() so the short cards keep their nicer centered
+   look, where overflow was never a risk anyway. */
+html.capacitor-native #message-modal:has(#welcome-card) {
+    align-items: flex-start;
+}
 html.capacitor-native #gameplay-logo {
     width: 2.75rem;
     height: 2.75rem;
@@ -415,55 +447,39 @@ html.capacitor-native #welcome-card {
     box-shadow: none !important;
     border-radius: 0 !important;
 }
-/* Leaderboard/Profile/Settings: the outer #message-modal-style wrapper was
-   flattened already, but each one *also* wraps its actual content in a
-   small centered card (max-w-xs/max-w-sm + rounded + shadow) — with the
-   dark backdrop gone, that card just floats over the previous screen still
-   showing through around its edges, reading as a popup rather than a page.
-   Same !important reasoning as #welcome-card above (dark mode's shadow
-   rule is also !important). Scoped to these 3 modals' own content wrappers
-   specifically, not a blanket rule, so pause/account/end-game modals
-   elsewhere keep their intentional floating-dialog look. */
-html.capacitor-native #leaderboard-modal-content,
-html.capacitor-native #stats-modal-content {
-    max-width: none !important;
-    /* align-items:stretch on the parent (#leaderboard-modal/#stats-modal)
-       only stretches *this* div to full height — a plain block child of a
-       stretched block doesn't inherit that height automatically. Making
-       this a flex container too lets its own child (the actual visible
-       white card, targeted below) stretch to fill it in turn. */
-    display: flex !important;
+/* Fluid home-screen sizing. A fixed size (or even a two-state breakpoint)
+   either overflows on a short viewport — a small phone, or a normal phone
+   with a mobile browser's toolbar eating into it — or leaves an awkward
+   dead gap above the tab bar on a tall one. dvh (dynamic viewport height)
+   tracks the *actual* visible height live, including that toolbar
+   collapsing on scroll, so scaling key sizes off of it lets the layout
+   read as intentional at any height instead of snapping between two
+   presets. Only the few elements that dominate the overall height are
+   fluid; everything else (card padding, small gaps) stays fixed since it
+   barely moves the needle either way and fluid-sizing every property would
+   just be more to tune for no visible benefit. */
+html.capacitor-native #welcome-header {
+    padding-top: clamp(0.5rem, 3.5dvh, 2rem);
 }
-html.capacitor-native #leaderboard-modal-content > div,
-html.capacitor-native #stats-modal-content > div,
-html.capacitor-native #settings-modal > div {
-    max-width: none !important;
-    width: 100% !important;
-    box-shadow: none !important;
-    border-radius: 0 !important;
+html.capacitor-native #welcome-logo {
+    width: clamp(9rem, 24dvh, 13.5rem);
 }
-
-/* Leaderboard/Profile(&Stats)/Settings modals become tab-level destinations
-   alongside Home rather than transient overlays, once the bottom tab bar
-   exists — same flattening as #message-modal (drop the dark backdrop so
-   body's background shows through, own safe-area-top since these are all
-   position:fixed too, reserve bottom space for the tab bar). align-items
-   switches from center to stretch so the (now-flattened, no-max-width)
-   inner card fills the full page height with its own solid background —
-   without this, a short card (e.g. "No scores yet") only fills its own
-   content height and stays vertically centered, leaving the previous
-   screen's cards visible above/below it, which is exactly the "still
-   looks like a popup" problem the width-only fix above didn't solve. */
-html.capacitor-native #leaderboard-modal,
-html.capacitor-native #stats-modal,
-html.capacitor-native #settings-modal {
-    background-color: transparent;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-    align-items: stretch;
-    padding-top: max(calc(env(safe-area-inset-top) - 16px), 0px);
-    padding-bottom: calc(var(--native-tab-bar-height) + env(safe-area-inset-bottom) + 1rem);
+html.capacitor-native .mode-btn {
+    height: clamp(3rem, 7.6dvh, 4rem);
 }
+html.capacitor-native #mode-timed-btn {
+    margin-top: clamp(1rem, 4dvh, 3rem);
+}
+html.capacitor-native #mode-challenge-btn {
+    margin-bottom: clamp(1rem, 4dvh, 3rem);
+}
+/* Leaderboard/Stats/Settings/How-to-Play: back to normal floating modals —
+   rounded card, shadow, centered, dark blurred backdrop — same as the web
+   layout and as pause/account/end-game already look in native. They used to
+   be flattened into full-bleed tab pages; that's been dropped in favor of
+   popping up over the home screen (which stays visible, dimmed, behind the
+   blur) with the tab bar still reachable on top since it out-z-indexes
+   these modals. */
 
 #bottom-tab-bar { display: none; }
 html.capacitor-native #bottom-tab-bar {
@@ -471,36 +487,57 @@ html.capacitor-native #bottom-tab-bar {
     position: fixed;
     left: 0;
     right: 0;
+    /* Centers the bar and caps its width to match #game-container's
+       max-w-sm once the viewport is wider than a phone (website on
+       desktop) — on an actual phone-width viewport this max-width never
+       binds, so left/right:0 still spans edge to edge as before. */
+    max-width: 24rem;
+    margin: 0 auto;
     bottom: 0;
     height: calc(var(--native-tab-bar-height) + env(safe-area-inset-bottom));
-    padding-bottom: env(safe-area-inset-bottom);
-    background-color: #fff;
-    border-top: 1px solid #e2e8f0;
-    align-items: stretch;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem);
+    background: transparent;
+    border-top: none;
+    align-items: center;
     justify-content: space-around;
     z-index: 110;
-}
-html.capacitor-native.dark #bottom-tab-bar {
-    background-color: #0f172a;
-    border-top-color: #334155;
+    /* Floating icon dock, not a solid bar — the row itself shouldn't
+       intercept taps in the gaps between the circular buttons. */
+    pointer-events: none;
 }
 html.capacitor-native .tab-bar-btn {
-    flex: 1;
+    pointer-events: auto;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0.125rem;
-    color: #94a3b8;
+    gap: 0.2rem;
+}
+html.capacitor-native .tab-bar-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    transition: transform 0.15s ease;
+}
+html.capacitor-native .tab-bar-btn:active .tab-bar-icon {
+    transform: scale(0.92);
+}
+html.capacitor-native .tab-bar-btn.active .tab-bar-icon {
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.65), 0 4px 10px rgba(0,0,0,0.2);
+}
+html.capacitor-native .tab-bar-label {
     font-size: 0.6875rem;
     font-weight: 700;
+    color: #fff;
+    white-space: nowrap;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.55);
 }
-html.capacitor-native .tab-bar-btn.active {
-    color: #22c55e;
-}
-html.capacitor-native.dark .tab-bar-btn {
-    color: #64748b;
-}
-html.capacitor-native.dark .tab-bar-btn.active {
-    color: #4ade80;
-}
+html.capacitor-native #tab-leaderboard .tab-bar-icon { background-color: #f59e0b; }
+html.capacitor-native #tab-stats .tab-bar-icon { background-color: #3b82f6; }
+html.capacitor-native #tab-howtoplay .tab-bar-icon { background-color: #22c55e; }
+html.capacitor-native #tab-settings .tab-bar-icon { background-color: #64748b; }
