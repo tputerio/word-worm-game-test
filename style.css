@@ -544,17 +544,30 @@ html.capacitor-native #account-modal-content {
     overflow-y: auto;
 }
 /* The cap above stops a card from ever being *taller* than the safe zone,
-   but centering a capped card still splits the leftover space evenly
-   above and below — eating half of it back into the tab bar's strip. Only
-   anchoring the card to the top (rather than vertically centering) puts
-   all of that leftover space below the card, guaranteeing the gap the cap
-   was meant to guarantee in the first place. */
+   but plain centering still doesn't know that zone is asymmetric (only
+   the bottom edge is unsafe) — it'd split the leftover space evenly and
+   still eat half of it back into the tab bar's strip. Real padding-bottom
+   here (unlike on the child above, this one isn't fighting an overflowing
+   element) carves the reserved strip out of what "centered" is centered
+   within, so a short card — the common case — still lands looking
+   centered, just within the safe region instead of the full screen.
+   `align-items: safe center` is the part that handles a card tall enough
+   to overflow *that* region: centered content overflowing its container
+   has undefined/inconsistent clipping behavior across browsers, and
+   `safe` is the standard keyword for "fall back to start-alignment
+   instead" — combined with the max-height cap above, that anchors the
+   capped card flush to the top of the safe region rather than centered
+   and spilling past both edges. Plain `center` first is the fallback for
+   browsers predating `safe`/`unsafe` support (Safari 14.1+, well within
+   this app's iOS 15 floor, but the layered declaration costs nothing). */
 html.capacitor-native #end-game-modal,
 html.capacitor-native #leaderboard-modal,
 html.capacitor-native #stats-modal,
 html.capacitor-native #instructions-modal,
 html.capacitor-native #account-modal {
-    align-items: flex-start;
+    padding-bottom: calc(var(--native-tab-bar-height) + env(safe-area-inset-bottom) + 1rem);
+    align-items: center;
+    align-items: safe center;
 }
 /* Pause button: was a plain hamburger glyph that blended into the
    background art; a filled circle + shadow (same depth language as the
