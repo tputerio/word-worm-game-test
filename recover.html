@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Word Worm - Account Recovery</title>
+    <link rel="icon" href="assets/favicon.png?v=1.0" type="image/png">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #1e293b;
+            color: #f1f5f9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            text-align: center;
+            padding: 24px;
+            box-sizing: border-box;
+        }
+        #status {
+            font-size: 18px;
+            max-width: 360px;
+        }
+        a.button {
+            display: inline-block;
+            margin-top: 16px;
+            background: #22c55e;
+            color: #052e16;
+            font-weight: bold;
+            padding: 12px 24px;
+            border-radius: 10px;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">Signing you in&hellip;</div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
+        import { initializeAuth, indexedDBLocalPersistence, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
+
+        const statusEl = document.getElementById('status');
+
+        const PROD_FIREBASE_CONFIG = {
+            apiKey: "AIzaSyBa2DPRjwaI-G5mz-OmHVXEDJ4_MzBAZgA",
+            authDomain: "word-rush-game-9010a.firebaseapp.com",
+            projectId: "word-rush-game-9010a",
+        };
+
+        const params = new URLSearchParams(location.hash.replace(/^#/, ''));
+        const token = params.get('token');
+
+        if (!token) {
+            statusEl.textContent = 'Missing recovery link. Please use the exact link you were sent.';
+        } else {
+            try {
+                const app = initializeApp(PROD_FIREBASE_CONFIG);
+                const auth = initializeAuth(app, { persistence: indexedDBLocalPersistence });
+                await signInWithCustomToken(auth, token);
+                history.replaceState(null, '', location.pathname);
+                statusEl.innerHTML = "You're back in! <br><a class=\"button\" href=\"/\">Play Word Worm</a>";
+            } catch (err) {
+                console.error(err);
+                statusEl.textContent = 'This recovery link has expired or already been used. Please ask for a new one.';
+            }
+        }
+    </script>
+</body>
+</html>
