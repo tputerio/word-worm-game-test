@@ -582,6 +582,7 @@ function showSubmitConfirmation() {
                     console.log("Firebase connected. User ID:", userId);
                     fetchGlobalStats();
                     fetchPlayerStats(userId);
+                    fetchHomeScreenDailyRanks(userId);
                     updateChallengeNotifDot();
                     if (pendingChallengeId) {
                         showChallengeAcceptScreen(pendingChallengeId);
