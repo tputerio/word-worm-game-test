@@ -1,6 +1,6 @@
     // --- Firebase SDKs ---
     import { getApps, initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
-    import { getAuth, initializeAuth, indexedDBLocalPersistence, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithCredential, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile, reauthenticateWithCredential, updatePassword } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
+    import { getAuth, initializeAuth, indexedDBLocalPersistence, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithCredential, linkWithPopup, linkWithCredential, signOut, EmailAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, updateProfile, reauthenticateWithCredential, reauthenticateWithPopup, updatePassword, deleteUser } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
     import { getFirestore, initializeFirestore, persistentLocalCache, persistentSingleTabManager, collection, addDoc, getDocs, getDocsFromCache, query, where, orderBy, limit, doc, documentId, getDoc, getDocFromServer, getDocFromCache, setDoc, updateDoc, deleteDoc, increment, arrayUnion, runTransaction, serverTimestamp, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
 
      // --- Google Analytics ---
@@ -4498,15 +4498,18 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             }
 
             const savedName = localStorage.getItem('wordRushPlayerName');
+            // Read here (rather than inside the block below) so the delete-account
+            // handler, attached further down in a separate block, can also see
+            // which reauth path to use.
+            const isEmailUser = signedIn && user.providerData?.some(p => p.providerId === 'password');
+            const isGoogleUser = signedIn && user.providerData?.some(p => p.providerId === 'google.com');
+            const isAppleUser = signedIn && user.providerData?.some(p => p.providerId === 'apple.com');
 
             let body;
             {
                 const playerName = signedIn
                     ? (localStorage.getItem('wordRushPlayerName') || user.displayName?.split(' ')[0] || 'Player')
                     : (savedName || '');
-                const isEmailUser = signedIn && user.providerData?.some(p => p.providerId === 'password');
-                const isGoogleUser = signedIn && user.providerData?.some(p => p.providerId === 'google.com');
-                const isAppleUser = signedIn && user.providerData?.some(p => p.providerId === 'apple.com');
 
                 const providerSection = isEmailUser ? `
                     <div class="border-t border-slate-100 pt-2">
@@ -4550,6 +4553,20 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         </button>
                     </div>` : '';
 
+                const deleteAccountSection = signedIn ? `
+                    <div class="border-t border-slate-100 pt-2">
+                        <button id="delete-account-toggle" class="w-full text-left text-sm font-bold text-red-500 hover:text-red-700 flex items-center justify-between">
+                            <span>Delete Account</span>
+                            <svg id="delete-account-chevron" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 transition-transform duration-200"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
+                        </button>
+                        <div id="delete-account-form" class="hidden mt-3 space-y-2">
+                            <p class="text-xs text-slate-500">This permanently deletes your account, username, and stats. This can't be undone.</p>
+                            ${isEmailUser ? `<input id="delete-account-pw" type="password" placeholder="Enter your password to confirm" class="${inputCls}">` : ''}
+                            <p id="delete-account-error" class="text-xs text-red-500 hidden"></p>
+                            <button id="confirm-delete-account-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 px-4 rounded-lg text-sm transition-colors">Permanently Delete Account</button>
+                        </div>
+                    </div>` : '';
+
                 body = `<div class="space-y-3">
                     <div>
                         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Username</label>
@@ -4562,6 +4579,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     ${emailSection}
                     ${providerSection}
                     ${signOutSection}
+                    ${deleteAccountSection}
                 </div>`;
             }
 
@@ -4688,6 +4706,63 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         await signOutAndReset();
                         statsModal.classList.add('hidden');
                         showWelcomeScreen();
+                    };
+                }
+
+                const deleteToggleBtn = document.getElementById('delete-account-toggle');
+                if (deleteToggleBtn) {
+                    deleteToggleBtn.onclick = () => {
+                        const form = document.getElementById('delete-account-form');
+                        const chevron = document.getElementById('delete-account-chevron');
+                        const isHidden = form.classList.toggle('hidden');
+                        chevron.style.transform = isHidden ? '' : 'rotate(180deg)';
+                    };
+                    document.getElementById('confirm-delete-account-btn').onclick = async () => {
+                        const errorEl = document.getElementById('delete-account-error');
+                        const pwInput = document.getElementById('delete-account-pw');
+                        errorEl.classList.add('hidden');
+                        if (isEmailUser && !pwInput.value) {
+                            errorEl.textContent = 'Please enter your password to confirm.';
+                            errorEl.classList.remove('hidden');
+                            return;
+                        }
+                        const btn = document.getElementById('confirm-delete-account-btn');
+                        btn.disabled = true;
+                        btn.textContent = 'Deleting...';
+                        try {
+                            const deletingUser = auth.currentUser;
+                            // deleteUser requires a recent login — reauthenticate up front
+                            // rather than waiting for it to throw, so this never needs a
+                            // second click/retry after a stale session.
+                            if (isEmailUser) {
+                                const credential = EmailAuthProvider.credential(deletingUser.email, pwInput.value);
+                                await reauthenticateWithCredential(deletingUser, credential);
+                            } else if (isGoogleUser) {
+                                await reauthenticateWithPopup(deletingUser, new GoogleAuthProvider());
+                            } else if (isAppleUser) {
+                                await reauthenticateWithPopup(deletingUser, newAppleProvider());
+                            }
+                            // Firestore data has to go first — once deleteUser() below
+                            // succeeds, auth.currentUser is null and these owner-only
+                            // deletes would be rejected as unauthenticated.
+                            const uname = myUsernameCache || getStoredUsername();
+                            if (uname) { try { await deleteDoc(doc(db, 'usernames', uname)); } catch(e) {} }
+                            try { await deleteDoc(doc(db, 'players', deletingUser.uid)); } catch(e) {}
+                            await deleteUser(deletingUser);
+                            statsModal.classList.add('hidden');
+                            await signOutAndReset();
+                            showWelcomeScreen();
+                        } catch (e) {
+                            console.error('Account deletion failed:', e);
+                            errorEl.textContent = (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential')
+                                ? 'Incorrect password.'
+                                : (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request')
+                                ? 'Cancelled.'
+                                : 'Failed to delete account. Please try again.';
+                            errorEl.classList.remove('hidden');
+                            btn.disabled = false;
+                            btn.textContent = 'Permanently Delete Account';
+                        }
                     };
                 }
             }
