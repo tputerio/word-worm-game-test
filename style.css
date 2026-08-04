@@ -521,6 +521,41 @@ html.capacitor-native #message-modal {
 html.capacitor-native #message-modal:has(#welcome-card) {
     align-items: flex-start;
 }
+/* Every other full-screen modal shares #message-modal's original problem:
+   the floating tab bar sits at z-index:110, above all of these (95 and
+   below), by design — so it stays reachable without closing the modal
+   first — but that also means any modal content landing in that bottom
+   strip is covered by the bar, not just scrolled past. Padding on the
+   *wrapper* doesn't fix this on its own — flexbox padding doesn't shrink
+   an overflowing child, it just adds empty scrollable space after it, so
+   a tall child still renders past the padding boundary at rest. The fix
+   has to cap the actual card's height and let *it* scroll internally, so
+   the card's rendered box (and everything in it) physically never reaches
+   the tab bar's strip. calc() with vh is the safe fallback (Safari <15.4);
+   the dvh version after it overrides when supported, and additionally
+   tracks a mobile browser's own collapsing toolbar on the website. */
+html.capacitor-native #end-game-modal-content,
+html.capacitor-native #leaderboard-modal-content,
+html.capacitor-native #stats-modal-content,
+html.capacitor-native #instructions-modal-content,
+html.capacitor-native #account-modal-content {
+    max-height: calc(100vh - var(--native-tab-bar-height) - env(safe-area-inset-bottom) - 2rem);
+    max-height: calc(100dvh - var(--native-tab-bar-height) - env(safe-area-inset-bottom) - 2rem);
+    overflow-y: auto;
+}
+/* The cap above stops a card from ever being *taller* than the safe zone,
+   but centering a capped card still splits the leftover space evenly
+   above and below — eating half of it back into the tab bar's strip. Only
+   anchoring the card to the top (rather than vertically centering) puts
+   all of that leftover space below the card, guaranteeing the gap the cap
+   was meant to guarantee in the first place. */
+html.capacitor-native #end-game-modal,
+html.capacitor-native #leaderboard-modal,
+html.capacitor-native #stats-modal,
+html.capacitor-native #instructions-modal,
+html.capacitor-native #account-modal {
+    align-items: flex-start;
+}
 /* Pause button: was a plain hamburger glyph that blended into the
    background art; a filled circle + shadow (same depth language as the
    tab bar icons) makes it read as a tappable control at a glance. */
