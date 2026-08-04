@@ -2428,18 +2428,18 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 </button>
 
                 <div class="grid grid-cols-3 gap-2 text-center">
-                    <div class="bg-white rounded-xl p-2 shadow-sm">
+                    <div class="home-stat-card rounded-xl p-2 shadow-sm">
                         <div class="flex justify-center text-amber-400 mb-0.5">${starIconSvg}</div>
                         <div id="welcome-high-score" class="font-black text-lg text-slate-800">${lastKnownHighScore.toLocaleString()}</div>
                         <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">High Score</div>
                     </div>
-                    <div class="bg-white rounded-xl p-2 shadow-sm">
-                        <div class="flex justify-center text-green-500 mb-0.5">${trendUpIconSvg}</div>
+                    <div class="home-stat-card rounded-xl p-2 shadow-sm">
+                        <div class="flex justify-center text-blue-500 mb-0.5">${trendUpIconSvg}</div>
                         <div id="welcome-puzzle-rank" class="font-black text-lg text-slate-800">—</div>
                         <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Daily Rank</div>
                     </div>
-                    <div class="bg-white rounded-xl p-2 shadow-sm">
-                        <div class="flex justify-center text-purple-500 mb-0.5">${boltIconSvg}</div>
+                    <div class="home-stat-card rounded-xl p-2 shadow-sm">
+                        <div class="flex justify-center text-green-500 mb-0.5">${boltIconSvg}</div>
                         <div id="welcome-quickplay-rank" class="font-black text-lg text-slate-800">—</div>
                         <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Quick Play Rank</div>
                     </div>
@@ -5357,7 +5357,8 @@ function getTileCenter(tile) {
             }
             if (tray) {
                 const span = document.createElement('span');
-                span.className = 'bg-white text-green-600 font-bold text-sm px-1.5 py-0.5 rounded shadow-sm';
+                span.className = 'bg-white font-bold text-sm px-1.5 py-0.5 rounded shadow-sm';
+                span.style.color = '#5e7920';
                 span.textContent = letterSequence[n];
                 tray.appendChild(span);
             }
@@ -5385,6 +5386,7 @@ function getTileCenter(tile) {
 
         const chevronLeft = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>`;
         const chevronRight = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>`;
+        const handMoveIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M8 13v-8.5a1.5 1.5 0 0 1 3 0v7.5" /><path d="M11 11.5v-2a1.5 1.5 0 0 1 3 0v2.5" /><path d="M14 10.5a1.5 1.5 0 0 1 3 0v1.5" /><path d="M17 11.5a1.5 1.5 0 0 1 3 0v4.5a6 6 0 0 1 -6 6h-2h.208a6 6 0 0 1 -5.012 -2.7l-.196 -.3c-.312 -.479 -1.407 -2.388 -3.286 -5.728a1.5 1.5 0 0 1 .536 -2.022a1.867 1.867 0 0 1 2.28 .28l1.47 1.47" /><path d="M2.541 5.594a13.487 13.487 0 0 1 2.46 -1.427" /><path d="M14 3.458c1.32 .354 2.558 .902 3.685 1.612" /></svg>`;
 
         content.innerHTML = `
             <div class="bg-white rounded-2xl shadow-2xl modal-enter w-full max-w-xs mx-auto p-6">
@@ -5404,7 +5406,7 @@ function getTileCenter(tile) {
                                         <div id="htp-seg-1" class="line-segment" style="left:49px;top:16px;width:6px;height:36px;"></div>
                                         <div id="htp-seg-2" class="line-segment" style="left:52px;top:49px;width:36px;height:6px;"></div>
                                     </div>
-                                    <p class="text-slate-700 text-center mt-2 mb-1 text-sm flex items-center justify-center gap-1.5"><span>👆</span><span>Swipe adjacent letters to spell a word.</span></p>
+                                    <p class="text-slate-700 text-center mt-2 mb-1 text-sm flex items-center justify-center gap-0.5"><span class="shrink-0">${handMoveIcon}</span><span>Swipe adjacent letters to spell a word.</span></p>
                                 </div>
                                 <div class="htp-card htp-card-green">
                                     <div class="htp-card-icon"><svg class="text-white" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg></div>
@@ -5414,7 +5416,7 @@ function getTileCenter(tile) {
                         </div>
                         <div style="width:33.3333%;">
                             <div class="text-left text-xs space-y-3">
-                                <div class="htp-card htp-card-purple">
+                                <div class="htp-card htp-card-blue">
                                     <div class="htp-card-icon"><svg class="text-white" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg></div>
                                     <div><div class="htp-card-label">How to Score:</div><div class="text-sm text-slate-900 mt-0.5">Your score is the sum of letter points and any bonuses.</div></div>
                                 </div>
