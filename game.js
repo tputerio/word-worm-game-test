@@ -2448,7 +2448,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     <div class="home-stat-card rounded-xl p-2 shadow-sm">
                         <div class="flex justify-center text-blue-500 mb-0.5">${trendUpIconSvg}</div>
                         <div id="welcome-puzzle-rank" class="font-black text-lg text-slate-800">—</div>
-                        <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Daily Rank</div>
+                        <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Puzzle Rank</div>
                     </div>
                     <div class="home-stat-card rounded-xl p-2 shadow-sm">
                         <div class="flex justify-center text-green-500 mb-0.5">${boltIconSvg}</div>
