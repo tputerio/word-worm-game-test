@@ -273,8 +273,8 @@
 async function showDailyEndScreen(stats, isNewSubmission = true) {
     endGameModal.classList.remove('hidden');
     endGameModalContent.innerHTML = `
-        <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
-            <h2 class="text-2xl font-black text-green-500">Daily Puzzle Complete!</h2>
+        <div id="end-game-card" class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
+            <h2 class="text-2xl font-black text-green-600">Daily Puzzle Complete!</h2>
             <p class="text-slate-600 my-4">Calculating your final results...</p>
             <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mx-auto"></div>
         </div>`;
@@ -317,15 +317,15 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
     const percentage = totalCount > 0 ? Math.round((foundCount / totalCount) * 100) : 0;
 
     endGameModalContent.innerHTML = `
-        <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
-             <h2 class="text-2xl font-black text-green-500">Daily Puzzle Complete!</h2>
+        <div id="end-game-card" class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
+             <h2 class="text-2xl font-black text-green-600">Daily Puzzle Complete!</h2>
             <p class="text-slate-600 mb-2 mt-2">Your final score is:</p>
             <p id="final-score-display" class="text-6xl font-black text-slate-800 mb-3">${stats.score}</p>
             <div id="daily-summary-container" class="flex items-center justify-center"></div>
             <hr class="my-4">
             <div class="text-left w-full">
                 <h3 class="text-lg font-bold text-slate-700 mb-2">All Possible Words (${foundCount}/${totalCount})</h3>
-                <div class="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-2">${allWordsHTML}</div>
+                <div class="bg-white/40 rounded-xl p-3 flex flex-wrap gap-2 max-h-40 overflow-y-auto">${allWordsHTML}</div>
             </div>
             <div id="share-link-container" class="h-10 flex items-center justify-center mt-4"></div>
             <div class="flex space-x-2 mt-2">
@@ -468,8 +468,8 @@ function showSubmitConfirmation() {
         const stats = { score: score, foundWords: foundWords, totalCount: allDailyWords.size };
         endGameModal.classList.remove('hidden');
         endGameModalContent.innerHTML = `
-            <div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
-                <h2 class="text-2xl font-black text-green-500">Daily Puzzle Complete!</h2>
+            <div id="end-game-card" class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
+                <h2 class="text-2xl font-black text-green-600">Daily Puzzle Complete!</h2>
                 <p class="text-slate-600 my-4">Submitting your score...</p>
                 <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-slate-900 mx-auto"></div>
             </div>`;
@@ -1386,7 +1386,7 @@ function setupDailyUI(challengeData) {
             <div class="flex items-center justify-between mb-3">
                 <div class="flex-grow flex items-center justify-center">
                     <h1 class="flex items-center justify-center">
-                        <img src="assets/game-play-top-icon.png" alt="Word Worm" class="h-10 w-auto" width="204" height="40">
+                        <img src="assets/game-play-top-icon.webp" alt="Word Worm" class="h-10 w-auto" width="204" height="40">
                     </h1>
                 </div>
             </div>
@@ -2412,7 +2412,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     const nativeLayout = `
         <div id="welcome-card">
             <div id="welcome-header" class="flex items-center justify-center px-4">
-                <img id="welcome-logo" src="assets/word-worm-home-screen-logo.png" alt="Word Worm" class="h-auto" width="144" height="124">
+                <img id="welcome-logo" src="assets/word-worm-home-screen-logo.webp" alt="Word Worm" class="h-auto" width="144" height="124">
             </div>
 
             <div class="px-4 mt-2 pb-4">
@@ -5388,8 +5388,8 @@ function getTileCenter(tile) {
     const statsIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" /></svg>`;
     const homeIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg>`;
 
-    endGameModalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
-        <h2 class="text-3xl font-black text-green-500">Great Game!</h2>
+    endGameModalContent.innerHTML = `<div id="end-game-card" class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
+        <h2 class="text-3xl font-black text-green-600">Great Game!</h2>
         <p class="text-slate-600 mb-2">Your final score is:</p>
         <p id="final-score-display" class="text-6xl font-black text-slate-800 mb-3">${score}</p>
 
@@ -5410,15 +5410,15 @@ function getTileCenter(tile) {
         </div>
 
         <div class="grid grid-cols-3 gap-2 mt-4">
-            <button id="endgame-leaderboard-button" class="bg-white border border-slate-200 hover:bg-slate-50 rounded-xl p-2 flex flex-col items-center justify-center gap-1 transition-colors">
+            <button id="endgame-leaderboard-button" class="bg-amber-50 border border-amber-200 hover:bg-amber-100 rounded-xl p-2 flex flex-col items-center justify-center gap-1 transition-colors">
                 <span class="text-amber-500">${leaderboardIcon}</span>
                 <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Leaderboard</span>
             </button>
-            <button id="endgame-stats-button" class="bg-white border border-slate-200 hover:bg-slate-50 rounded-xl p-2 flex flex-col items-center justify-center gap-1 transition-colors">
+            <button id="endgame-stats-button" class="bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-xl p-2 flex flex-col items-center justify-center gap-1 transition-colors">
                 <span class="text-blue-500">${statsIcon}</span>
                 <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Stats</span>
             </button>
-            <button id="endgame-home-button" class="bg-white border border-slate-200 hover:bg-slate-50 rounded-xl p-2 flex flex-col items-center justify-center gap-1 transition-colors">
+            <button id="endgame-home-button" class="bg-slate-100 border border-slate-200 hover:bg-slate-200 rounded-xl p-2 flex flex-col items-center justify-center gap-1 transition-colors">
                 <span class="text-slate-500">${homeIcon}</span>
                 <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Home</span>
             </button>

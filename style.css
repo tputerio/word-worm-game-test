@@ -461,7 +461,7 @@ html.capacitor-native {
 }
 html.capacitor-native:not(.dark) body {
     background-color: #fff;
-    background-image: url('assets/home-screen-background-light.png');
+    background-image: url('assets/home-screen-background-light.webp');
     background-repeat: no-repeat;
     background-position: top center;
     background-size: cover;
@@ -469,7 +469,7 @@ html.capacitor-native:not(.dark) body {
 }
 html.capacitor-native.dark body {
     background-color: #0f172a;
-    background-image: url('assets/home-screen-background-dark.png');
+    background-image: url('assets/home-screen-background-dark.webp');
     background-repeat: no-repeat;
     background-position: top center;
     background-size: cover;
@@ -480,10 +480,10 @@ html.capacitor-native.dark body {
    while swiping. Higher specificity than the rules above (extra class)
    so it wins without needing !important or rule ordering. */
 html.capacitor-native.in-gameplay:not(.dark) body {
-    background-image: url('assets/game-play-background-light.png');
+    background-image: url('assets/game-play-background-light.webp');
 }
 html.capacitor-native.in-gameplay.dark body {
-    background-image: url('assets/game-play-background-dark.png');
+    background-image: url('assets/game-play-background-dark.webp');
 }
 /* On a phone-width viewport (native shell, or the website on mobile)
    "cover" is correct — it's already portrait-shaped like the art. Past
@@ -748,3 +748,15 @@ button.rounded-xl.p-2 { box-shadow: 0 2px 4px -1px rgba(0,0,0,0.12); }
     white-space: nowrap;
 }
 html.dark .score-chip { background-color: rgba(74,222,128,0.18); color: #4ade80; }
+
+/* End Game modal: soft confetti/gradient art behind the score instead of
+   plain white. Light-only for now (no dark variant art yet) — falls back
+   to the plain white card in dark mode rather than showing a mismatched
+   light-themed image. */
+#end-game-card {
+    background-image: url('assets/end-game-background-light.webp');
+    background-size: cover;
+    background-position: center top;
+    background-repeat: no-repeat;
+}
+html.dark #end-game-card { background-image: url('assets/end-game-background-dark.webp'); }
