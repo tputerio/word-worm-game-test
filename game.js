@@ -1825,9 +1825,13 @@ async function submitDailyScoreToLeaderboard(finalScore) {
         });
         // Mirrors dailyScores (standard mode) — lets the native home screen
         // compute an exact rank via count query instead of only knowing
-        // whether you're in the top 10.
-        setDoc(doc(db, 'dailyPuzzleScores', todayStr, 'entries', userId), { score: finalScore })
-            .catch(e => console.error('Failed to write dailyPuzzleScores entry:', e));
+        // whether you're in the top 10. Awaited (unlike a fire-and-forget
+        // call) so this write can't lose a race against the player closing
+        // or backing out right after seeing their score — that race was
+        // silently dropping entries and skewing everyone else's rank low.
+        try {
+            await setDoc(doc(db, 'dailyPuzzleScores', todayStr, 'entries', userId), { score: finalScore });
+        } catch (e) { console.error('Failed to write dailyPuzzleScores entry:', e); }
         // Same staleness guard as postScoreToLeaderboards: the modal's 60s
         // HTML cache must not outlive a board we just changed.
         delete leaderboardHtmlCache['challenge'];
@@ -2446,14 +2450,14 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">High Score</div>
                     </div>
                     <div class="home-stat-card rounded-xl p-2 shadow-sm">
-                        <div class="flex justify-center text-blue-500 mb-0.5">${trendUpIconSvg}</div>
-                        <div id="welcome-puzzle-rank" class="font-black text-lg text-slate-800">—</div>
-                        <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Puzzle Rank</div>
-                    </div>
-                    <div class="home-stat-card rounded-xl p-2 shadow-sm">
                         <div class="flex justify-center text-green-500 mb-0.5">${boltIconSvg}</div>
                         <div id="welcome-quickplay-rank" class="font-black text-lg text-slate-800">—</div>
                         <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Quick Play Rank</div>
+                    </div>
+                    <div class="home-stat-card rounded-xl p-2 shadow-sm">
+                        <div class="flex justify-center text-blue-500 mb-0.5">${trendUpIconSvg}</div>
+                        <div id="welcome-puzzle-rank" class="font-black text-lg text-slate-800">—</div>
+                        <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Puzzle Rank</div>
                     </div>
                 </div>
             </div>
@@ -2966,9 +2970,9 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 <h2 class="text-lg font-bold text-slate-800 flex items-center">Challenge a Friend <span class="inline-block w-6 h-6 ml-2"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-slate-600"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg></span></h2>
                 <button id="close-challenge-modal" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
             </div>
-            <div class="flex p-1 bg-slate-200 rounded-lg mb-4">
-                <button id="challenge-tab-create" class="tab-button flex-1 py-1.5 px-2 rounded-md font-semibold text-sm transition-colors duration-200">Challenge</button>
-                <button id="challenge-tab-mine" class="tab-button flex-1 py-1.5 px-2 rounded-md font-semibold text-sm transition-colors duration-200">My Challenges</button>
+            <div class="flex gap-1 p-1 bg-slate-100 rounded-full mb-4">
+                <button id="challenge-tab-create" class="tab-button flex-1 py-1.5 px-2 rounded-full font-bold text-sm transition-all duration-200">Challenge</button>
+                <button id="challenge-tab-mine" class="tab-button flex-1 py-1.5 px-2 rounded-full font-bold text-sm transition-all duration-200">My Challenges</button>
             </div>
             <div id="challenge-tab-content"></div>`;
 
@@ -4410,10 +4414,10 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 </h2>
                 <button id="close-leaderboard-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
             </div>
-            <div class="flex p-1 bg-slate-200 rounded-lg mb-4">
-                <button id="challenge-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">Puzzle</button>
-                <button id="daily-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">Daily</button>
-                <button id="all-time-tab" class="tab-button flex-1 py-1 px-2 rounded-md font-semibold text-sm transition-colors duration-200">All-Time</button>
+            <div class="flex gap-1 p-1 bg-slate-100 rounded-full mb-4">
+                <button id="challenge-tab" class="tab-button flex-1 py-1.5 px-2 rounded-full font-bold text-sm transition-all duration-200">Puzzle</button>
+                <button id="daily-tab" class="tab-button flex-1 py-1.5 px-2 rounded-full font-bold text-sm transition-all duration-200">Daily</button>
+                <button id="all-time-tab" class="tab-button flex-1 py-1.5 px-2 rounded-full font-bold text-sm transition-all duration-200">All-Time</button>
             </div>
             <div id="leaderboard-loading-secondary" class="text-slate-500 p-2">Fetching Scores...</div>
             <div id="leaderboard-scroll-container" class="relative max-h-[20rem] overflow-y-auto">
@@ -4862,6 +4866,18 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             bestWord: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg>'
         };
 
+        // Rank 1-3 get a gold/silver/bronze badge (matching the podium
+        // convention players already expect); everyone else gets a plain
+        // slate badge. Keeps the number but makes the top of the board
+        // read at a glance instead of blending into the row text.
+        const rankBadgeStyles = [
+            'background:linear-gradient(135deg,#fde68a,#d97706);color:#78350f;',
+            'background:linear-gradient(135deg,#e2e8f0,#94a3b8);color:#1e293b;',
+            'background:linear-gradient(135deg,#fdba74,#b45309);color:#431407;'
+        ];
+        const rankBadge = (i) => `<span class="rank-badge" style="${rankBadgeStyles[i] || 'background:#e2e8f0;color:#475569;'}">${i + 1}</span>`;
+        const scoreChip = (text) => `<span class="score-chip">${text}</span>`;
+
         if (type === 'challenge') {
             const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
             const leaderboardRef = doc(db, "leaderboards", "dailyChallenge");
@@ -4875,12 +4891,12 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 const scores = players.map((player, i) => {
                     const isCurrentUser = player.userID === userId;
                     return `
-                        <li class="flex items-center p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}">
-                            <span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span>
-                            <span class="font-semibold text-slate-800 flex-grow truncate mr-4">${escapeHTML(player.name)}</span>
-                            <div class="text-right">
-                                <span class="font-bold text-green-500">${player.score.toLocaleString()} pts</span>
-                                <span class="font-medium text-slate-500 text-xs ml-2">(${player.wordsFound}/${player.totalWords})</span>
+                        <li class="flex items-center gap-3 p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}">
+                            ${rankBadge(i)}
+                            <span class="font-semibold text-slate-800 flex-grow truncate">${escapeHTML(player.name)}</span>
+                            <div class="flex items-center gap-2">
+                                ${scoreChip(`${player.score.toLocaleString()} pts`)}
+                                <span class="font-medium text-slate-500 text-xs">(${player.wordsFound}/${player.totalWords})</span>
                             </div>
                         </li>`;
                 }).join('');
@@ -4907,7 +4923,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         const scores = players.map((player, i) => {
                             const isCurrentUser = player.userID === userId;
                             let value = cat.nestedKey ? (player[cat.valueKey] ? `${player[cat.valueKey].word.toUpperCase()} (${player[cat.valueKey].score})` : 'N/A') : (player[cat.valueKey]?.toLocaleString() || 0);
-                            return `<li class="flex items-center p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${escapeHTML(player.name)}</span><span class="font-bold text-green-500">${value}</span></li>`;
+                            return `<li class="flex items-center gap-3 p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}">${rankBadge(i)}<span class="font-semibold text-slate-800 flex-grow truncate">${escapeHTML(player.name)}</span>${scoreChip(value)}</li>`;
                         }).join('');
                         html += `<ol class="space-y-1">${scores}</ol>`;
                     }
@@ -4934,7 +4950,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         const scores = players.map((player, i) => {
                             const isCurrentUser = player.userID === userId;
                             let value = cat.nestedKey ? (player[cat.valueKey] ? `${player[cat.valueKey].word.toUpperCase()} (${player[cat.valueKey].score})` : 'N/A') : (player[cat.valueKey]?.toLocaleString() || 0);
-                            return `<li class="flex items-center p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}"><span class="font-bold text-slate-500 w-8 text-center">${i + 1}.</span><span class="font-semibold text-slate-800 flex-grow truncate mr-4">${escapeHTML(player.name)}</span><span class="font-bold text-green-500">${value}</span></li>`;
+                            return `<li class="flex items-center gap-3 p-2 rounded-lg ${isCurrentUser ? 'bg-blue-100' : (i % 2 === 0 ? 'bg-slate-50' : '')}">${rankBadge(i)}<span class="font-semibold text-slate-800 flex-grow truncate">${escapeHTML(player.name)}</span>${scoreChip(value)}</li>`;
                         }).join('');
                         html += `<ol class="space-y-1">${scores}</ol>`;
                     }

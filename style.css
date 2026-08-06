@@ -235,11 +235,15 @@ html.dark .htp-dot { background-color: #475569; }
         .current-letter { animation: pop-in 0.2s ease-out; }
         .modal-enter { animation: pop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
         .tab-button.active {
-            background-color: #3b82f6;
+            /* Amber to echo the bottom tab bar's Leaderboard circle, since
+               these sub-tabs live inside the Leaderboard modal. */
+            background-color: #f59e0b;
             color: white;
+            box-shadow: 0 2px 0 rgba(0,0,0,0.2), 0 3px 6px rgba(0,0,0,0.15);
+            transform: scale(1.03);
         }
         /* Challenge a Friend modal's tabs use the green "challenge" theme
-           instead of the default blue, matching the rest of that flow. */
+           instead of the default amber, matching the rest of that flow. */
         #challenge-tab-create.active, #challenge-tab-mine.active {
             background-color: #16a34a;
         }
@@ -688,3 +692,59 @@ html.capacitor-native #tab-leaderboard .tab-bar-icon { background-color: #f59e0b
 html.capacitor-native #tab-stats .tab-bar-icon { background-color: #3b82f6; }
 html.capacitor-native #tab-howtoplay .tab-bar-icon { background-color: #22c55e; }
 html.capacitor-native #tab-settings .tab-bar-icon { background-color: #64748b; }
+
+/* Modal/button depth pass: every modal card already had a shadow but no
+   border, and a lot of CTA buttons (Submit, Play Again, Send, Claim, etc.)
+   had neither. Rather than editing every template string, target the
+   shared Tailwind class combos so it applies uniformly. Buttons that
+   already carry an explicit shadow-* utility (Settings/Pause rows, the
+   home screen's 3D push-style mode buttons) are already fully styled and
+   excluded via :not([class*="shadow-"]) so they're untouched. */
+.bg-white.rounded-2xl.shadow-2xl { border: 2px solid #e2e8f0; }
+html.dark .bg-white.rounded-2xl.shadow-2xl { border-color: #334155; }
+
+button.rounded-lg.font-bold:not([class*="shadow-"]),
+button.rounded-lg.font-semibold:not([class*="shadow-"]),
+button.rounded-xl.font-bold:not([class*="shadow-"]),
+button.rounded-xl.font-semibold:not([class*="shadow-"]) {
+    border: 2px solid rgba(0,0,0,0.15);
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+}
+html.dark button.rounded-lg.font-bold:not([class*="shadow-"]),
+html.dark button.rounded-lg.font-semibold:not([class*="shadow-"]),
+html.dark button.rounded-xl.font-bold:not([class*="shadow-"]),
+html.dark button.rounded-xl.font-semibold:not([class*="shadow-"]) {
+    border-color: rgba(255,255,255,0.15);
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
+}
+
+/* End-game icon-grid buttons (Leaderboard/Stats/Home) already have a
+   border but no shadow. */
+button.rounded-xl.p-2 { box-shadow: 0 2px 4px -1px rgba(0,0,0,0.12); }
+
+/* Leaderboard row rank badge (gold/silver/bronze for top 3) and score
+   pill, replacing the plain "1." text + bare number so rows read more
+   like the home screen's stat cards. */
+.rank-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    flex-shrink: 0;
+    border-radius: 9999px;
+    font-weight: 800;
+    font-size: 0.75rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+.score-chip {
+    display: inline-block;
+    background-color: rgba(34,197,94,0.12);
+    color: #16a34a;
+    padding: 0.15rem 0.6rem;
+    border-radius: 9999px;
+    font-weight: 700;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+html.dark .score-chip { background-color: rgba(74,222,128,0.18); color: #4ade80; }
