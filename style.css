@@ -242,10 +242,11 @@ html.dark .htp-dot { background-color: #475569; }
             box-shadow: 0 2px 0 rgba(0,0,0,0.2), 0 3px 6px rgba(0,0,0,0.15);
             transform: scale(1.03);
         }
-        /* Challenge a Friend modal's tabs use the green "challenge" theme
-           instead of the default amber, matching the rest of that flow. */
+        /* Challenge a Friend modal's tabs use the blue "challenge" theme
+           instead of the default amber, matching the home screen's
+           Challenge a Friend button (#4C86CB). */
         #challenge-tab-create.active, #challenge-tab-mine.active {
-            background-color: #16a34a;
+            background-color: #4C86CB;
         }
 
         /* Tutorial Animation */
@@ -679,6 +680,13 @@ html.capacitor-native #bottom-tab-bar {
     /* Floating icon dock, not a solid bar — the row itself shouldn't
        intercept taps in the gaps between the circular buttons. */
     pointer-events: none;
+}
+/* See the `home-screen-webapp` class comment in game.js: iOS's reduced-chrome
+   home-screen launch has no browser toolbar reserving space below the bar
+   and no real safe-area-inset-bottom to lean on here, so nudge it up a
+   fixed amount by hand instead. */
+html.home-screen-webapp #bottom-tab-bar {
+    bottom: 14px;
 }
 html.capacitor-native .tab-bar-btn {
     pointer-events: auto;

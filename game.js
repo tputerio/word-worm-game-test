@@ -27,6 +27,18 @@
         const viewportMeta = document.querySelector('meta[name="viewport"]');
         if (viewportMeta) viewportMeta.setAttribute('content', viewportMeta.content + ', viewport-fit=cover');
     }
+    // iOS Safari "Add to Home Screen" (no manifest/apple-mobile-web-app-capable
+    // here, so this is the reduced-chrome home-screen launch, not a true
+    // standalone PWA) drops Safari's own bottom toolbar, which is what
+    // normally reserves clear space below our fixed bottom-tab-bar. Since
+    // viewport-fit=cover is deliberately website-off (see above), env(safe-
+    // area-inset-bottom) stays 0 here too, so without this the bar sits
+    // right at the physical bottom edge next to the home indicator. The
+    // Capacitor shell doesn't hit this (real safe-area-inset via
+    // viewport-fit=cover already covers it there).
+    if (!isCapacitorApp && window.navigator.standalone === true) {
+        document.documentElement.classList.add('home-screen-webapp');
+    }
     const [GRID_SIZE, GRID_COLS, GAME_TIME] = [16, 4, 60];
     const letterConfig={'A':{p:1},'B':{p:3},'C':{p:3},'D':{p:2},'E':{p:1},'F':{p:4},'G':{p:2},'H':{p:4},'I':{p:1},'J':{p:8},'K':{p:5},'L':{p:1},'M':{p:3},'N':{p:1},'O':{p:1},'P':{p:3},'Q':{p:10},'R':{p:1},'S':{p:1},'T':{p:1},'U':{p:1},'V':{p:4},'W':{p:4},'X':{p:8},'Y':{p:4},'Z':{p:10}};
     const VOWELS = ['A', 'E', 'I', 'O', 'U'];
@@ -826,31 +838,52 @@ function showGameMessage(message, type = 'info', startTile = null) {
     }
 }
 
-    // Home screen's exact "#N" daily rank stats. dailyScores (Quick
+    // Home screen's "N of Y" daily rank stats. dailyScores (Quick
     // Play) and dailyPuzzleScores (Daily Puzzle) hold one best-score doc per
     // player per day — rank is "how many players beat my score, plus one,"
-    // which stays cheap at any scale since getCountFromServer is billed per
-    // ~1000 matched docs rather than per document. Shows "—" instead of a
-    // number if the player hasn't posted a score for that mode today.
+    // and Y is the total entries today, both cheap at any scale since
+    // getCountFromServer is billed per ~1000 matched docs rather than per
+    // document. Shows "- of Y" if the player hasn't posted a score for that
+    // mode today, or "—" entirely if nobody has played it yet.
     async function fetchHomeScreenDailyRanks(uid) {
         if (!db) return;
         const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
         const rankFor = async (collectionName) => {
             const entriesCol = collection(db, collectionName, todayStr, 'entries');
-            const myDoc = await withTimeout(getDoc(doc(entriesCol, uid)));
-            if (!myDoc.exists()) return null;
+            const [myDoc, totalSnap] = await Promise.all([
+                withTimeout(getDoc(doc(entriesCol, uid))),
+                withTimeout(getCountFromServer(entriesCol))
+            ]);
+            const total = totalSnap.data().count;
+            if (!myDoc.exists()) return { rank: null, total };
             const myScore = myDoc.data().score;
             const beatenBySnap = await withTimeout(getCountFromServer(query(entriesCol, where('score', '>', myScore))));
-            return beatenBySnap.data().count + 1;
+            return { rank: beatenBySnap.data().count + 1, total };
         };
-        const [quickPlayRank, puzzleRank] = await Promise.all([
+        const [quickPlayResult, puzzleResult] = await Promise.all([
             rankFor('dailyScores').catch(e => { console.error('Quick Play rank fetch failed:', e); return null; }),
             rankFor('dailyPuzzleScores').catch(e => { console.error('Puzzle rank fetch failed:', e); return null; })
         ]);
-        const qpEl = document.getElementById('welcome-quickplay-rank');
-        if (qpEl) qpEl.textContent = quickPlayRank ? `#${quickPlayRank}` : '—';
-        const puzzleEl = document.getElementById('welcome-puzzle-rank');
-        if (puzzleEl) puzzleEl.textContent = puzzleRank ? `#${puzzleRank}` : '—';
+        const applyRank = (mainEl, ofEl, result) => {
+            if (!mainEl || !ofEl) return;
+            if (!result) {
+                mainEl.textContent = '—';
+                ofEl.textContent = '';
+                return;
+            }
+            mainEl.textContent = result.rank ?? '–';
+            ofEl.textContent = `of ${result.total.toLocaleString()}`;
+        };
+        applyRank(
+            document.getElementById('welcome-quickplay-rank'),
+            document.getElementById('welcome-quickplay-rank-of'),
+            quickPlayResult
+        );
+        applyRank(
+            document.getElementById('welcome-puzzle-rank'),
+            document.getElementById('welcome-puzzle-rank-of'),
+            puzzleResult
+        );
     }
 
     // Persistent bottom tab bar (web + native both). Hidden during gameplay
@@ -2451,12 +2484,14 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     </div>
                     <div class="home-stat-card rounded-xl p-2 shadow-sm">
                         <div class="flex justify-center mb-0.5" style="color:#3E8A4A;">${boltIconSvg}</div>
-                        <div id="welcome-quickplay-rank" class="font-black text-lg text-slate-800">—</div>
+                        <div id="welcome-quickplay-rank" class="font-black text-lg text-slate-800 leading-tight">—</div>
+                        <div id="welcome-quickplay-rank-of" class="text-xs font-normal text-slate-400 leading-tight"></div>
                         <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Quick Play Rank</div>
                     </div>
                     <div class="home-stat-card rounded-xl p-2 shadow-sm">
                         <div class="flex justify-center mb-0.5" style="color:#99BF45;">${trendUpIconSvg}</div>
-                        <div id="welcome-puzzle-rank" class="font-black text-lg text-slate-800">—</div>
+                        <div id="welcome-puzzle-rank" class="font-black text-lg text-slate-800 leading-tight">—</div>
+                        <div id="welcome-puzzle-rank-of" class="text-xs font-normal text-slate-400 leading-tight"></div>
                         <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Puzzle Rank</div>
                     </div>
                 </div>
@@ -3008,7 +3043,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
         container.innerHTML = `
             <div id="incoming-challenges"></div>
             <div id="username-challenge-section" class="mb-4"></div>
-            <button id="generate-challenge-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base shadow-md transition-colors flex items-center justify-center gap-2">
+            <button id="generate-challenge-btn" class="w-full text-white font-bold py-3 px-4 rounded-lg text-base shadow-md hover:brightness-95 transition-colors flex items-center justify-center gap-2" style="background-color:#4C86CB;">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" /></svg>
                 Share Challenge Link
             </button>
