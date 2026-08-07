@@ -329,7 +329,7 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
             </div>
             <div id="share-link-container" class="h-10 flex items-center justify-center mt-4"></div>
             <div class="flex space-x-2 mt-2">
-                <button id="endgame-leaderboard-button" class="bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 px-4 rounded-lg text-sm flex-1 flex items-center justify-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg>Leaderboard</button>
+                <button id="endgame-leaderboard-button" class="text-white font-bold py-3 px-4 rounded-lg text-sm flex-1 flex items-center justify-center gap-2 hover:brightness-95" style="background-color:#F0B23A;"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg>Leaderboard</button>
                 <button id="return-home-button" class="bg-slate-500 hover:bg-slate-600 text-white font-bold py-3 px-4 rounded-lg text-base flex-1 flex items-center justify-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg>Home</button>
             </div>
             <p id="next-puzzle-countdown" class="text-xs font-semibold text-slate-500 mt-3"></p>
@@ -2428,17 +2428,17 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     </div>
                 </div>
 
-                <button id="mode-timed-btn" class="mode-btn w-full bg-green-500 hover:bg-green-600 text-white font-black uppercase tracking-wide text-base rounded-2xl flex items-center justify-center gap-2 transition-colors mb-2 border-2 border-green-700 shadow-[0_4px_0_rgba(0,0,0,0.25),0_8px_16px_rgba(0,0,0,0.2)]">
+                <button id="mode-timed-btn" class="mode-btn w-full text-white font-black uppercase tracking-wide text-base rounded-2xl flex items-center justify-center gap-2 transition-colors mb-2 border-2 hover:brightness-95 shadow-[0_4px_0_rgba(0,0,0,0.25),0_8px_16px_rgba(0,0,0,0.2)]" style="background-color:#3E8A4A;border-color:#2B6134;">
                     ${rocketIconSvg.replace('w-4 h-4', 'w-5 h-5')}
                     <span>Quick Play</span>
                 </button>
 
-                <button id="mode-daily-btn" class="mode-btn w-full bg-blue-500 hover:bg-blue-600 text-white font-black uppercase tracking-wide text-base rounded-2xl flex items-center justify-center gap-2 transition-colors mb-2 border-2 border-blue-700 shadow-[0_4px_0_rgba(0,0,0,0.25),0_8px_16px_rgba(0,0,0,0.2)]">
+                <button id="mode-daily-btn" class="mode-btn w-full text-white font-black uppercase tracking-wide text-base rounded-2xl flex items-center justify-center gap-2 transition-colors mb-2 border-2 hover:brightness-95 shadow-[0_4px_0_rgba(0,0,0,0.25),0_8px_16px_rgba(0,0,0,0.2)]" style="background-color:#99BF45;border-color:#6B8630;">
                     ${calendarIconSvg.replace('w-4 h-4', 'w-5 h-5')}
                     <span>Daily Puzzle</span><span id="daily-mode-badge" style="display:none;margin-left:2px;">✓</span>
                 </button>
 
-                <button id="mode-challenge-btn" class="mode-btn w-full bg-green-600 hover:bg-green-700 text-white font-black uppercase tracking-wide text-base rounded-2xl flex items-center justify-center gap-2 transition-colors border-2 border-green-800 shadow-[0_4px_0_rgba(0,0,0,0.25),0_8px_16px_rgba(0,0,0,0.2)]">
+                <button id="mode-challenge-btn" class="mode-btn w-full text-white font-black uppercase tracking-wide text-base rounded-2xl flex items-center justify-center gap-2 transition-colors border-2 hover:brightness-95 shadow-[0_4px_0_rgba(0,0,0,0.25),0_8px_16px_rgba(0,0,0,0.2)]" style="background-color:#4C86CB;border-color:#355E8E;">
                     ${peopleIconSvg.replace('w-4 h-4', 'w-5 h-5')}
                     <span>Challenge Friends</span>
                 </button>
@@ -2450,12 +2450,12 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                         <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">High Score</div>
                     </div>
                     <div class="home-stat-card rounded-xl p-2 shadow-sm">
-                        <div class="flex justify-center text-green-500 mb-0.5">${boltIconSvg}</div>
+                        <div class="flex justify-center mb-0.5" style="color:#3E8A4A;">${boltIconSvg}</div>
                         <div id="welcome-quickplay-rank" class="font-black text-lg text-slate-800">—</div>
                         <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Quick Play Rank</div>
                     </div>
                     <div class="home-stat-card rounded-xl p-2 shadow-sm">
-                        <div class="flex justify-center text-blue-500 mb-0.5">${trendUpIconSvg}</div>
+                        <div class="flex justify-center mb-0.5" style="color:#99BF45;">${trendUpIconSvg}</div>
                         <div id="welcome-puzzle-rank" class="font-black text-lg text-slate-800">—</div>
                         <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Puzzle Rank</div>
                     </div>
@@ -5401,21 +5401,21 @@ function getTileCenter(tile) {
 
         <div id="endgame-challenge-result" class="mb-2"></div>
         <div class="flex flex-col gap-2">
-            <button id="play-again-button" class="bg-green-500 hover:bg-green-600 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">
+            <button id="play-again-button" class="w-full text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2 hover:brightness-95" style="background-color:#3E8A4A;">
                 ${rocketIcon} Play Again
             </button>
-            <button id="endgame-challenge-btn" class="bg-green-600 hover:bg-green-700 w-full text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">
+            <button id="endgame-challenge-btn" class="w-full text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2 hover:brightness-95" style="background-color:#4C86CB;">
                 ${challengeIcon} Challenge a Friend
             </button>
         </div>
 
         <div class="grid grid-cols-3 gap-2 mt-4">
             <button id="endgame-leaderboard-button" class="bg-amber-50 border border-amber-200 hover:bg-amber-100 rounded-xl p-2 flex flex-col items-center justify-center gap-1 transition-colors">
-                <span class="text-amber-500">${leaderboardIcon}</span>
+                <span style="color:#F0B23A;">${leaderboardIcon}</span>
                 <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Leaderboard</span>
             </button>
             <button id="endgame-stats-button" class="bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-xl p-2 flex flex-col items-center justify-center gap-1 transition-colors">
-                <span class="text-blue-500">${statsIcon}</span>
+                <span style="color:#2E86D1;">${statsIcon}</span>
                 <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Stats</span>
             </button>
             <button id="endgame-home-button" class="bg-slate-100 border border-slate-200 hover:bg-slate-200 rounded-xl p-2 flex flex-col items-center justify-center gap-1 transition-colors">

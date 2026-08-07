@@ -237,7 +237,7 @@ html.dark .htp-dot { background-color: #475569; }
         .tab-button.active {
             /* Amber to echo the bottom tab bar's Leaderboard circle, since
                these sub-tabs live inside the Leaderboard modal. */
-            background-color: #f59e0b;
+            background-color: #F0B23A;
             color: white;
             box-shadow: 0 2px 0 rgba(0,0,0,0.2), 0 3px 6px rgba(0,0,0,0.15);
             transform: scale(1.03);
@@ -688,9 +688,12 @@ html.capacitor-native .tab-bar-label {
     white-space: nowrap;
     text-shadow: 0 1px 3px rgba(0,0,0,0.55);
 }
-html.capacitor-native #tab-leaderboard .tab-bar-icon { background-color: #f59e0b; }
-html.capacitor-native #tab-stats .tab-bar-icon { background-color: #3b82f6; }
-html.capacitor-native #tab-howtoplay .tab-bar-icon { background-color: #22c55e; }
+/* Palette sampled directly from the home screen art + logo, so the tab
+   bar reads as part of the same world: gold from the letter tiles, blue
+   from the sky, green from the grass/worm, brown from the dirt path. */
+html.capacitor-native #tab-leaderboard .tab-bar-icon { background-color: #F0B23A; }
+html.capacitor-native #tab-stats .tab-bar-icon { background-color: #2E86D1; }
+html.capacitor-native #tab-howtoplay .tab-bar-icon { background-color: #5AC26E; }
 html.capacitor-native #tab-settings .tab-bar-icon { background-color: #64748b; }
 
 /* Modal/button depth pass: every modal card already had a shadow but no
