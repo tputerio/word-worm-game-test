@@ -838,52 +838,31 @@ function showGameMessage(message, type = 'info', startTile = null) {
     }
 }
 
-    // Home screen's "N of Y" daily rank stats. dailyScores (Quick
+    // Home screen's exact "#N" daily rank stats. dailyScores (Quick
     // Play) and dailyPuzzleScores (Daily Puzzle) hold one best-score doc per
     // player per day — rank is "how many players beat my score, plus one,"
-    // and Y is the total entries today, both cheap at any scale since
-    // getCountFromServer is billed per ~1000 matched docs rather than per
-    // document. Shows "- of Y" if the player hasn't posted a score for that
-    // mode today, or "—" entirely if nobody has played it yet.
+    // which stays cheap at any scale since getCountFromServer is billed per
+    // ~1000 matched docs rather than per document. Shows "—" instead of a
+    // number if the player hasn't posted a score for that mode today.
     async function fetchHomeScreenDailyRanks(uid) {
         if (!db) return;
         const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
         const rankFor = async (collectionName) => {
             const entriesCol = collection(db, collectionName, todayStr, 'entries');
-            const [myDoc, totalSnap] = await Promise.all([
-                withTimeout(getDoc(doc(entriesCol, uid))),
-                withTimeout(getCountFromServer(entriesCol))
-            ]);
-            const total = totalSnap.data().count;
-            if (!myDoc.exists()) return { rank: null, total };
+            const myDoc = await withTimeout(getDoc(doc(entriesCol, uid)));
+            if (!myDoc.exists()) return null;
             const myScore = myDoc.data().score;
             const beatenBySnap = await withTimeout(getCountFromServer(query(entriesCol, where('score', '>', myScore))));
-            return { rank: beatenBySnap.data().count + 1, total };
+            return beatenBySnap.data().count + 1;
         };
-        const [quickPlayResult, puzzleResult] = await Promise.all([
+        const [quickPlayRank, puzzleRank] = await Promise.all([
             rankFor('dailyScores').catch(e => { console.error('Quick Play rank fetch failed:', e); return null; }),
             rankFor('dailyPuzzleScores').catch(e => { console.error('Puzzle rank fetch failed:', e); return null; })
         ]);
-        const applyRank = (mainEl, ofEl, result) => {
-            if (!mainEl || !ofEl) return;
-            if (!result) {
-                mainEl.textContent = '—';
-                ofEl.textContent = '';
-                return;
-            }
-            mainEl.textContent = result.rank ?? '–';
-            ofEl.textContent = `of ${result.total.toLocaleString()}`;
-        };
-        applyRank(
-            document.getElementById('welcome-quickplay-rank'),
-            document.getElementById('welcome-quickplay-rank-of'),
-            quickPlayResult
-        );
-        applyRank(
-            document.getElementById('welcome-puzzle-rank'),
-            document.getElementById('welcome-puzzle-rank-of'),
-            puzzleResult
-        );
+        const qpEl = document.getElementById('welcome-quickplay-rank');
+        if (qpEl) qpEl.textContent = quickPlayRank ? `#${quickPlayRank}` : '—';
+        const puzzleEl = document.getElementById('welcome-puzzle-rank');
+        if (puzzleEl) puzzleEl.textContent = puzzleRank ? `#${puzzleRank}` : '—';
     }
 
     // Persistent bottom tab bar (web + native both). Hidden during gameplay
@@ -1681,7 +1660,7 @@ function replaceSelectedTiles() {
         vibrateOnWord();
 
     } else { // --- Standard & Practice Mode Logic ---
-        if (word.length >= 3 && fullDictionaryTrie.search(word)) {
+        if (word.length >= 3 && fullDictionaryTrie && fullDictionaryTrie.search(word)) {
             let baseScore = 0; let wordMultiplier = 1; let timeBonus = 0;
             selectedTiles.forEach(tile => {
                 let letterScore = parseInt(tile.dataset.points);
@@ -2484,14 +2463,12 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                     </div>
                     <div class="home-stat-card rounded-xl p-2 shadow-sm">
                         <div class="flex justify-center mb-0.5" style="color:#3E8A4A;">${boltIconSvg}</div>
-                        <div id="welcome-quickplay-rank" class="font-black text-lg text-slate-800 leading-tight">—</div>
-                        <div id="welcome-quickplay-rank-of" class="text-xs font-normal text-slate-400 leading-tight"></div>
+                        <div id="welcome-quickplay-rank" class="font-black text-lg text-slate-800">—</div>
                         <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Quick Play Rank</div>
                     </div>
                     <div class="home-stat-card rounded-xl p-2 shadow-sm">
                         <div class="flex justify-center mb-0.5" style="color:#99BF45;">${trendUpIconSvg}</div>
-                        <div id="welcome-puzzle-rank" class="font-black text-lg text-slate-800 leading-tight">—</div>
-                        <div id="welcome-puzzle-rank-of" class="text-xs font-normal text-slate-400 leading-tight"></div>
+                        <div id="welcome-puzzle-rank" class="font-black text-lg text-slate-800">—</div>
                         <div class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Puzzle Rank</div>
                     </div>
                 </div>
