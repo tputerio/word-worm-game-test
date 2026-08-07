@@ -188,7 +188,7 @@ html.dark .htp-card-amber .htp-card-label { color: #fbbf24; }
     justify-content: center;
     transition: background-color 0.2s, color 0.2s;
 }
-.htp-nav-enabled { background-color: #5e7920; color: white; }
+.htp-nav-enabled { background-color: #3E8A4A; color: white; }
 .htp-nav-disabled { background-color: #e5e7eb; color: #9ca3af; }
 html.dark .htp-nav-disabled { background-color: #334155; color: #64748b; }
 
@@ -536,15 +536,41 @@ html.capacitor-native #message-modal:has(#welcome-card) {
    has to cap the actual card's height and let *it* scroll internally, so
    the card's rendered box (and everything in it) physically never reaches
    the tab bar's strip. calc() with vh is the safe fallback (Safari <15.4);
-   the dvh version after it overrides when supported, and additionally
-   tracks a mobile browser's own collapsing toolbar on the website. */
-html.capacitor-native #end-game-modal-content,
-html.capacitor-native #leaderboard-modal-content,
-html.capacitor-native #stats-modal-content,
-html.capacitor-native #instructions-modal-content,
+   the svh version after it overrides when supported. Deliberately svh, not
+   dvh: dvh live-tracks the browser's collapsing toolbar, which backfires
+   on the website (this class is applied unconditionally — see game.js) —
+   svh is the static small-viewport height, fixed once loaded.
+
+   This targets the *card itself* (the `> *` wrapper's actual rendered
+   child), not the wrapper div — an earlier version of this rule capped
+   the wrapper instead, which stacked a second overflow:auto region
+   directly flush against the card's own pre-existing one (stats' card
+   already scrolls itself via wrapModal() in game.js). Two nested
+   scrollable regions with almost no offset between them is what caused
+   modals to look "draggable" — a touch could get claimed by either layer,
+   and iOS's rubber-band response to that confusion is what read as the
+   card moving/clipping under your finger. Capping the card directly
+   instead keeps exactly one real scrollable region per modal. */
+html.capacitor-native #end-game-modal-content > *,
+html.capacitor-native #stats-modal-content > *,
+html.capacitor-native #instructions-modal-content > * {
+    max-height: calc(100vh - var(--native-tab-bar-height) - env(safe-area-inset-bottom) - 2rem);
+    max-height: calc(100svh - var(--native-tab-bar-height) - env(safe-area-inset-bottom) - 2rem);
+    overflow-y: auto;
+}
+/* Leaderboard already has its own inner scroll region (the score list,
+   #leaderboard-scroll-container) — capping the outer card to *also*
+   scroll would recreate the same two-nested-regions problem described
+   above, just one level deeper. Clip (don't scroll) the outer card
+   instead; the inner list remains the one genuine scroll region. */
+html.capacitor-native #leaderboard-modal-content > * {
+    max-height: calc(100vh - var(--native-tab-bar-height) - env(safe-area-inset-bottom) - 2rem);
+    max-height: calc(100svh - var(--native-tab-bar-height) - env(safe-area-inset-bottom) - 2rem);
+    overflow: hidden;
+}
 html.capacitor-native #account-modal-content {
     max-height: calc(100vh - var(--native-tab-bar-height) - env(safe-area-inset-bottom) - 2rem);
-    max-height: calc(100dvh - var(--native-tab-bar-height) - env(safe-area-inset-bottom) - 2rem);
+    max-height: calc(100svh - var(--native-tab-bar-height) - env(safe-area-inset-bottom) - 2rem);
     overflow-y: auto;
 }
 /* The cap above stops a card from ever being *taller* than the safe zone,

@@ -3386,7 +3386,12 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     }
 
     async function renderMyChallengesContent(container) {
-        container.style.maxHeight = '65dvh';
+        // svh, not dvh: dvh live-tracks Safari's collapsing toolbar, so a
+        // touch-drag on the nested challenges-list that doesn't actually
+        // scroll can still make the toolbar twitch and this max-height
+        // reflow under your finger (see style.css's stats/leaderboard fix
+        // for the full story). svh is fixed once loaded — no flicker.
+        container.style.maxHeight = '65svh';
         container.style.display = 'flex';
         container.style.flexDirection = 'column';
         container.style.overflow = 'hidden';
@@ -5510,7 +5515,7 @@ function getTileCenter(tile) {
             if (tray) {
                 const span = document.createElement('span');
                 span.className = 'bg-white font-bold text-sm px-1.5 py-0.5 rounded shadow-sm';
-                span.style.color = '#5e7920';
+                span.style.color = '#99BF45';
                 span.textContent = letterSequence[n];
                 tray.appendChild(span);
             }
@@ -5676,5 +5681,98 @@ function getTileCenter(tile) {
     } else {
         document.querySelectorAll('#settings-haptics-row, #pause-haptics-row').forEach(el => { el.style.display = 'none'; });
     }
+
+    // iOS Safari's elastic/rubber-band bounce on a modal's scrollable card
+    // is what reads as "I can drag the modal around" — it only shows up
+    // once there's real content to scroll (an empty card has nothing to
+    // bounce), and it's most obvious right at the top/bottom edge, where
+    // continuing to drag stretches the content past its actual bounds
+    // before it snaps back. overscroll-behavior doesn't suppress this
+    // bounce itself in Safari (only chaining to a parent), so this blocks
+    // it manually: on touchstart, remember whether the nearest genuinely
+    // scrollable ancestor is already at its top or bottom edge; on
+    // touchmove, only preventDefault if the drag direction would overscroll
+    // past that edge. Normal in-bounds scrolling is left completely alone.
+    const modalBackdropSelector = '#message-modal, #end-game-modal, #leaderboard-modal, #stats-modal, #instructions-modal, #settings-modal, #account-modal, #pause-modal';
+    let touchScrollEl = null;
+    let touchStartY = 0;
+    let touchAtTop = false;
+    let touchAtBottom = false;
+
+    function findScrollableAncestor(target, backdrop) {
+        let el = target;
+        while (el) {
+            if (el.scrollHeight > el.clientHeight + 1) {
+                const overflowY = getComputedStyle(el).overflowY;
+                if (overflowY === 'auto' || overflowY === 'scroll') return el;
+            }
+            if (el === backdrop) break;
+            el = el.parentElement;
+        }
+        return null;
+    }
+
+    document.addEventListener('touchstart', (e) => {
+        const backdrop = e.target.closest(modalBackdropSelector);
+        touchScrollEl = backdrop ? findScrollableAncestor(e.target, backdrop) : null;
+        if (touchScrollEl) {
+            touchStartY = e.touches[0].clientY;
+            touchAtTop = touchScrollEl.scrollTop <= 0;
+            touchAtBottom = touchScrollEl.scrollTop + touchScrollEl.clientHeight >= touchScrollEl.scrollHeight - 1;
+        }
+    }, { passive: true });
+
+    document.addEventListener('touchmove', (e) => {
+        const backdrop = e.target.closest(modalBackdropSelector);
+        if (!backdrop) return;
+        if (!touchScrollEl) {
+            // Nothing along the touch path can genuinely scroll — block
+            // the whole gesture so there's nothing left to bounce at all.
+            e.preventDefault();
+            return;
+        }
+        const draggingDown = e.touches[0].clientY > touchStartY; // finger moving down the screen = content scrolling toward its top
+        if ((touchAtTop && draggingDown) || (touchAtBottom && !draggingDown)) {
+            e.preventDefault();
+        }
+    }, { passive: false });
+
+    // --- TEMP DIAGNOSTIC OVERLAY — remove once the modal-drag bug is found.
+    // Enable with ?dbg=1 in the URL. Shows live viewport/scroll numbers so we
+    // can tell whether "dragging" a modal is native pinch-zoom panning
+    // (visualViewport offset/scale changing) vs a DOM scroll container
+    // actually moving (scrollTop/Left on html/body/modal changing).
+    if (new URLSearchParams(location.search).get('dbg') === '1') {
+        const dbgBox = document.createElement('div');
+        dbgBox.style.cssText = 'position:fixed;top:0;left:0;z-index:2147483647;background:rgba(0,0,0,0.85);color:#0f0;font:10px/1.3 monospace;padding:6px;white-space:pre;pointer-events:none;max-width:100vw;';
+        document.body.appendChild(dbgBox);
+        const backdropIds = ['message-modal', 'end-game-modal', 'leaderboard-modal', 'stats-modal', 'instructions-modal', 'settings-modal', 'account-modal', 'pause-modal'];
+        function openModalId() {
+            return backdropIds.find(id => { const el = document.getElementById(id); return el && !el.classList.contains('hidden'); }) || 'none';
+        }
+        function updateDbg() {
+            const vv = window.visualViewport;
+            const modalId = openModalId();
+            const modalEl = modalId !== 'none' ? document.getElementById(modalId) : null;
+            const cardEl = modalEl ? modalEl.firstElementChild : null;
+            dbgBox.textContent =
+                `vv.scale=${vv ? vv.scale.toFixed(3) : 'n/a'}\n` +
+                `vv.offset=${vv ? vv.offsetLeft.toFixed(1) + ',' + vv.offsetTop.toFixed(1) : 'n/a'}\n` +
+                `vv.size=${vv ? vv.width.toFixed(0) + 'x' + vv.height.toFixed(0) : 'n/a'}\n` +
+                `html.scroll=${document.documentElement.scrollLeft},${document.documentElement.scrollTop}\n` +
+                `body.scroll=${document.body.scrollLeft},${document.body.scrollTop}\n` +
+                `openModal=${modalId}\n` +
+                `modal.scroll=${modalEl ? modalEl.scrollLeft + ',' + modalEl.scrollTop : 'n/a'}\n` +
+                `card.rect=${cardEl ? (() => { const r = cardEl.getBoundingClientRect(); return `${r.left.toFixed(0)},${r.top.toFixed(0)} ${r.width.toFixed(0)}x${r.height.toFixed(0)}`; })() : 'n/a'}`;
+        }
+        setInterval(updateDbg, 100);
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', updateDbg);
+            window.visualViewport.addEventListener('scroll', updateDbg);
+        }
+        document.addEventListener('touchmove', updateDbg, { passive: true });
+        updateDbg();
+    }
+    // --- END TEMP DIAGNOSTIC OVERLAY
 
     document.addEventListener('DOMContentLoaded', main);
