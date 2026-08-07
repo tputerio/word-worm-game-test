@@ -5359,6 +5359,30 @@ function getTileCenter(tile) {
 
     // Spoiler-free, Wordle-style share text for the daily puzzle. Uses the passed
    // stats (not live game state) so sharing a past result works too.
+   async function shareQuickPlayResult(stats) {
+        let shareText = `Word Worm 🐛\n${stats.score} pts`;
+        if (stats.bestWord) shareText += ` · Best word: ${stats.bestWord.toUpperCase()} (+${stats.bestWordScore})`;
+        shareText += `\nhttps://wordwormgame.com/`;
+
+        if (navigator.share) {
+            try {
+                await navigator.share({ title: 'Word Worm', text: shareText });
+                if (analytics) logEvent(analytics, 'share', { method: 'native', content_type: 'quickplay_score' });
+            } catch (err) { if (err.name !== 'AbortError') console.error('Share failed:', err); }
+        } else {
+            try {
+                await navigator.clipboard.writeText(shareText);
+                if (analytics) logEvent(analytics, 'share', { method: 'clipboard', content_type: 'quickplay_score' });
+                const label = document.getElementById('endgame-share-label');
+                if (label) {
+                    const original = label.textContent;
+                    label.textContent = 'Copied!';
+                    setTimeout(() => { label.textContent = original; }, 2000);
+                }
+            } catch (err) { console.error('Failed to copy: ', err); }
+        }
+   }
+
    async function shareDailyResult(stats) {
         const nyNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
         const dateStr = `${nyNow.getMonth() + 1}/${nyNow.getDate()}`;
@@ -5402,8 +5426,8 @@ function getTileCenter(tile) {
     const rocketIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 0 1-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 0 0 6.16-12.12A14.98 14.98 0 0 0 9.631 8.41m5.96 5.96a14.926 14.926 0 0 1-5.841 2.58m-.119-8.54a6 6 0 0 0-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 0 0-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 0 1-2.448-2.448 14.9 14.9 0 0 1 .06-.312m-2.24 2.39a4.493 4.493 0 0 0-1.757 4.306 4.493 4.493 0 0 0 4.306-1.758M16.5 9a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" /></svg>`;
     const challengeIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>`;
     const leaderboardIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg>`;
-    const statsIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" /></svg>`;
     const homeIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg>`;
+    const shareIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" /></svg>`;
 
     endGameModalContent.innerHTML = `<div id="end-game-card" class="bg-white rounded-2xl shadow-2xl p-6 text-center w-full max-w-sm mx-auto modal-enter">
         <h2 class="text-3xl font-black text-green-600">Great Game!</h2>
@@ -5431,9 +5455,9 @@ function getTileCenter(tile) {
                 <span style="color:#F0B23A;">${leaderboardIcon}</span>
                 <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Leaderboard</span>
             </button>
-            <button id="endgame-stats-button" class="bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-xl p-2 flex flex-col items-center justify-center gap-1 transition-colors">
-                <span style="color:#2E86D1;">${statsIcon}</span>
-                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Stats</span>
+            <button id="endgame-share-button" class="bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-xl p-2 flex flex-col items-center justify-center gap-1 transition-colors">
+                <span style="color:#2E86D1;">${shareIcon}</span>
+                <span id="endgame-share-label" class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Share</span>
             </button>
             <button id="endgame-home-button" class="bg-slate-100 border border-slate-200 hover:bg-slate-200 rounded-xl p-2 flex flex-col items-center justify-center gap-1 transition-colors">
                 <span class="text-slate-500">${homeIcon}</span>
@@ -5455,7 +5479,11 @@ function getTileCenter(tile) {
 
     document.getElementById('play-again-button').onclick = resetGame;
     document.getElementById('endgame-leaderboard-button').onclick = () => showLeaderboardModal(currentGamemode === 'daily' ? 'challenge' : 'daily');
-    document.getElementById('endgame-stats-button').onclick = () => showProfileModal('stats');
+    document.getElementById('endgame-share-button').onclick = () => shareQuickPlayResult({
+        score,
+        bestWord: bestWordFound && bestWordFound.word ? bestWordFound.word : null,
+        bestWordScore: bestWordFound ? bestWordFound.score : null
+    });
     document.getElementById('endgame-home-button').onclick = resetGame;
     document.getElementById('endgame-challenge-btn').onclick = () => _createAndShareChallenge(
         document.getElementById('endgame-challenge-btn'),
