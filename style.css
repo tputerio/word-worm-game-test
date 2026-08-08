@@ -445,15 +445,18 @@ html.capacitor-native.dark #mode-daily-btn:hover { background-color: #2563eb !im
 /* Native iOS shell only (html.capacitor-native, set by game.js). The
    welcome/home screen is rendered through #message-modal, the same
    fixed-inset-0-with-dark-backdrop overlay system used for challenge
-   join/loading/error screens — never shown over live gameplay, so it's
-   safe to flatten everywhere it appears. On the website this dark-backdrop
-   "card floating over a dimmed page" look is intentional; inside the app
-   shell there's nothing behind it to dim, so it just reads as a popup
-   sitting over a gray page. Fill it white edge-to-edge and drop the card
-   chrome so it reads as the app's own home screen instead.
-   Background image lives on body (not #message-modal) so it shows behind
-   gameplay too, once the modal hides — #message-modal is left transparent
-   and just lets body show through while it's up. */
+   join/loading/error screens. On the website this dark-backdrop "card
+   floating over a dimmed page" look is intentional; for the home screen
+   specifically, inside the app shell there's nothing behind it to dim, so
+   a dark tint just reads as a popup sitting over a gray page. Fill it
+   white edge-to-edge and drop the card chrome so it reads as the app's own
+   home screen instead — scoped to :has(#welcome-card) below, since that's
+   the one #message-modal content that's genuinely never shown over live
+   gameplay. Every other use of #message-modal (challenge join/loading/error
+   cards) can appear with the just-played board still visible behind it —
+   e.g. tapping "Challenge a Friend" from the Quick Play end screen hides
+   that screen's own modal but not the grid underneath — and needs the real
+   dark/blur backdrop to actually obscure it, same as on the website. */
 html.capacitor-native {
     /* Content height of the bottom tab bar, excluding safe-area-inset-bottom
        — combine the two wherever a "tab" screen needs to reserve space so
@@ -499,11 +502,6 @@ html.capacitor-native.in-gameplay.dark body {
     }
 }
 html.capacitor-native #message-modal {
-    /* Its own bg-black/50 class would otherwise tint body's background
-       image dark on top of whatever's showing through underneath. */
-    background-color: transparent;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
     /* A bit under the full safe-area guideline — Apple's guideline is
        conservative about the Dynamic Island's actual bounds, so this trim
        should stay clear of it. Verify against a real device/simulator
@@ -522,9 +520,16 @@ html.capacitor-native #message-modal {
    tab bar clipped below, instead of a normal "scroll down to see more."
    Scoped to just the home screen (the only #message-modal content with a
    #welcome-card) via :has() so the short cards keep their nicer centered
-   look, where overflow was never a risk anyway. */
+   look, where overflow was never a risk anyway.
+   Also flattens the backdrop here (see the comment above the block near
+   the top of this native-shell section) — its own bg-black/50 class would
+   otherwise tint body's background image dark on top of whatever's showing
+   through underneath, which only reads right for the home screen itself. */
 html.capacitor-native #message-modal:has(#welcome-card) {
     align-items: flex-start;
+    background-color: transparent;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
 }
 /* Every other full-screen modal shares #message-modal's original problem:
    the floating tab bar sits at z-index:110, above all of these (95 and

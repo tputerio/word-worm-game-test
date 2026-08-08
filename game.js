@@ -176,6 +176,7 @@
         invalidateChallengesCache();
         lastKnownStreak = 0;
         lastKnownHighScore = 0;
+        lastKnownRecentPlayDates = [];
         lastKnownChallengeStats = { wins: 0, losses: 0, ties: 0 };
         persistKnownStats();
         // Daily-challenge completion/in-progress records are keyed by date,
@@ -214,6 +215,17 @@
     let lastKnownGamesPlayed = parseInt(localStorage.getItem('wordWormLastGamesPlayed'), 10) || 0;
     let lastKnownWordsFound = parseInt(localStorage.getItem('wordWormLastWordsFound'), 10) || 0;
     let lastKnownPlayDate = localStorage.getItem('wordWormLastPlayDate') || null;
+    // Real per-day play history (last ~14 days, YYYY-MM-DD, NY tz), separate
+    // from playStreak/lastPlayDate above. Those two alone can only describe
+    // the *current unbroken* streak — once a streak breaks there's no way to
+    // tell "played 2 days ago, missed yesterday" from "never played at all,"
+    // since playStreak just resets to 0/1 with no memory of what came before.
+    // This is what lets the home-screen streak dots show real history
+    // instead of only ever showing the live streak or nothing.
+    let lastKnownRecentPlayDates = (() => {
+        try { return JSON.parse(localStorage.getItem('wordWormRecentPlayDates')) || []; }
+        catch(e) { return []; }
+    })();
     let lastKnownChallengeStats = (() => {
         try { return JSON.parse(localStorage.getItem('wordWormChallengeStats')) || { wins: 0, losses: 0, ties: 0 }; }
         catch(e) { return { wins: 0, losses: 0, ties: 0 }; }
@@ -225,8 +237,19 @@
             localStorage.setItem('wordWormLastGamesPlayed', String(lastKnownGamesPlayed));
             localStorage.setItem('wordWormLastWordsFound', String(lastKnownWordsFound));
             if (lastKnownPlayDate) localStorage.setItem('wordWormLastPlayDate', lastKnownPlayDate);
+            localStorage.setItem('wordWormRecentPlayDates', JSON.stringify(lastKnownRecentPlayDates));
             localStorage.setItem('wordWormChallengeStats', JSON.stringify(lastKnownChallengeStats));
         } catch(e) {}
+    }
+    // Shared by every write path that updates lastPlayDate (updatePlayStreak,
+    // processEndOfGame) so the rolling history stays capped and deduplicated
+    // the same way everywhere.
+    const RECENT_PLAY_DATES_KEPT = 14;
+    function withTodayAdded(recentPlayDates, todayStr) {
+        const dates = Array.isArray(recentPlayDates) ? recentPlayDates.slice() : [];
+        if (!dates.includes(todayStr)) dates.push(todayStr);
+        dates.sort();
+        return dates.slice(-RECENT_PLAY_DATES_KEPT);
     }
     let currentChallengeId = null;
     let pendingChallengeId = new URLSearchParams(window.location.search).get('c') || null;
@@ -675,7 +698,7 @@ function showSubmitConfirmation() {
             // Firebase never comes up, give the player a way out instead of an
             // infinite spinner.
             if (pendingChallengeId) {
-                modalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-lg p-6 text-center"><p class="text-red-500 mb-4">Failed to load challenge. Check your connection and refresh to try again.</p><button id="challenge-go-home" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">${HOME_ICON} Return Home</button></div>`;
+                modalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-lg p-6 text-center">${CHALLENGE_LOGO_HEADER}<p class="text-red-500 mb-4">Failed to load challenge. Check your connection and refresh to try again.</p><button id="challenge-go-home" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">${HOME_ICON} Return Home</button></div>`;
                 document.getElementById('challenge-go-home').onclick = () => { history.replaceState(null,'',window.location.pathname); pendingChallengeId = null; showWelcomeScreen(); };
             }
         }
@@ -866,6 +889,10 @@ function showGameMessage(message, type = 'info', startTile = null) {
             lastKnownGamesPlayed = playerData.totalGamesPlayed || 0;
             lastKnownWordsFound = playerData.totalWordsFound || 0;
             lastKnownPlayDate = playerData.lastPlayDate || null;
+            // Unlike playStreak above, this is never zeroed on staleness — a
+            // broken streak should still show which of the last few days
+            // were actually played, not just go blank.
+            lastKnownRecentPlayDates = Array.isArray(playerData.recentPlayDates) ? playerData.recentPlayDates : [];
         }
         lastKnownStreak = playStreak;
         lastKnownHighScore = Math.max(lastKnownHighScore, highScore);
@@ -1001,18 +1028,24 @@ function showGameMessage(message, type = 'info', startTile = null) {
         setActiveNativeTab('home');
     }
 
-    // Native home screen's 7-day streak timeline. There's no stored list of
-    // which specific days were played — only a running count (playStreak)
-    // and the date it was last extended (lastPlayDate). But a streak only
-    // ever increments on the day immediately after the previous one, so a
-    // streak of N ending on lastPlayDate means exactly those N consecutive
-    // days were played — no new data needed, just derived from what's
-    // already fetched for the "N day streak" number.
-    function renderStreakDots(playStreak, lastPlayDateStr) {
+    // Native home screen's 7-day streak timeline. Prefers real per-day
+    // history (recentPlayDates) so a broken streak still shows which recent
+    // days were actually played instead of going entirely blank the moment
+    // playStreak resets to 0 — e.g. played 2 days ago, missed yesterday,
+    // haven't played today yet should show exactly that, not "nothing."
+    // Falls back to deriving from playStreak + lastPlayDate (the old
+    // technique: a streak only ever increments on the day immediately after
+    // the previous one, so a streak of N ending on lastPlayDate means
+    // exactly those N consecutive days were played) for players who haven't
+    // played since recentPlayDates was introduced and so don't have it
+    // populated yet. The fallback is still correct as long as their streak
+    // hasn't broken — it just can't reconstruct a break that already
+    // happened before this shipped, same limitation the old code always had.
+    function renderStreakDots(recentPlayDates, playStreak, lastPlayDateStr) {
         const container = document.getElementById('welcome-streak-dots');
         if (!container) return;
-        const playedDates = new Set();
-        if (playStreak && lastPlayDateStr) {
+        const playedDates = new Set(Array.isArray(recentPlayDates) ? recentPlayDates : []);
+        if (playedDates.size === 0 && playStreak && lastPlayDateStr) {
             for (let i = 0; i < playStreak; i++) {
                 const d = new Date(lastPlayDateStr + 'T12:00:00');
                 d.setDate(d.getDate() - i);
@@ -1069,7 +1102,7 @@ function showGameMessage(message, type = 'info', startTile = null) {
         if (wordsFoundEl) wordsFoundEl.textContent = lastKnownWordsFound.toLocaleString();
         const gamesPlayedEl = document.getElementById('welcome-games-played');
         if (gamesPlayedEl) gamesPlayedEl.textContent = lastKnownGamesPlayed.toLocaleString();
-        renderStreakDots(playStreak, lastKnownPlayDate);
+        renderStreakDots(lastKnownRecentPlayDates, playStreak, lastKnownPlayDate);
 
         const playerGreetingEl = document.getElementById('player-greeting');
         if (playerGreetingEl) {
@@ -1974,8 +2007,12 @@ function getTileFromEvent(e) {
             : (oldData.lastPlayDate === todayStr) ? (oldData.playStreak || 1)
             : 1;
         lastKnownStreak = playStreak;
+        lastKnownPlayDate = todayStr;
+        const recentPlayDates = withTodayAdded(oldData.recentPlayDates, todayStr);
+        lastKnownRecentPlayDates = recentPlayDates;
+        persistKnownStats();
 
-        await setDoc(playerDocRef, { lastPlayed: serverTimestamp(), lastPlayDate: todayStr, playStreak }, { merge: true });
+        await setDoc(playerDocRef, { lastPlayed: serverTimestamp(), lastPlayDate: todayStr, playStreak, recentPlayDates }, { merge: true });
     } catch (e) {
         console.error("Failed to update play streak:", e);
     }
@@ -2055,11 +2092,22 @@ function getTileFromEvent(e) {
             lastPlayed: serverTimestamp(),
             lastPlayDate: todayStr,
             playStreak: (oldData.lastPlayDate === yesterdayStr) ? (oldData.playStreak || 0) + 1 : (oldData.lastPlayDate === todayStr ? (oldData.playStreak || 1) : 1),
+            recentPlayDates: withTodayAdded(oldData.recentPlayDates, todayStr),
             dailyHighScore: (oldData.dailyHighScoreLastUpdated !== todayStr || finalScore > (oldData.dailyHighScore || 0)) ? finalScore : oldData.dailyHighScore,
             dailyHighScoreLastUpdated: todayStr,
             top5Scores: [...(oldData.top5Scores || []), { score: finalScore, date: todayStr }].sort((a,b)=>b.score-a.score).slice(0,5),
             top5LongestWords: [...new Map([...(oldData.top5LongestWords || []), ...words.map(w=>({word:w.word,length:w.length}))].map(item=>[item.word,item])).values()].sort((a,b)=>b.length-a.length).slice(0,5),
         };
+        // fetchPlayerStats() is cached for 60s (see PLAYER_STATS_CACHE_TTL_MS)
+        // — a player who returns to the home screen right after a fast round
+        // could otherwise see pre-game streak/dots for up to a minute, since
+        // nothing else in this Standard-mode path used to touch these vars
+        // (unlike updatePlayStreak(), used by Daily/Challenge, which always
+        // has). Update them directly so the next render is correct at once.
+        lastKnownStreak = updateData.playStreak;
+        lastKnownPlayDate = updateData.lastPlayDate;
+        lastKnownRecentPlayDates = updateData.recentPlayDates;
+        persistKnownStats();
         // Only (re)write the name once one's actually been submitted — a
         // still-anonymous guest keeps accruing stats without a name field,
         // and showNonBlockingNamePrompt() writes it separately if/when they submit.
@@ -3027,6 +3075,11 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     // ---- Challenge a Friend ----
 
     const HOME_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg>`;
+    // Shared header for every screen in the challenge-link flow (loading,
+    // error, and both loaded states) — the combined wordmark logo instead of
+    // a separate icon + typed-out "Word Worm", so it reads as one consistent
+    // branded modal rather than changing appearance once data loads.
+    const CHALLENGE_LOGO_HEADER = `<h1 class="flex items-center justify-center mb-5"><img src="assets/game-play-top-icon.webp?v=2" alt="Word Worm" class="h-9 w-auto" width="204" height="40"></h1>`;
 
     // Lands on the challenge screen ("Playing against X" / Play Now) from
     // anywhere — after sending a challenge, a rematch, etc. Pass the challenge
@@ -3695,6 +3748,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     async function showChallengeAcceptScreen(challengeId, prefetchedData = null, notice = null) {
         modalContent.innerHTML = `
             <div class="bg-white rounded-2xl shadow-lg p-6 text-center">
+                ${CHALLENGE_LOGO_HEADER}
                 <div class="flex justify-center py-4"><svg class="animate-spin h-6 w-6 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>
                 <p class="text-slate-500 mt-2">Loading challenge...</p>
             </div>`;
@@ -3711,7 +3765,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             if (!data) {
                 const snap = await getDocResilient(doc(db, 'challenges', challengeId));
                 if (!snap.exists()) {
-                    modalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-lg p-6 text-center"><p class="text-slate-700 font-bold mb-4">Challenge not found.</p><button id="challenge-go-home" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">${HOME_ICON} Return Home</button></div>`;
+                    modalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-lg p-6 text-center">${CHALLENGE_LOGO_HEADER}<p class="text-slate-700 font-bold mb-4">Challenge not found.</p><button id="challenge-go-home" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">${HOME_ICON} Return Home</button></div>`;
                     document.getElementById('challenge-go-home').onclick = () => { history.replaceState(null,'',window.location.pathname); pendingChallengeId = null; showWelcomeScreen(); };
                     return;
                 }
@@ -3744,7 +3798,6 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
             const isSelf = data.createdBy === userId;
             const playIcon = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" /></svg>`;
-            const logoHeader = `<h1 class="flex items-center justify-center text-2xl font-black text-slate-800 tracking-tighter mb-5"><img src="assets/word-worm-logo-icon.webp" alt="Word Worm Logo" class="w-8 h-8 mr-2" width="32" height="32">Word Worm</h1>`;
             const noticeHTML = notice ? `<div class="bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-4"><p class="text-xs font-semibold text-amber-700">${escapeHTML(notice)}</p></div>` : '';
 
             if (isSelf) {
@@ -3756,7 +3809,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
                 modalContent.innerHTML = `
                     <div class="bg-white rounded-2xl shadow-lg p-6 text-center">
-                        ${logoHeader}
+                        ${CHALLENGE_LOGO_HEADER}
                         <div class="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-9 h-9 text-green-600"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0" /></svg>
                         </div>
@@ -3772,7 +3825,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
             } else {
                 modalContent.innerHTML = `
                     <div class="bg-white rounded-2xl shadow-lg p-6 text-center">
-                        ${logoHeader}
+                        ${CHALLENGE_LOGO_HEADER}
                         <div class="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-9 h-9 text-green-600"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" /></svg>
                         </div>
@@ -3792,7 +3845,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
 
         } catch(e) {
             console.error('Error loading challenge:', e);
-            modalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-lg p-6 text-center"><p class="text-red-500 mb-4">Failed to load challenge.</p><button id="challenge-go-home" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">${HOME_ICON} Return Home</button></div>`;
+            modalContent.innerHTML = `<div class="bg-white rounded-2xl shadow-lg p-6 text-center">${CHALLENGE_LOGO_HEADER}<p class="text-red-500 mb-4">Failed to load challenge.</p><button id="challenge-go-home" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-base flex items-center justify-center gap-2">${HOME_ICON} Return Home</button></div>`;
             document.getElementById('challenge-go-home').onclick = () => { history.replaceState(null,'',window.location.pathname); pendingChallengeId = null; showWelcomeScreen(); };
         }
     }
@@ -4508,8 +4561,8 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 <button id="close-leaderboard-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
             </div>
             <div class="flex gap-1 p-1 bg-slate-100 rounded-full mb-4">
+                <button id="daily-tab" class="tab-button flex-1 py-1.5 px-2 rounded-full font-bold text-sm transition-all duration-200">Quick Play</button>
                 <button id="challenge-tab" class="tab-button flex-1 py-1.5 px-2 rounded-full font-bold text-sm transition-all duration-200">Puzzle</button>
-                <button id="daily-tab" class="tab-button flex-1 py-1.5 px-2 rounded-full font-bold text-sm transition-all duration-200">Daily</button>
                 <button id="all-time-tab" class="tab-button flex-1 py-1.5 px-2 rounded-full font-bold text-sm transition-all duration-200">All-Time</button>
             </div>
             <div id="leaderboard-loading-secondary" class="text-slate-500 p-2">Fetching Scores...</div>
