@@ -1,0 +1,16 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["4F5FJ8SD9V.com.wordwormgame.app"],
+        "components": [
+          {
+            "/": "/",
+            "?": { "c": "*" },
+            "comment": "Challenge-a-Friend links only: root path with a ?c= id. Every other page (about/contact/privacy/terms/recover) should keep opening in the browser, not the app."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -20,14 +20,21 @@ class Trie {
         }
         return isPrefix ? true : node.isEndOfWord === true;
     }
+    // Single-character step from an already-resolved node — see the matching
+    // comment on the client's copy of this class in game.js. Keep both in
+    // sync if either changes.
+    step(node, char) {
+        return node[char] || null;
+    }
 }
 let fullDictionaryTrie;
 let commonDictionaryTrie;
 
-function findWordsRecursive(tileIndex, prefix, path, foundWordsSet, board, trie) {
+function findWordsRecursive(tileIndex, prefix, node, path, foundWordsSet, board, trie) {
+    const nextNode = trie.step(node, board[tileIndex]);
+    if (!nextNode) return;
     prefix += board[tileIndex];
-    if (!trie.search(prefix, true)) return;
-    if (prefix.length >= 3 && trie.search(prefix)) foundWordsSet.add(prefix);
+    if (prefix.length >= 3 && nextNode.isEndOfWord === true) foundWordsSet.add(prefix);
     const [col, row] = [tileIndex % GRID_COLS, Math.floor(tileIndex / GRID_COLS)];
     for (let r_offset = -1; r_offset <= 1; r_offset++) {
         for (let c_offset = -1; c_offset <= 1; c_offset++) {
@@ -35,7 +42,7 @@ function findWordsRecursive(tileIndex, prefix, path, foundWordsSet, board, trie)
             const [nextCol, nextRow] = [col + c_offset, row + r_offset];
             const nextIndex = nextRow * GRID_COLS + nextCol;
             if (nextCol >= 0 && nextCol < GRID_COLS && nextRow >= 0 && nextRow < GRID_COLS && !path.includes(nextIndex)) {
-                findWordsRecursive(nextIndex, prefix, [...path, nextIndex], foundWordsSet, board, trie);
+                findWordsRecursive(nextIndex, prefix, nextNode, [...path, nextIndex], foundWordsSet, board, trie);
             }
         }
     }
@@ -44,7 +51,7 @@ function findWordsRecursive(tileIndex, prefix, path, foundWordsSet, board, trie)
 function solveBoard(board, trie) {
     const foundWordsSet = new Set();
     for (let i = 0; i < GRID_SIZE; i++) {
-        findWordsRecursive(i, "", [i], foundWordsSet, board, trie);
+        findWordsRecursive(i, "", trie.root, [i], foundWordsSet, board, trie);
     }
     return foundWordsSet;
 }

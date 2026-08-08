@@ -194,6 +194,9 @@
     let validationTrie;       // For checking if a board is playable
     let fullDictionaryTrie;   // For checking player-submitted words
     let tilePositions = [];
+    // Tile element -> its cached position entry, for drawLines()'s O(1)
+    // lookup during a drag instead of re-querying layout on every move.
+    let tilePositionsByEl = new Map();
     let isPracticeMode = false;
     let practiceTimeElapsed = 0;
     let animationInterval;
@@ -227,6 +230,29 @@
     }
     let currentChallengeId = null;
     let pendingChallengeId = new URLSearchParams(window.location.search).get('c') || null;
+
+    // Universal Links: a tapped https://wordwormgame.com/?c=... link opens
+    // this app instead of Safari (see the Associated Domains entitlement +
+    // the apple-app-site-association file), but the webview is still showing
+    // the locally-bundled index.html, so the id never lands in
+    // window.location.search the way it does on the website. The native side
+    // (already wired in SceneDelegate.swift for both a cold launch and a
+    // resume-from-background) hands it to @capacitor/app's 'appUrlOpen'
+    // event instead. Only relevant inside the native shell — nothing to
+    // listen for on the website, where the URL is already correct at load.
+    if (isCapacitorApp && window.Capacitor?.Plugins?.App) {
+        window.Capacitor.Plugins.App.addListener('appUrlOpen', ({ url }) => {
+            try {
+                const c = new URL(url).searchParams.get('c');
+                if (!c) return;
+                pendingChallengeId = c;
+                // If auth hasn't resolved yet, the onAuthStateChanged handler
+                // in initializeFirebase() picks up pendingChallengeId once it does.
+                if (userId) showChallengeAcceptScreen(c);
+            } catch (e) { console.error('Failed to parse incoming universal link:', e); }
+        });
+    }
+
     let activeGridEl;
     let activeCanvasEl;
     let activeCtx;
@@ -250,6 +276,14 @@
                 node = node[char];
             }
             return isPrefix ? true : node.isEndOfWord === true;
+        }
+        // Single-character step from an already-resolved node. Board solving
+        // (findWordsRecursive below) walks one letter at a time down an
+        // already-known path — search(word, isPrefix) would re-walk from the
+        // root on every added letter (O(depth) per step instead of O(1)).
+        // This lets that caller carry the node it already found forward.
+        step(node, char) {
+            return node[char] || null;
         }
     }
 
@@ -372,7 +406,11 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
                 try { await setDoc(doc(db, 'players', userId), { name, hasSubmittedName: true }, { merge: true }); } catch(e) {}
             }
             claimUsername(name);
-            await submitDailyScoreToLeaderboard(stats.score);
+            // Same "stop waiting, let the write finish in the background" guard
+            // as the completion write above — without it, a stalled connection
+            // here left showSummaryText() (and the Home/Leaderboard buttons
+            // further down) never reached, stranding the player on this screen.
+            await withTimeout(submitDailyScoreToLeaderboard(stats.score)).catch(() => {});
             showSummaryText();
         };
 
@@ -403,7 +441,9 @@ async function showDailyEndScreen(stats, isNewSubmission = true) {
         document.getElementById('daily-create-account').onclick = () => showAccountModal();
     } else {
         if (isNewSubmission) {
-            await submitDailyScoreToLeaderboard(stats.score);
+            // Same guard as the doSubmitName path above: never let a stalled
+            // write block the Home/Leaderboard buttons from getting attached.
+            await withTimeout(submitDailyScoreToLeaderboard(stats.score)).catch(() => {});
         }
         showSummaryText();
     }
@@ -780,6 +820,15 @@ function showGameMessage(message, type = 'info', startTile = null) {
         }
     }
 
+    // showWelcomeScreen() calls this on every home-screen visit (not just app
+    // launch — end of game, cancel, back nav) and the visibilitychange handler
+    // above calls it on every iOS foreground, which happens far more often
+    // than "the player was away for a while." The paint below already covers
+    // the common case with the best locally-known values, so skip the actual
+    // read within a short window — cheap staleness trade, same one the 60s
+    // leaderboard-modal cache already makes.
+    const PLAYER_STATS_CACHE_TTL_MS = 60 * 1000;
+    let playerStatsCache = { uid: null, at: 0 };
     async function fetchPlayerStats(uid) {
     if (!db) return;
     const playerDocRef = doc(db, "players", uid);
@@ -788,6 +837,9 @@ function showGameMessage(message, type = 'info', startTile = null) {
     // leaves the home screen blank ("never loaded my profile" on flaky mobile).
     // The fetch below repaints with authoritative data when it lands.
     renderPlayerStatsUI(localStorage.getItem('wordRushPlayerName') || 'Anonymous', lastKnownStreak);
+
+    if (playerStatsCache.uid === uid && Date.now() - playerStatsCache.at < PLAYER_STATS_CACHE_TTL_MS) return;
+    playerStatsCache = { uid, at: Date.now() };
 
     try {
         const docSnap = await getDocResilient(playerDocRef);
@@ -844,8 +896,23 @@ function showGameMessage(message, type = 'info', startTile = null) {
     // which stays cheap at any scale since getCountFromServer is billed per
     // ~1000 matched docs rather than per document. Shows "—" instead of a
     // number if the player hasn't posted a score for that mode today.
+    // Cached for a short window, same reasoning as PLAYER_STATS_CACHE_TTL_MS
+    // above — this was previously 2 reads + 2 count queries on every single
+    // showWelcomeScreen() call. Explicitly invalidated (not just left to
+    // expire) right after a game actually posts a new score — see the
+    // homeRanksCache resets next to the dailyScores/dailyPuzzleScores writes —
+    // so a player finishing a game still sees their real new rank at once.
+    const HOME_RANKS_CACHE_TTL_MS = 60 * 1000;
+    let homeRanksCache = { uid: null, at: 0, quickPlayRank: null, puzzleRank: null };
     async function fetchHomeScreenDailyRanks(uid) {
         if (!db) return;
+        const qpEl = document.getElementById('welcome-quickplay-rank');
+        const puzzleEl = document.getElementById('welcome-puzzle-rank');
+        if (homeRanksCache.uid === uid && Date.now() - homeRanksCache.at < HOME_RANKS_CACHE_TTL_MS) {
+            if (qpEl) qpEl.textContent = homeRanksCache.quickPlayRank ? `#${homeRanksCache.quickPlayRank}` : '—';
+            if (puzzleEl) puzzleEl.textContent = homeRanksCache.puzzleRank ? `#${homeRanksCache.puzzleRank}` : '—';
+            return;
+        }
         const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
         const rankFor = async (collectionName) => {
             const entriesCol = collection(db, collectionName, todayStr, 'entries');
@@ -859,9 +926,8 @@ function showGameMessage(message, type = 'info', startTile = null) {
             rankFor('dailyScores').catch(e => { console.error('Quick Play rank fetch failed:', e); return null; }),
             rankFor('dailyPuzzleScores').catch(e => { console.error('Puzzle rank fetch failed:', e); return null; })
         ]);
-        const qpEl = document.getElementById('welcome-quickplay-rank');
+        homeRanksCache = { uid, at: Date.now(), quickPlayRank, puzzleRank };
         if (qpEl) qpEl.textContent = quickPlayRank ? `#${quickPlayRank}` : '—';
-        const puzzleEl = document.getElementById('welcome-puzzle-rank');
         if (puzzleEl) puzzleEl.textContent = puzzleRank ? `#${puzzleRank}` : '—';
     }
 
@@ -1328,6 +1394,11 @@ async function getDailyPuzzleWithTimeout() {
 
 function resetGame() {
     clearInterval(timerInterval);
+    // The Daily end screen's "next puzzle in..." ticker keeps its own 30s
+    // interval alive as long as its DOM element exists — hiding the modal
+    // here doesn't remove that element, so without this the interval just
+    // keeps polling in the background for the rest of the session.
+    clearInterval(nextPuzzleCountdownInterval);
     endGameModal.classList.add('hidden');
     statsModal.classList.add('hidden');
     gameContentEl.style.display = 'none';
@@ -1398,7 +1469,7 @@ function setupDailyUI(challengeData) {
             <div class="flex items-center justify-between mb-3">
                 <div class="flex-grow flex items-center justify-center">
                     <h1 class="flex items-center justify-center">
-                        <img src="assets/game-play-top-icon.webp" alt="Word Worm" class="h-10 w-auto" width="204" height="40">
+                        <img src="assets/game-play-top-icon.webp?v=2" alt="Word Worm" class="h-10 w-auto" width="204" height="40">
                     </h1>
                 </div>
             </div>
@@ -1599,9 +1670,9 @@ function replaceSelectedTiles() {
     }
 
     updateCurrentWord();
-    drawLines();
+    requestDrawLines();
 }
-    
+
     function isAdjacent(t1, t2) {
         if (!t1 || !t2) return false;
         const id1 = parseInt(t1.dataset.id), id2 = parseInt(t2.dataset.id);
@@ -1843,6 +1914,7 @@ async function submitDailyScoreToLeaderboard(finalScore) {
         // silently dropping entries and skewing everyone else's rank low.
         try {
             await setDoc(doc(db, 'dailyPuzzleScores', todayStr, 'entries', userId), { score: finalScore });
+            homeRanksCache.at = 0;
         } catch (e) { console.error('Failed to write dailyPuzzleScores entry:', e); }
         // Same staleness guard as postScoreToLeaderboards: the modal's 60s
         // HTML cache must not outlive a board we just changed.
@@ -2118,6 +2190,7 @@ async function postScoreToLeaderboards(uId, playerName, finalScore, words, updat
             // with your best game's percentile.
             const entriesCol = collection(db, 'dailyScores', todayStr, 'entries');
             await setDoc(doc(entriesCol, uId), { score: updatedStats.dailyHighScore });
+            homeRanksCache.at = 0;
             const [totalSnap, beatenBySnap] = await Promise.all([
                 getCountFromServer(entriesCol),
                 getCountFromServer(query(entriesCol, where('score', '>', finalScore)))
@@ -2424,7 +2497,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     const nativeLayout = `
         <div id="welcome-card">
             <div id="welcome-header" class="flex items-center justify-center px-4">
-                <img id="welcome-logo" src="assets/word-worm-home-screen-logo.webp" alt="Word Worm" class="h-auto" width="144" height="124">
+                <img id="welcome-logo" src="assets/word-worm-home-screen-logo.webp?v=2" alt="Word Worm" class="h-auto" width="144" height="124">
             </div>
 
             <div class="px-4 mt-2 pb-4">
@@ -2833,9 +2906,12 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     // list/dot that keys off "do I have a result?" drops the challenge automatically.
     async function declineChallenge(challengeId) {
         const name = localStorage.getItem('wordRushPlayerName') || 'Player';
-        await updateDoc(doc(db, 'challenges', challengeId), {
+        // Timed like the other challenge writes — callers disable the clicked
+        // button and only re-enable it in a catch, so a hang here (rather
+        // than a rejection) used to leave that button stuck disabled forever.
+        await withTimeout(updateDoc(doc(db, 'challenges', challengeId), {
             [`results.${userId}`]: { declined: true, name, completedAt: serverTimestamp() }
-        });
+        }));
         mutateChallengesCache(entries => entries.map(([id, data]) => id === challengeId
             ? [id, { ...data, results: { ...(data.results || {}), [userId]: { declined: true, name, completedAt: null } } }]
             : [id, data]));
@@ -2844,7 +2920,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
     // Deleting a challenge you created revokes it — it disappears from the
     // recipient's incoming list too.
     async function revokeChallenge(challengeId) {
-        await deleteDoc(doc(db, 'challenges', challengeId));
+        await withTimeout(deleteDoc(doc(db, 'challenges', challengeId)));
         removeLocalChallengeId(challengeId);
         mutateChallengesCache(entries => entries.filter(([id]) => id !== challengeId));
     }
@@ -5046,13 +5122,28 @@ function setupEventListeners() {
     function cacheTilePositions(gridEl) {
     if (!gridEl) return;
     tilePositions = [];
+    tilePositionsByEl = new Map();
+    // The grid doesn't move or resize mid-drag (only resizeCanvas() calls
+    // this, on layout changes) — read it once here instead of once per tile
+    // per drawLines() call during the drag.
+    const gridRect = gridEl.getBoundingClientRect();
     for (const tile of gridEl.children) {
         const rect = tile.getBoundingClientRect();
-        tilePositions.push({
+        const entry = {
             el: tile,
             center: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+            // Grid-relative center, in the canvas's own coordinate space —
+            // used by drawLines() below. Kept separate from `center` above
+            // (viewport-relative, used by getTileFromEvent()'s hit-testing
+            // against e.clientX/clientY), which is a different coordinate space.
+            centerRelative: {
+                x: rect.left + rect.width / 2 - gridRect.left,
+                y: rect.top + rect.height / 2 - gridRect.top
+            },
             hitRadius: 0.45 * tile.offsetWidth
-        });
+        };
+        tilePositions.push(entry);
+        tilePositionsByEl.set(tile, entry);
     }
 }
 
@@ -5063,6 +5154,18 @@ function resizeCanvas() {
     activeCanvasEl.height = gridRect.height;
     cacheTilePositions(activeGridEl);
     drawLines();
+}
+
+// pointermove can fire faster than the display refreshes, and each call used
+// to cost two getBoundingClientRect() reads per selected tile (see
+// getTileCenter below) — coalesce to at most one draw per animation frame.
+let drawLinesRafId = null;
+function requestDrawLines() {
+    if (drawLinesRafId !== null) return;
+    drawLinesRafId = requestAnimationFrame(() => {
+        drawLinesRafId = null;
+        drawLines();
+    });
 }
 
 function drawLines() {
@@ -5093,7 +5196,14 @@ function clearLines() {
     }
 }
 
+// Grid-relative tile center for the canvas. Reads from the position cache
+// built by cacheTilePositions() instead of calling getBoundingClientRect()
+// fresh — that cache is already rebuilt on every layout change
+// (resizeCanvas()), so it's never stale during a drag. Falls back to a live
+// measurement only if a tile somehow isn't in the cache.
 function getTileCenter(tile) {
+    const cached = tilePositionsByEl.get(tile);
+    if (cached) return cached.centerRelative;
     if (!activeGridEl) return { x: 0, y: 0 };
     const gridRect = activeGridEl.getBoundingClientRect();
     const tileRect = tile.getBoundingClientRect();
@@ -5290,9 +5400,6 @@ function getTileCenter(tile) {
 
     const solvableWords = solveBoard(board, validationTrie);
 
-    // --- ADD THIS LINE (to be removed) ---
-    //console.log('Available words on board:', Array.from(solvableWords).sort());
-
         // This is the new, stricter logic
     const threeLetterWords = Array.from(solvableWords).filter(w => w.length === 3).length;
     const fourLetterWords = Array.from(solvableWords).filter(w => w.length === 4).length;
@@ -5325,20 +5432,21 @@ function getTileCenter(tile) {
     
     function solveBoard(board, trie) {
     const foundWordsSet = new Set();
+    if (!trie) return foundWordsSet;
     for (let i = 0; i < GRID_SIZE; i++) {
-        findWordsRecursive(i, "", [i], foundWordsSet, board, trie);
+        findWordsRecursive(i, "", trie.root, [i], foundWordsSet, board, trie);
     }
     return foundWordsSet;
 }
 
-   function findWordsRecursive(tileIndex, currentPrefix, path, foundWordsSet, board, trie) {
-    currentPrefix += board[tileIndex];
-
-    if (!trie || !trie.search(currentPrefix, true)) {
+   function findWordsRecursive(tileIndex, currentPrefix, node, path, foundWordsSet, board, trie) {
+    const nextNode = trie.step(node, board[tileIndex]);
+    if (!nextNode) {
         return;
     }
+    currentPrefix += board[tileIndex];
 
-    if (currentPrefix.length >= 3 && trie.search(currentPrefix)) {
+    if (currentPrefix.length >= 3 && nextNode.isEndOfWord === true) {
         foundWordsSet.add(currentPrefix);
     }
 
@@ -5351,7 +5459,7 @@ function getTileCenter(tile) {
             const nextIndex = nextRow * GRID_COLS + nextCol;
 
             if (nextCol >= 0 && nextCol < GRID_COLS && nextRow >= 0 && nextRow < GRID_COLS && !path.includes(nextIndex)) {
-                findWordsRecursive(nextIndex, currentPrefix, [...path, nextIndex], foundWordsSet, board, trie);
+                findWordsRecursive(nextIndex, currentPrefix, nextNode, [...path, nextIndex], foundWordsSet, board, trie);
             }
         }
     }
@@ -5776,43 +5884,5 @@ function getTileCenter(tile) {
             e.preventDefault();
         }
     }, { passive: false });
-
-    // --- TEMP DIAGNOSTIC OVERLAY — remove once the modal-drag bug is found.
-    // Enable with ?dbg=1 in the URL. Shows live viewport/scroll numbers so we
-    // can tell whether "dragging" a modal is native pinch-zoom panning
-    // (visualViewport offset/scale changing) vs a DOM scroll container
-    // actually moving (scrollTop/Left on html/body/modal changing).
-    if (new URLSearchParams(location.search).get('dbg') === '1') {
-        const dbgBox = document.createElement('div');
-        dbgBox.style.cssText = 'position:fixed;top:0;left:0;z-index:2147483647;background:rgba(0,0,0,0.85);color:#0f0;font:10px/1.3 monospace;padding:6px;white-space:pre;pointer-events:none;max-width:100vw;';
-        document.body.appendChild(dbgBox);
-        const backdropIds = ['message-modal', 'end-game-modal', 'leaderboard-modal', 'stats-modal', 'instructions-modal', 'settings-modal', 'account-modal', 'pause-modal'];
-        function openModalId() {
-            return backdropIds.find(id => { const el = document.getElementById(id); return el && !el.classList.contains('hidden'); }) || 'none';
-        }
-        function updateDbg() {
-            const vv = window.visualViewport;
-            const modalId = openModalId();
-            const modalEl = modalId !== 'none' ? document.getElementById(modalId) : null;
-            const cardEl = modalEl ? modalEl.firstElementChild : null;
-            dbgBox.textContent =
-                `vv.scale=${vv ? vv.scale.toFixed(3) : 'n/a'}\n` +
-                `vv.offset=${vv ? vv.offsetLeft.toFixed(1) + ',' + vv.offsetTop.toFixed(1) : 'n/a'}\n` +
-                `vv.size=${vv ? vv.width.toFixed(0) + 'x' + vv.height.toFixed(0) : 'n/a'}\n` +
-                `html.scroll=${document.documentElement.scrollLeft},${document.documentElement.scrollTop}\n` +
-                `body.scroll=${document.body.scrollLeft},${document.body.scrollTop}\n` +
-                `openModal=${modalId}\n` +
-                `modal.scroll=${modalEl ? modalEl.scrollLeft + ',' + modalEl.scrollTop : 'n/a'}\n` +
-                `card.rect=${cardEl ? (() => { const r = cardEl.getBoundingClientRect(); return `${r.left.toFixed(0)},${r.top.toFixed(0)} ${r.width.toFixed(0)}x${r.height.toFixed(0)}`; })() : 'n/a'}`;
-        }
-        setInterval(updateDbg, 100);
-        if (window.visualViewport) {
-            window.visualViewport.addEventListener('resize', updateDbg);
-            window.visualViewport.addEventListener('scroll', updateDbg);
-        }
-        document.addEventListener('touchmove', updateDbg, { passive: true });
-        updateDbg();
-    }
-    // --- END TEMP DIAGNOSTIC OVERLAY
 
     document.addEventListener('DOMContentLoaded', main);
