@@ -4561,7 +4561,7 @@ function updateLeaderboardList(list, newEntry, sortKey, nestedKey = null) {
                 <button id="close-leaderboard-button" class="text-3xl leading-none text-slate-400 hover:text-slate-800">&times;</button>
             </div>
             <div class="flex gap-1 p-1 bg-slate-100 rounded-full mb-4">
-                <button id="daily-tab" class="tab-button flex-1 py-1.5 px-2 rounded-full font-bold text-sm transition-all duration-200">Quick Play</button>
+                <button id="daily-tab" class="tab-button flex-1 py-1.5 px-2 rounded-full font-bold text-sm transition-all duration-200">Daily</button>
                 <button id="challenge-tab" class="tab-button flex-1 py-1.5 px-2 rounded-full font-bold text-sm transition-all duration-200">Puzzle</button>
                 <button id="all-time-tab" class="tab-button flex-1 py-1.5 px-2 rounded-full font-bold text-sm transition-all duration-200">All-Time</button>
             </div>
