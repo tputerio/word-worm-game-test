@@ -221,6 +221,16 @@ exports.resetDailyLeaderboards = onSchedule({
     } catch (error) {
         logger.error("Error cleaning up yesterday's dailyScores:", error);
     }
+
+    // dailyPuzzleScores/{date}/entries is the Daily Puzzle mode equivalent of
+    // dailyScores above (same one-doc-per-player-per-day shape, same
+    // rank/percentile purpose) — same wholesale cleanup once the day is over.
+    try {
+        await db.recursiveDelete(db.collection('dailyPuzzleScores').doc(yesterdayStr));
+        logger.info(`Cleaned up dailyPuzzleScores/${yesterdayStr}.`);
+    } catch (error) {
+        logger.error("Error cleaning up yesterday's dailyPuzzleScores:", error);
+    }
 });
 
 // Challenge docs are created with a 7-day expiresAt and nothing ever deletes

@@ -2027,12 +2027,16 @@ function getTileFromEvent(e) {
     let finalPlayerName = localStorage.getItem('wordRushPlayerName') || 'Anonymous';
     let needsToSubmitName = finalPlayerName === 'Anonymous';
 
+    // Reused by Part 2 below (nothing is awaited in between) so a
+    // still-anonymous guest doesn't pay for two reads of the same doc.
+    let cachedPlayerDocSnap = null;
+
     if (needsToSubmitName) {
         try {
-            const playerDocSnap = await getDoc(playerDocRef);
-            if (playerDocSnap.exists() && playerDocSnap.data().hasSubmittedName) {
+            cachedPlayerDocSnap = await getDoc(playerDocRef);
+            if (cachedPlayerDocSnap.exists() && cachedPlayerDocSnap.data().hasSubmittedName) {
                 needsToSubmitName = false;
-                finalPlayerName = playerDocSnap.data().name;
+                finalPlayerName = cachedPlayerDocSnap.data().name;
             }
         } catch (e) {
             console.error("Could not check for player name:", e);
@@ -2071,8 +2075,8 @@ function getTileFromEvent(e) {
     let updatedStats;
 
     try {
-        // First, get the current player data
-        const playerDoc = await getDoc(playerDocRef);
+        // Reuse Part 1's read when it happened instead of re-fetching the same doc
+        const playerDoc = cachedPlayerDocSnap ?? await getDoc(playerDocRef);
         const oldData = playerDoc.exists() ? playerDoc.data() : {};
         const gameBestWord = words.length > 0 ? words.reduce((best, current) => current.score > best.score ? current : best, { score: 0, word: '' }) : { score: 0, word: '' };
         
